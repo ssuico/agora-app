@@ -1,0 +1,66 @@
+---
+import { Sidebar } from '../components/app/Sidebar';
+import { Topbar } from '../components/app/Topbar';
+import { decodeJWT } from '../lib/jwt';
+import { createApiClient } from '../lib/api';
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  storeId?: string;
+}
+const { title = 'Agora POS', storeId } = Astro.props;
+
+const token = Astro.cookies.get('agora_token')?.value ?? '';
+const payload = decodeJWT(token);
+const userName = payload?.name ?? 'User';
+const userRole = payload?.role ?? 'customer';
+const currentPath = Astro.url.pathname;
+
+let storeName: string | undefined;
+let storeLocation: string | undefined;
+
+if (storeId) {
+  try {
+    const api = createApiClient(token);
+    const store = await api.get<{
+      _id: string;
+      name: string;
+      locationId?: { _id: string; name: string } | string;
+    }>(`/api/stores/${storeId}`);
+    storeName = store.name;
+    if (store.locationId && typeof store.locationId === 'object') {
+      storeLocation = store.locationId.name;
+    }
+  } catch {
+    // Store may not be found; sidebar will still render without the name
+  }
+}
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title} — Agora POS</title>
+  </head>
+  <body class="bg-background text-foreground antialiased">
+    <div class="flex h-screen overflow-hidden">
+      <Sidebar
+        role={userRole}
+        currentPath={currentPath}
+        storeId={storeId}
+        storeName={storeName}
+        storeLocation={storeLocation}
+        client:load
+      />
+      <div class="flex flex-1 flex-col overflow-hidden">
+        <Topbar name={userName} role={userRole} client:load />
+        <main class="flex-1 overflow-y-auto p-6">
+          <slot />
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

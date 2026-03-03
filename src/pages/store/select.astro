@@ -1,0 +1,59 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import { decodeJWT } from '../../lib/jwt';
+import { createApiClient } from '../../lib/api';
+
+const token = Astro.cookies.get('agora_token')?.value ?? '';
+const payload = decodeJWT(token);
+const storeIds = payload?.storeIds ?? [];
+
+if (storeIds.length === 0) {
+  return Astro.redirect('/login');
+}
+
+if (storeIds.length === 1) {
+  return Astro.redirect(`/store/${storeIds[0]}`);
+}
+
+const api = createApiClient(token);
+
+interface Store {
+  _id: string;
+  name: string;
+  locationId?: { _id: string; name: string };
+}
+
+let stores: Store[] = [];
+try {
+  const all = await api.get<Store[]>('/api/stores');
+  stores = all.filter((s) => storeIds.includes(s._id));
+} catch {
+  // handled below
+}
+---
+
+<AppLayout title="Select Store">
+  <div class="mx-auto max-w-2xl space-y-6">
+    <div class="text-center">
+      <h1 class="text-2xl font-bold tracking-tight">Select a Store</h1>
+      <p class="text-sm text-muted-foreground">
+        You are assigned to multiple stores. Choose one to manage.
+      </p>
+    </div>
+    <div class="grid gap-4 sm:grid-cols-2">
+      {
+        stores.map((store) => (
+          <a
+            href={`/store/${store._id}`}
+            class="rounded-lg border bg-card p-6 shadow-sm transition-colors hover:bg-accent"
+          >
+            <p class="text-lg font-semibold">{store.name}</p>
+            {store.locationId && typeof store.locationId === 'object' && (
+              <p class="mt-1 text-sm text-muted-foreground">{store.locationId.name}</p>
+            )}
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</AppLayout>

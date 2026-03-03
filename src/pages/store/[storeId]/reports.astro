@@ -1,0 +1,10 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import { StoreReports } from '../../../components/app/StoreReports';
+
+const { storeId } = Astro.params;
+---
+
+<AppLayout title="Reports" storeId={storeId}>
+  <StoreReports storeId={storeId!} client:load />
+</AppLayout>

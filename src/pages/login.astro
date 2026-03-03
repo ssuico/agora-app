@@ -1,0 +1,11 @@
+---
+import AuthLayout from '../layouts/AuthLayout.astro';
+import { LoginForm } from '../components/app/LoginForm';
+
+const token = Astro.cookies.get('agora_token')?.value;
+if (token) return Astro.redirect('/');
+---
+
+<AuthLayout title="Sign in">
+  <LoginForm client:load />
+</AuthLayout>

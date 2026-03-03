@@ -1,0 +1,21 @@
+---
+import '../styles/global.css';
+interface Props {
+  title?: string;
+}
+const { title = 'Agora POS' } = Astro.props;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+  </head>
+  <body class="bg-background text-foreground antialiased">
+    <div class="flex min-h-screen items-center justify-center p-4">
+      <slot />
+    </div>
+  </body>
+</html>

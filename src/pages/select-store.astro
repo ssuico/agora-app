@@ -1,0 +1,85 @@
+---
+import CustomerLayout from '../layouts/CustomerLayout.astro';
+import { createApiClient } from '../lib/api';
+
+const token = Astro.cookies.get('agora_token')?.value ?? '';
+const api = createApiClient(token);
+
+const locationId = Astro.url.searchParams.get('locationId');
+
+if (!locationId) {
+  return Astro.redirect('/select-location');
+}
+
+interface Location {
+  _id: string;
+  name: string;
+}
+
+interface Store {
+  _id: string;
+  name: string;
+  locationId: Location | string;
+}
+
+let stores: Store[] = [];
+let locationName = '';
+
+try {
+  const [loc, storeList] = await Promise.all([
+    api.get<Location>(`/api/locations/${locationId}`),
+    api.get<Store[]>(`/api/stores/by-location/${locationId}`),
+  ]);
+  locationName = loc.name;
+  stores = storeList;
+} catch {
+  // handled below
+}
+---
+
+<CustomerLayout title="Select Store">
+  <div class="mx-auto max-w-3xl space-y-6">
+    <div class="text-center">
+      <h1 class="text-2xl font-bold tracking-tight">Stores in {locationName}</h1>
+      <p class="text-sm text-muted-foreground">
+        Select a store to start shopping
+      </p>
+    </div>
+
+    <div class="text-center">
+      <a href="/select-location" class="text-sm text-primary hover:underline">
+        &larr; Change location
+      </a>
+    </div>
+
+    {
+      stores.length === 0 ? (
+        <p class="text-center text-muted-foreground py-12">
+          No stores available at this location yet.
+        </p>
+      ) : (
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {stores.map((store) => (
+            <a
+              href={`/shop/${store._id}`}
+              class="group rounded-lg border bg-card p-6 shadow-sm transition-all hover:border-primary hover:shadow-md"
+            >
+              <div class="flex items-center gap-3">
+                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" />
+                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                    <path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4" />
+                    <path d="M2 7h20" />
+                    <path d="M22 7v3a2 2 0 0 1-2 2a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7" />
+                  </svg>
+                </div>
+                <p class="text-lg font-semibold group-hover:text-primary">{store.name}</p>
+              </div>
+            </a>
+          ))}
+        </div>
+      )
+    }
+  </div>
+</CustomerLayout>

@@ -1,0 +1,112 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import { createApiClient } from '../../lib/api';
+
+const token = Astro.cookies.get('agora_token')?.value ?? '';
+const api = createApiClient(token);
+
+interface Location {
+  _id: string;
+  name: string;
+}
+interface Store {
+  _id: string;
+  name: string;
+}
+interface User {
+  _id: string;
+  name: string;
+  role: string;
+}
+interface Summary {
+  totalSales: number;
+  grossProfit: number;
+  netProfit: number;
+  totalExpenses: number;
+  totalCOGS: number;
+  remainingCapital: number;
+  transactionCount: number;
+}
+
+let locations: Location[] = [];
+let stores: Store[] = [];
+let users: User[] = [];
+let summary: Summary = {
+  totalSales: 0,
+  grossProfit: 0,
+  netProfit: 0,
+  totalExpenses: 0,
+  totalCOGS: 0,
+  remainingCapital: 0,
+  transactionCount: 0,
+};
+
+try {
+  [locations, stores, users, summary] = await Promise.all([
+    api.get<Location[]>('/api/locations'),
+    api.get<Store[]>('/api/stores'),
+    api.get<User[]>('/api/users'),
+    api.get<Summary>('/api/reports/summary'),
+  ]);
+} catch {
+  // Data may be unavailable on first load
+}
+
+const fmt = (n: number) =>
+  new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
+
+const managerCount = users.filter((u) => u.role === 'store_manager').length;
+const customerCount = users.filter((u) => u.role === 'customer').length;
+
+const overviewCards = [
+  { label: 'Locations', value: locations.length.toString() },
+  { label: 'Stores', value: stores.length.toString() },
+  { label: 'Store Managers', value: managerCount.toString() },
+  { label: 'Customers', value: customerCount.toString() },
+];
+
+const financeCards = [
+  { label: 'Total Sales', value: fmt(summary.totalSales) },
+  { label: 'Gross Profit', value: fmt(summary.grossProfit) },
+  { label: 'Total Expenses', value: fmt(summary.totalExpenses) },
+  { label: 'Net Profit', value: fmt(summary.netProfit) },
+  { label: 'Transactions', value: summary.transactionCount.toString() },
+];
+---
+
+<AppLayout title="Admin Dashboard">
+  <div class="space-y-6">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">Admin Dashboard</h1>
+      <p class="text-sm text-muted-foreground">System-wide overview</p>
+    </div>
+
+    <div>
+      <h2 class="mb-3 text-lg font-semibold">Overview</h2>
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {
+          overviewCards.map((card) => (
+            <div class="rounded-lg border bg-card p-5 shadow-sm">
+              <p class="text-sm font-medium text-muted-foreground">{card.label}</p>
+              <p class="mt-1 text-2xl font-bold">{card.value}</p>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+
+    <div>
+      <h2 class="mb-3 text-lg font-semibold">Financial Summary (All Stores)</h2>
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {
+          financeCards.map((card) => (
+            <div class="rounded-lg border bg-card p-5 shadow-sm">
+              <p class="text-sm font-medium text-muted-foreground">{card.label}</p>
+              <p class="mt-1 text-2xl font-bold">{card.value}</p>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </div>
+</AppLayout>

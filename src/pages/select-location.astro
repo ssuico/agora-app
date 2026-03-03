@@ -1,0 +1,57 @@
+---
+import CustomerLayout from '../layouts/CustomerLayout.astro';
+import { createApiClient } from '../lib/api';
+
+const token = Astro.cookies.get('agora_token')?.value ?? '';
+const api = createApiClient(token);
+
+interface Location {
+  _id: string;
+  name: string;
+}
+
+let locations: Location[] = [];
+try {
+  locations = await api.get<Location[]>('/api/locations');
+} catch {
+  // handled below
+}
+---
+
+<CustomerLayout title="Select Location">
+  <div class="mx-auto max-w-3xl space-y-6">
+    <div class="text-center">
+      <h1 class="text-2xl font-bold tracking-tight">Select Your Location</h1>
+      <p class="text-sm text-muted-foreground">
+        Choose a location to see available stores
+      </p>
+    </div>
+
+    {
+      locations.length === 0 ? (
+        <p class="text-center text-muted-foreground py-12">
+          No locations available yet. Please check back later.
+        </p>
+      ) : (
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {locations.map((loc) => (
+            <a
+              href={`/select-store?locationId=${loc._id}`}
+              class="group rounded-lg border bg-card p-6 shadow-sm transition-all hover:border-primary hover:shadow-md"
+            >
+              <div class="flex items-center gap-3">
+                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
+                </div>
+                <p class="text-lg font-semibold group-hover:text-primary">{loc.name}</p>
+              </div>
+            </a>
+          ))}
+        </div>
+      )
+    }
+  </div>
+</CustomerLayout>

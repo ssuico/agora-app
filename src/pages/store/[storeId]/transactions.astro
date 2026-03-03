@@ -1,0 +1,86 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import { createApiClient } from '../../../lib/api';
+
+const { storeId } = Astro.params;
+const token = Astro.cookies.get('agora_token')?.value ?? '';
+const api = createApiClient(token);
+
+interface Transaction {
+  _id: string;
+  storeId: string;
+  customerId?: { _id: string; name: string; email: string } | null;
+  totalAmount: number;
+  totalCost: number;
+  grossProfit: number;
+  createdAt: string;
+}
+
+let transactions: Transaction[] = [];
+try {
+  transactions = await api.get<Transaction[]>(`/api/transactions?storeId=${storeId}`);
+} catch {
+  // handled below
+}
+
+const fmt = (n: number) =>
+  new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
+---
+
+<AppLayout title="Transactions" storeId={storeId}>
+  <div class="space-y-6">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">Transactions</h1>
+      <p class="text-sm text-muted-foreground">Sales history for this store</p>
+    </div>
+    <div class="rounded-lg border bg-card">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b">
+            <th class="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
+            <th class="px-4 py-3 text-left font-medium text-muted-foreground">Customer</th>
+            <th class="px-4 py-3 text-left font-medium text-muted-foreground">Total Amount</th>
+            <th class="px-4 py-3 text-left font-medium text-muted-foreground">COGS</th>
+            <th class="px-4 py-3 text-left font-medium text-muted-foreground">Gross Profit</th>
+            <th class="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            transactions.length === 0 ? (
+              <tr>
+                <td colspan="6" class="px-4 py-8 text-center text-muted-foreground">
+                  No transactions found
+                </td>
+              </tr>
+            ) : (
+              transactions.map((tx) => (
+                <tr class="border-b last:border-0 hover:bg-muted/50">
+                  <td class="px-4 py-3 font-mono text-xs text-muted-foreground">
+                    {tx._id.slice(-8)}
+                  </td>
+                  <td class="px-4 py-3">
+                    {tx.customerId && typeof tx.customerId === 'object' ? (
+                      <div>
+                        <span class="font-medium">{tx.customerId.name}</span>
+                        <span class="block text-xs text-muted-foreground">{tx.customerId.email}</span>
+                      </div>
+                    ) : (
+                      <span class="text-xs text-muted-foreground italic">Walk-in / POS</span>
+                    )}
+                  </td>
+                  <td class="px-4 py-3 font-medium">{fmt(tx.totalAmount)}</td>
+                  <td class="px-4 py-3">{fmt(tx.totalCost)}</td>
+                  <td class="px-4 py-3 text-green-600">{fmt(tx.grossProfit)}</td>
+                  <td class="px-4 py-3 text-muted-foreground">
+                    {new Date(tx.createdAt).toLocaleString()}
+                  </td>
+                </tr>
+              ))
+            )
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</AppLayout>

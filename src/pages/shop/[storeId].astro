@@ -1,0 +1,26 @@
+---
+import { ShopView } from '../../components/app/ShopView';
+import CustomerLayout from '../../layouts/CustomerLayout.astro';
+import { createApiClient } from '../../lib/api';
+
+const { storeId } = Astro.params;
+const token = Astro.cookies.get('agora_token')?.value ?? '';
+const api = createApiClient(token);
+
+interface Store {
+  _id: string;
+  name: string;
+}
+
+let storeName = 'Store';
+try {
+  const store = await api.get<Store>(`/api/stores/${storeId}`);
+  storeName = store.name;
+} catch {
+  // handled in component
+}
+---
+
+<CustomerLayout title={storeName}>
+  <ShopView storeId={storeId!} storeName={storeName} client:load />
+</CustomerLayout>

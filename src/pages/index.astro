@@ -1,26 +1,26 @@
 ---
-import '../styles/global.css';
-// Component Imports
-import Button from '../components/Button.astro';
+import { decodeJWT } from '../lib/jwt';
 
-// Full Astro Component Syntax:
-// https://docs.astro.build/basics/astro-components/
+const token = Astro.cookies.get('agora_token')?.value ?? '';
+const payload = decodeJWT(token);
+
+if (!payload) {
+  return Astro.redirect('/login');
+}
+
+switch (payload.role) {
+  case 'admin':
+    return Astro.redirect('/admin/dashboard');
+  case 'store_manager': {
+    const storeIds = payload.storeIds ?? [];
+    if (storeIds.length === 1) {
+      return Astro.redirect(`/store/${storeIds[0]}`);
+    }
+    return Astro.redirect('/store/select');
+  }
+  case 'customer':
+    return Astro.redirect('/select-location');
+  default:
+    return Astro.redirect('/login');
+}
 ---
-
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro + TailwindCSS</title>
-	</head>
-
-	<body>
-		<div class="grid place-items-center h-screen content-center">
-			<Button>Tailwind Button in Astro!</Button>
-			<a href="/markdown-page" class="p-4 underline">Markdown is also supported...</a>
-		</div>
-	</body>
-</html>
