@@ -13,6 +13,8 @@ export interface ITransaction extends Document {
   claimStatus: ClaimStatus;
   paymentStatus: PaymentStatus;
   orderStatus: OrderStatus;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const transactionSchema = new Schema<ITransaction>(

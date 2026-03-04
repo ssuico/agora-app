@@ -1,5 +1,7 @@
 import cors from 'cors';
 import express, { type Express } from 'express';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { authRoutes } from './routes/auth.routes.js';
 import { expenseRoutes } from './routes/expense.routes.js';
 import { inventoryRoutes } from './routes/inventory.routes.js';
@@ -12,15 +14,26 @@ import { userRoutes } from './routes/user.routes.js';
 
 export const app: Express = express();
 
+app.set('trust proxy', 1);
+
+app.use(helmet());
 app.use(
   cors({
-    origin: process.env.CLIENT_URL ?? '*',
+    origin: process.env.CLIENT_URL ?? 'http://localhost:4321',
     credentials: true,
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
-app.use('/api/auth', authRoutes);
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many login attempts. Please try again later.' },
+});
+
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/products', productRoutes);
@@ -30,6 +43,13 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/health', async (_req, res) => {
+  const mongoose = await import('mongoose');
+  const dbState = mongoose.connection.readyState;
+  const dbStatus = dbState === 1 ? 'connected' : dbState === 2 ? 'connecting' : 'disconnected';
+  res.status(dbState === 1 ? 200 : 503).json({
+    status: dbState === 1 ? 'ok' : 'degraded',
+    timestamp: new Date().toISOString(),
+    db: dbStatus,
+  });
 });
