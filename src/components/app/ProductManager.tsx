@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ImageIcon, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ImageIcon, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 interface Store {
@@ -31,8 +31,25 @@ interface Product {
   costPrice: number;
   sellingPrice: number;
   stockQuantity: number;
+  isPerishable: boolean;
   storeId: string;
   createdAt: string;
+}
+
+interface DailyRow {
+  _id: string;
+  productId: string;
+  productName: string;
+  images: string[];
+  costPrice: number;
+  sellingPrice: number;
+  isPerishable: boolean;
+  initialStock: number;
+  restock: number;
+  carryOverStock: number;
+  sold: number;
+  currentStock: number;
+  date: string;
 }
 
 interface ProductFormData {
@@ -42,6 +59,7 @@ interface ProductFormData {
   costPrice: string;
   sellingPrice: string;
   stockQuantity: string;
+  isPerishable: boolean;
 }
 
 interface ProductManagerProps {
@@ -50,6 +68,13 @@ interface ProductManagerProps {
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
+
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 function ProductImage({ src, className }: { src?: string; className?: string }) {
   const [failed, setFailed] = useState(false);
@@ -70,8 +95,25 @@ function ProductImage({ src, className }: { src?: string; className?: string }) 
   );
 }
 
+function StockBadge({ value }: { value: number }) {
+  return (
+    <span
+      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+        value === 0
+          ? 'bg-red-100 text-red-700'
+          : value < 10
+            ? 'bg-yellow-100 text-yellow-700'
+            : 'bg-green-100 text-green-700'
+      }`}
+    >
+      {value}
+    </span>
+  );
+}
+
 export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const isScoped = !!fixedStoreId;
+  const todayStr = toLocalDateStr(new Date());
 
   const emptyForm: ProductFormData = {
     storeId: fixedStoreId ?? '',
@@ -80,13 +122,15 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     costPrice: '',
     sellingPrice: '',
     stockQuantity: '',
+    isPerishable: false,
   };
 
   const [products, setProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
-  const [soldStats, setSoldStats] = useState<Record<string, number>>({});
+  const [dailyRows, setDailyRows] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStoreId, setFilterStoreId] = useState<string>(fixedStoreId ?? 'all');
+  const [selectedDate, setSelectedDate] = useState(todayStr);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -95,49 +139,74 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const [newImageUrl, setNewImageUrl] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [restockQty, setRestockQty] = useState('');
 
+  const isEditable = selectedDate >= todayStr;
   const storeMap = new Map(stores.map((s) => [s._id, s.name]));
+  const effectiveStoreId = fixedStoreId ?? (filterStoreId !== 'all' ? filterStoreId : undefined);
 
   const fetchStores = async () => {
     if (isScoped) return;
     try {
       const res = await fetch('/api/stores');
       if (res.ok) setStores(await res.json());
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   };
 
   const fetchProducts = async (sid?: string) => {
     try {
-      const effectiveId = sid ?? fixedStoreId;
-      const query = effectiveId && effectiveId !== 'all' ? `?storeId=${effectiveId}` : '';
+      const eid = sid ?? fixedStoreId;
+      const query = eid && eid !== 'all' ? `?storeId=${eid}` : '';
       const res = await fetch(`/api/products${query}`);
       if (res.ok) setProducts(await res.json());
+    } catch { /* ignore */ }
+  };
 
-      if (effectiveId && effectiveId !== 'all') {
-        const statsRes = await fetch(`/api/products/sold-stats?storeId=${effectiveId}`);
-        if (statsRes.ok) setSoldStats(await statsRes.json());
-      }
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
+  const fetchDailyInventory = async (date: string, sid?: string) => {
+    const eid = sid ?? effectiveStoreId;
+    if (!eid) {
+      setDailyRows([]);
+      return;
     }
+    try {
+      const params = new URLSearchParams({ storeId: eid, date });
+      const res = await fetch(`/api/inventory/daily?${params}`);
+      if (res.ok) setDailyRows(await res.json());
+    } catch { /* ignore */ }
+  };
+
+  const refreshData = async (sid?: string) => {
+    setLoading(true);
+    await fetchProducts(sid);
+    await fetchDailyInventory(selectedDate, sid);
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchStores();
-    fetchProducts(filterStoreId);
+    refreshData(filterStoreId);
   }, []);
 
   useEffect(() => {
-    if (!isScoped) fetchProducts(filterStoreId);
+    if (!isScoped) refreshData(filterStoreId);
   }, [filterStoreId]);
+
+  useEffect(() => {
+    fetchDailyInventory(selectedDate);
+  }, [selectedDate]);
+
+  const shiftDate = (days: number) => {
+    const d = new Date(selectedDate + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    setSelectedDate(toLocalDateStr(d));
+  };
+
+  // --- Product CRUD helpers ---
 
   const openCreate = () => {
     setEditingProduct(null);
     setForm(emptyForm);
+    setRestockQty('');
     setNewImageUrl('');
     setError('');
     setDialogOpen(true);
@@ -152,7 +221,9 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       costPrice: String(product.costPrice),
       sellingPrice: String(product.sellingPrice),
       stockQuantity: String(product.stockQuantity),
+      isPerishable: product.isPerishable ?? false,
     });
+    setRestockQty('');
     setNewImageUrl('');
     setError('');
     setDialogOpen(true);
@@ -183,32 +254,68 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     setSubmitting(true);
     setError('');
 
-    const payload = {
-      storeId: form.storeId,
-      name: form.name.trim(),
-      images: form.images,
-      costPrice: parseFloat(form.costPrice) || 0,
-      sellingPrice: parseFloat(form.sellingPrice) || 0,
-      stockQuantity: parseInt(form.stockQuantity, 10) || 0,
-    };
-
     try {
-      const url = editingProduct ? `/api/products/${editingProduct._id}` : '/api/products';
-      const method = editingProduct ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      if (editingProduct) {
+        const productPayload = {
+          storeId: form.storeId,
+          name: form.name.trim(),
+          images: form.images,
+          costPrice: parseFloat(form.costPrice) || 0,
+          sellingPrice: parseFloat(form.sellingPrice) || 0,
+          isPerishable: form.isPerishable,
+        };
 
-      if (!res.ok) {
-        const data = (await res.json()) as { message?: string };
-        setError(data.message ?? 'Something went wrong');
-        return;
+        const res = await fetch(`/api/products/${editingProduct._id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(productPayload),
+        });
+
+        if (!res.ok) {
+          const data = (await res.json()) as { message?: string };
+          setError(data.message ?? 'Something went wrong');
+          return;
+        }
+
+        const qty = parseInt(restockQty, 10);
+        if (qty > 0) {
+          const restockRes = await fetch(`/api/inventory/restock/${editingProduct._id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ quantity: qty, storeId: form.storeId, date: selectedDate }),
+          });
+          if (!restockRes.ok) {
+            const data = (await restockRes.json()) as { message?: string };
+            setError(data.message ?? 'Restock failed');
+            return;
+          }
+        }
+      } else {
+        const payload = {
+          storeId: form.storeId,
+          name: form.name.trim(),
+          images: form.images,
+          costPrice: parseFloat(form.costPrice) || 0,
+          sellingPrice: parseFloat(form.sellingPrice) || 0,
+          stockQuantity: parseInt(form.stockQuantity, 10) || 0,
+          isPerishable: form.isPerishable,
+        };
+
+        const res = await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const data = (await res.json()) as { message?: string };
+          setError(data.message ?? 'Something went wrong');
+          return;
+        }
       }
 
       setDialogOpen(false);
-      await fetchProducts(filterStoreId);
+      await refreshData(filterStoreId);
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -229,7 +336,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       }
       setDeleteDialogOpen(false);
       setDeletingProduct(null);
-      await fetchProducts(filterStoreId);
+      await refreshData(filterStoreId);
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -241,20 +348,34 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  // --- Build display rows from daily data + product fallback ---
+
+  const dailyMap = new Map(dailyRows.map((r) => [r.productId, r]));
+
+  const displayRows = products.map((product) => {
+    const daily = dailyMap.get(product._id);
+    return {
+      product,
+      initialStock: daily?.initialStock ?? 0,
+      restock: daily?.restock ?? 0,
+      carryOverStock: daily?.carryOverStock ?? 0,
+      sold: daily?.sold ?? 0,
+      currentStock: daily?.currentStock ?? product.stockQuantity,
+    };
+  });
+
+  // --- Render ---
+
   if (loading) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Products</h1>
-            <p className="text-sm text-muted-foreground">
-              Manage your product catalog and inventory
-            </p>
+            <p className="text-sm text-muted-foreground">Manage your product catalog and inventory</p>
           </div>
         </div>
-        <div className="flex items-center justify-center py-12 text-muted-foreground">
-          Loading products...
-        </div>
+        <div className="flex items-center justify-center py-12 text-muted-foreground">Loading products...</div>
       </div>
     );
   }
@@ -264,111 +385,151 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Products</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage your product catalog and inventory
-          </p>
+          <p className="text-sm text-muted-foreground">Manage your product catalog and inventory</p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="mr-1 h-4 w-4" />
-          Add Product
-        </Button>
+        {isEditable && (
+          <Button onClick={openCreate}>
+            <Plus className="mr-1 h-4 w-4" />Add Product
+          </Button>
+        )}
       </div>
 
-      {!isScoped && stores.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Label className="text-sm text-muted-foreground">Filter by store:</Label>
-          <Select value={filterStoreId} onValueChange={setFilterStoreId}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="All Stores" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Stores</SelectItem>
-              {stores.map((store) => (
-                <SelectItem key={store._id} value={store._id}>
-                  {store.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      {/* Filters row */}
+      <div className="flex flex-wrap items-center gap-4">
+        {!isScoped && stores.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Label className="text-sm text-muted-foreground">Store:</Label>
+            <Select value={filterStoreId} onValueChange={setFilterStoreId}>
+              <SelectTrigger className="w-48"><SelectValue placeholder="All Stores" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Stores</SelectItem>
+                {stores.map((store) => (
+                  <SelectItem key={store._id} value={store._id}>{store.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Date picker */}
+        <div className="flex items-center gap-1 ml-auto">
+          <Button variant="ghost" size="sm" onClick={() => shiftDate(-1)} title="Previous day">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Input
+            type="date"
+            className="w-40 text-center"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+          />
+          <Button variant="ghost" size="sm" onClick={() => shiftDate(1)} title="Next day">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          {selectedDate !== todayStr && (
+            <Button variant="outline" size="sm" className="ml-1 text-xs" onClick={() => setSelectedDate(todayStr)}>
+              Today
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {selectedDate < todayStr && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Viewing inventory for <strong>{selectedDate}</strong> (read-only). Switch to today or a future date to make changes.
+        </div>
+      )}
+      {selectedDate > todayStr && (
+        <div className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          Viewing future date <strong>{selectedDate}</strong> (test mode). Inventory records will be auto-initialized from the last known data.
         </div>
       )}
 
-      <div className="rounded-lg border bg-card">
+      {/* Table */}
+      <div className="rounded-lg border bg-card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b">
               <th className="px-4 py-3 text-left font-medium text-muted-foreground w-16">Image</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Type</th>
               {!isScoped && (
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Store</th>
               )}
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Cost Price</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                Selling Price
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Stock</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Sold</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Cost</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Selling</th>
+              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Initial</th>
+              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Restock</th>
+              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Carry-over</th>
+              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Sold</th>
+              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Current</th>
+              {isEditable && (
+                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+              )}
             </tr>
           </thead>
           <tbody>
-            {products.length === 0 ? (
+            {displayRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={isScoped ? 7 : 8}
+                  colSpan={isScoped ? (isEditable ? 11 : 10) : (isEditable ? 12 : 11)}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
-                  No products found. Click "Add Product" to create one.
+                  No products found. {isEditable ? 'Click "Add Product" to create one.' : ''}
                 </td>
               </tr>
             ) : (
-              products.map((product) => (
+              displayRows.map(({ product, initialStock, restock, carryOverStock, sold, currentStock }) => (
                 <tr key={product._id} className="border-b last:border-0 hover:bg-muted/50">
                   <td className="px-4 py-2">
-                    <ProductImage
-                      src={product.images?.[0]}
-                      className="h-10 w-10"
-                    />
+                    <ProductImage src={product.images?.[0]} className="h-10 w-10" />
                   </td>
                   <td className="px-4 py-3 font-medium">{product.name}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${product.isPerishable ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
+                      {product.isPerishable ? 'Perishable' : 'Non-perishable'}
+                    </span>
+                  </td>
                   {!isScoped && (
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {storeMap.get(product.storeId) ?? '-'}
-                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{storeMap.get(product.storeId) ?? '-'}</td>
                   )}
                   <td className="px-4 py-3">{fmt(product.costPrice)}</td>
                   <td className="px-4 py-3">{fmt(product.sellingPrice)}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                        product.stockQuantity === 0
-                          ? 'bg-red-100 text-red-700'
-                          : product.stockQuantity < 10
-                            ? 'bg-yellow-100 text-yellow-700'
-                            : 'bg-green-100 text-green-700'
-                      }`}
-                    >
-                      {product.stockQuantity}
-                    </span>
+                  <td className="px-4 py-3 text-right tabular-nums">{initialStock}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {restock > 0 ? (
+                      <span className="text-blue-600 font-medium">+{restock}</span>
+                    ) : (
+                      <span className="text-muted-foreground">0</span>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {soldStats[product._id] ?? 0}
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{carryOverStock}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {sold > 0 ? (
+                      <span className="text-orange-600 font-medium">{sold}</span>
+                    ) : (
+                      <span className="text-muted-foreground">0</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(product)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => openDelete(product)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                    <StockBadge value={currentStock} />
                   </td>
+                  {isEditable && (
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(product)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => openDelete(product)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))
             )}
@@ -376,13 +537,14 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         </table>
       </div>
 
+      {/* Create / Edit dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingProduct ? 'Edit Product' : 'Add Product'}</DialogTitle>
             <DialogDescription>
               {editingProduct
-                ? 'Update the product details below.'
+                ? 'Update details and optionally add restock quantity.'
                 : 'Fill in the details to add a new product.'}
             </DialogDescription>
           </DialogHeader>
@@ -390,18 +552,11 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             {!isScoped && (
               <div className="space-y-2">
                 <Label htmlFor="product-store">Store</Label>
-                <Select
-                  value={form.storeId}
-                  onValueChange={(val) => updateField('storeId', val)}
-                >
-                  <SelectTrigger id="product-store" className="w-full">
-                    <SelectValue placeholder="Select a store" />
-                  </SelectTrigger>
+                <Select value={form.storeId} onValueChange={(val) => updateField('storeId', val)}>
+                  <SelectTrigger id="product-store" className="w-full"><SelectValue placeholder="Select a store" /></SelectTrigger>
                   <SelectContent>
                     {stores.map((store) => (
-                      <SelectItem key={store._id} value={store._id}>
-                        {store.name}
-                      </SelectItem>
+                      <SelectItem key={store._id} value={store._id}>{store.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -418,7 +573,24 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               />
             </div>
 
-            {/* Images section */}
+            <div className="space-y-2">
+              <Label>Product Type</Label>
+              <Select
+                value={form.isPerishable ? 'perishable' : 'non-perishable'}
+                onValueChange={(val) => setForm((prev) => ({ ...prev, isPerishable: val === 'perishable' }))}
+              >
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="non-perishable">Non-perishable</SelectItem>
+                  <SelectItem value="perishable">Perishable</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Perishable products will not carry over remaining stock to the next day.
+              </p>
+            </div>
+
+            {/* Images */}
             <div className="space-y-2">
               <Label>Product Images</Label>
               {form.images.length > 0 && (
@@ -443,19 +615,14 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                   value={newImageUrl}
                   onChange={(e) => setNewImageUrl(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      addImage();
-                    }
+                    if (e.key === 'Enter') { e.preventDefault(); addImage(); }
                   }}
                 />
                 <Button type="button" variant="outline" size="sm" onClick={addImage} disabled={!newImageUrl.trim()}>
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Add image URLs one at a time. The first image will be used as the thumbnail.
-              </p>
+              <p className="text-xs text-muted-foreground">Add image URLs one at a time. The first image will be used as the thumbnail.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -486,28 +653,47 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="product-stock">Stock Quantity</Label>
-              <Input
-                id="product-stock"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="0"
-                value={form.stockQuantity}
-                onChange={(e) => updateField('stockQuantity', e.target.value)}
-                required
-              />
-            </div>
+
+            {editingProduct ? (
+              <div className="space-y-2">
+                <Label htmlFor="product-restock">Restock Quantity</Label>
+                <Input
+                  id="product-restock"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="0"
+                  value={restockQty}
+                  onChange={(e) => setRestockQty(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter the number of units to add to current stock. Leave at 0 if no restock.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="product-stock">Initial Stock Quantity</Label>
+                <Input
+                  id="product-stock"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="0"
+                  value={form.stockQuantity}
+                  onChange={(e) => updateField('stockQuantity', e.target.value)}
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  The starting inventory count for this product.
+                </p>
+              </div>
+            )}
+
             {error && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </p>
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
             )}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                Cancel
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={submitting || !form.storeId}>
                 {submitting ? 'Saving...' : editingProduct ? 'Save Changes' : 'Create Product'}
               </Button>
@@ -516,24 +702,20 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Delete dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Product</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete <strong>{deletingProduct?.name}</strong>? This action
-              cannot be undone.
+              Are you sure you want to delete <strong>{deletingProduct?.name}</strong>? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           {error && (
-            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setDeleteDialogOpen(false)}>
-              Cancel
-            </Button>
+            <Button type="button" variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={submitting}>
               {submitting ? 'Deleting...' : 'Delete Product'}
             </Button>

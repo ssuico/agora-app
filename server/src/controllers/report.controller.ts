@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { InventoryRecord } from '../models/InventoryRecord.js';
 import { Product } from '../models/Product.js';
 import { Transaction } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
@@ -115,6 +116,146 @@ export const getDailyReport = async (req: Request, res: Response): Promise<void>
         profit: totalProfit,
       },
       inventory,
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
+export const getInventoryReport = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { storeId, startDate, endDate } = req.query;
+
+    if (!storeId || !startDate || !endDate) {
+      res.status(400).json({ message: 'storeId, startDate, and endDate are required' });
+      return;
+    }
+
+    const start = new Date(startDate as string);
+    start.setUTCHours(0, 0, 0, 0);
+    const end = new Date(endDate as string);
+    end.setUTCHours(23, 59, 59, 999);
+
+    const products = await Product.find({ storeId }).lean();
+    if (products.length === 0) {
+      res.json({ products: [], dailyBreakdown: [] });
+      return;
+    }
+
+    const productIds = products.map((p) => p._id);
+    const productMap = new Map(products.map((p) => [String(p._id), p]));
+
+    const records = await InventoryRecord.find({
+      productId: { $in: productIds },
+      date: { $gte: start, $lte: end },
+    })
+      .sort({ date: 1 })
+      .lean();
+
+    // Compute sold for each record's date per product
+    const activeTxs = await Transaction.find({
+      storeId,
+      orderStatus: { $ne: 'cancelled' },
+      createdAt: { $gte: start, $lte: end },
+    })
+      .select('_id createdAt')
+      .lean();
+
+    // Group transactions by date string
+    const txByDate = new Map<string, string[]>();
+    for (const tx of activeTxs) {
+      const dStr = tx.createdAt.toISOString().slice(0, 10);
+      const arr = txByDate.get(dStr) ?? [];
+      arr.push(String(tx._id));
+      txByDate.set(dStr, arr);
+    }
+
+    // Get all transaction items in the date range
+    const allTxIds = activeTxs.map((t) => t._id);
+    const txItems = await TransactionItem.find({
+      transactionId: { $in: allTxIds },
+      productId: { $in: productIds },
+    }).lean();
+
+    // Map: txId -> dateStr
+    const txDateMap = new Map<string, string>();
+    for (const tx of activeTxs) {
+      txDateMap.set(String(tx._id), tx.createdAt.toISOString().slice(0, 10));
+    }
+
+    // Build sold: Map<"productId|date", number>
+    const soldByKey = new Map<string, number>();
+    for (const item of txItems) {
+      const dStr = txDateMap.get(String(item.transactionId));
+      if (!dStr) continue;
+      const key = `${String(item.productId)}|${dStr}`;
+      soldByKey.set(key, (soldByKey.get(key) ?? 0) + item.quantity);
+    }
+
+    // Build daily breakdown with sold + currentStock
+    const dailyBreakdown = records.map((rec) => {
+      const dStr = rec.date.toISOString().slice(0, 10);
+      const sold = soldByKey.get(`${String(rec.productId)}|${dStr}`) ?? 0;
+      const currentStock = rec.initialStock + rec.restock + rec.carryOverStock - sold;
+      const product = productMap.get(String(rec.productId));
+
+      return {
+        date: dStr,
+        productId: String(rec.productId),
+        productName: product?.name ?? 'Unknown',
+        initialStock: rec.initialStock,
+        restock: rec.restock,
+        carryOverStock: rec.carryOverStock,
+        sold,
+        currentStock: Math.max(0, currentStock),
+      };
+    });
+
+    // Product-level aggregation across the date range
+    const aggMap = new Map<string, {
+      productName: string;
+      totalInitialStock: number;
+      totalRestock: number;
+      totalSold: number;
+      latestCurrentStock: number;
+      latestDate: string;
+      daysTracked: number;
+    }>();
+
+    for (const row of dailyBreakdown) {
+      const existing = aggMap.get(row.productId);
+      if (existing) {
+        existing.totalInitialStock += row.initialStock;
+        existing.totalRestock += row.restock;
+        existing.totalSold += row.sold;
+        existing.daysTracked += 1;
+        if (row.date >= existing.latestDate) {
+          existing.latestCurrentStock = row.currentStock;
+          existing.latestDate = row.date;
+        }
+      } else {
+        aggMap.set(row.productId, {
+          productName: row.productName,
+          totalInitialStock: row.initialStock,
+          totalRestock: row.restock,
+          totalSold: row.sold,
+          latestCurrentStock: row.currentStock,
+          latestDate: row.date,
+          daysTracked: 1,
+        });
+      }
+    }
+
+    const productSummaries = Array.from(aggMap.entries()).map(([productId, data]) => ({
+      productId,
+      ...data,
+    }));
+
+    res.json({
+      startDate: startDate as string,
+      endDate: endDate as string,
+      products: productSummaries,
+      dailyBreakdown,
     });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });

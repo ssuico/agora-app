@@ -114,7 +114,6 @@ function ImageCarousel({ images, className, onClick }: { images: string[]; class
           </div>
         </>
       )}
-      {images.length > 0 && <div className="absolute inset-0 cursor-pointer" />}
     </div>
   );
 }
