@@ -4,8 +4,8 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
-    "start": "node dist/server/entry.mjs",
+    "build": "astro build && cd server && pnpm install --frozen-lockfile && pnpm build",
+    "start": "node server/dist/index.js",
     "preview": "astro preview",
     "astro": "astro"
   },

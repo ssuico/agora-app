@@ -9,6 +9,9 @@ if (!isProd) {
 }
 
 import { createServer } from 'node:http';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import express from 'express';
 import mongoose from 'mongoose';
 import { connectDB } from './config/db.js';
 import { app } from './app.js';
@@ -16,14 +19,31 @@ import { initSocket } from './socket.js';
 
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = process.env.HOST ?? '0.0.0.0';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 connectDB()
-  .then(() => {
+  .then(async () => {
+    if (isProd) {
+      const clientPath = join(__dirname, '../../dist/client');
+      app.use(express.static(clientPath, { maxAge: '1y', immutable: true }));
+
+      try {
+        const astroPath = '../../dist/server/entry.mjs';
+        const astroEntry: any = await import(astroPath);
+        app.use(astroEntry.handler);
+        console.log('Astro SSR handler mounted.');
+      } catch (err) {
+        console.warn('Astro handler not found — running API-only mode.', err);
+      }
+    }
+
     const httpServer = createServer(app);
     initSocket(httpServer);
 
     httpServer.listen(PORT, HOST, () => {
-      console.log(`Server running on http://${HOST}:${PORT} [${isProd ? 'production' : 'development'}]`);
+      console.log(
+        `Server running on http://${HOST}:${PORT} [${isProd ? 'production' : 'development'}]`
+      );
     });
 
     const shutdown = (signal: string) => {

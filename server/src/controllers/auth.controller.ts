@@ -5,6 +5,8 @@ import { StoreManagerAssignment } from '../models/StoreManagerAssignment.js';
 import { User } from '../models/User.js';
 import { UserRole } from '../types/index.js';
 
+const isProd = process.env.NODE_ENV === 'production';
+
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, email, password, role } = req.body as {
@@ -64,10 +66,23 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       jwtOptions
     );
 
+    res.cookie('agora_token', token, {
+      httpOnly: true,
+      secure: isProd,
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      sameSite: 'lax',
+    });
+
     res.json({ token, role: user.role, name: user.name, storeIds });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
   }
+};
+
+export const logout = async (_req: Request, res: Response): Promise<void> => {
+  res.clearCookie('agora_token', { path: '/' });
+  res.status(200).json({ message: 'Logged out' });
 };
 
 export const getMe = async (req: Request, res: Response): Promise<void> => {

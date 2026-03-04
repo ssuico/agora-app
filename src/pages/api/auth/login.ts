@@ -27,6 +27,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     cookies.set('agora_token', data.token!, {
       httpOnly: true,
+      secure: import.meta.env.PROD,
       path: '/',
       maxAge: 60 * 60 * 24 * 7,
       sameSite: 'lax',
@@ -39,7 +40,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   } catch {
     return new Response(JSON.stringify({ message: 'Server error' }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },~~
     });
   }
 };
