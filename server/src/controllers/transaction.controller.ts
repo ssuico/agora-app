@@ -85,14 +85,16 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
     await session.commitTransaction();
 
-    const io = getIO();
-    const updatedProducts = await Product.find({ storeId }).lean();
-    io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+    try {
+      const io = getIO();
+      const updatedProducts = await Product.find({ storeId }).lean();
+      io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
 
-    const populatedTx = await Transaction.findById(transaction._id)
-      .populate('customerId', 'name email')
-      .lean();
-    io.to(`store:${storeId}`).emit('transaction:created', populatedTx);
+      const populatedTx = await Transaction.findById(transaction._id)
+        .populate('customerId', 'name email')
+        .lean();
+      io.to(`store:${storeId}`).emit('transaction:created', populatedTx);
+    } catch { /* socket broadcast is non-critical */ }
 
     res.status(201).json({ transaction, items: txItems });
   } catch (err: unknown) {
@@ -166,8 +168,10 @@ export const updateTransactionStatus = async (req: Request, res: Response): Prom
       return;
     }
 
-    const io = getIO();
-    io.to(`store:${transaction.storeId}`).emit('transaction:updated', transaction.toJSON());
+    try {
+      const io = getIO();
+      io.to(`store:${transaction.storeId}`).emit('transaction:updated', transaction.toJSON());
+    } catch { /* socket broadcast is non-critical */ }
 
     res.json(transaction);
   } catch (err) {
@@ -212,11 +216,13 @@ export const cancelTransaction = async (req: Request, res: Response): Promise<vo
       .populate('customerId', 'name email')
       .lean();
 
-    const io = getIO();
-    const storeId = String(transaction.storeId);
-    const updatedProducts = await Product.find({ storeId }).lean();
-    io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
-    io.to(`store:${storeId}`).emit('transaction:updated', populated);
+    try {
+      const io = getIO();
+      const storeId = String(transaction.storeId);
+      const updatedProducts = await Product.find({ storeId }).lean();
+      io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+      io.to(`store:${storeId}`).emit('transaction:updated', populated);
+    } catch { /* socket broadcast is non-critical */ }
 
     res.json(populated);
   } catch (err) {

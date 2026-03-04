@@ -231,12 +231,16 @@ export const restockProduct = async (req: Request, res: Response): Promise<void>
 
     await Product.findByIdAndUpdate(productId, { $inc: { stockQuantity: quantity } });
 
-    const io = getIO();
-    const updatedProducts = await Product.find({ storeId }).lean();
-    io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+    try {
+      const io = getIO();
+      const updatedProducts = await Product.find({ storeId }).lean();
+      io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+    } catch { /* socket broadcast is non-critical */ }
 
     res.json(record);
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err });
+    const message = err instanceof Error ? err.message : 'Server error';
+    console.error('[restockProduct]', message);
+    res.status(500).json({ message });
   }
 };
