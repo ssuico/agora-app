@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
+import { localDayRange } from '../config/timezone.js';
 import { InventoryRecord } from '../models/InventoryRecord.js';
 import { Product } from '../models/Product.js';
 import { Transaction } from '../models/Transaction.js';
@@ -21,10 +22,7 @@ async function computeSoldMap(
   date: Date,
   productIds: mongoose.Types.ObjectId[]
 ): Promise<Map<string, number>> {
-  const dayStart = new Date(date);
-  dayStart.setUTCHours(0, 0, 0, 0);
-  const dayEnd = new Date(date);
-  dayEnd.setUTCHours(23, 59, 59, 999);
+  const { dayStart, dayEnd } = localDayRange(date);
 
   const activeTxIds = await Transaction.find({
     storeId,
@@ -97,6 +95,17 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
       prevSoldMaps.set(String(r._id), sold.get(String(doc.productId)) ?? 0);
     }
 
+    // --- Compute sold for current date early (needed for correct initialStock) ---
+    const soldMap = await computeSoldMap(storeId, date, productIds);
+
+    // --- Ensure records exist and initialStock is correct ---
+    let records = await InventoryRecord.find({
+      productId: { $in: productIds },
+      date,
+    }).lean();
+
+    const existingMap = new Map(records.map((r) => [String(r.productId), r]));
+
     // Build expected initialStock for each product
     const expectedInitial = new Map<string, number>();
     for (const product of products) {
@@ -109,17 +118,14 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
         const carryOver = product.isPerishable ? 0 : Math.max(0, prevCurrent);
         expectedInitial.set(pid, carryOver);
       } else {
-        expectedInitial.set(pid, product.stockQuantity);
+        // product.stockQuantity is a live value already decremented by today's
+        // transactions and incremented by today's restocks. Reverse those changes
+        // to recover the true start-of-day stock.
+        const todaySold = soldMap.get(pid) ?? 0;
+        const todayRestock = existingMap.get(pid)?.restock ?? 0;
+        expectedInitial.set(pid, product.stockQuantity + todaySold - todayRestock);
       }
     }
-
-    // --- Ensure records exist and initialStock is correct ---
-    let records = await InventoryRecord.find({
-      productId: { $in: productIds },
-      date,
-    }).lean();
-
-    const existingMap = new Map(records.map((r) => [String(r.productId), r]));
 
     // Create missing records
     const missingProducts = products.filter((p) => !existingMap.has(String(p._id)));
@@ -159,9 +165,6 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
         date,
       }).lean();
     }
-
-    // --- Compute sold for current date and return results ---
-    const soldMap = await computeSoldMap(storeId, date, productIds);
     const productMap = new Map(products.map((p) => [String(p._id), p]));
 
     const result = records.map((rec) => {

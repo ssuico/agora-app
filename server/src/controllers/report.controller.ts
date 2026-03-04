@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { localDayRange, toLocalDateStr } from '../config/timezone.js';
 import { InventoryRecord } from '../models/InventoryRecord.js';
 import { Product } from '../models/Product.js';
 import { Transaction } from '../models/Transaction.js';
@@ -36,10 +37,9 @@ export const getDailyReport = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const dayStart = new Date(date as string);
-    dayStart.setUTCHours(0, 0, 0, 0);
-    const dayEnd = new Date(date as string);
-    dayEnd.setUTCHours(23, 59, 59, 999);
+    const dateUTC = new Date(date as string);
+    dateUTC.setUTCHours(0, 0, 0, 0);
+    const { dayStart, dayEnd } = localDayRange(dateUTC);
 
     const transactions = await Transaction.find({
       storeId,
@@ -131,10 +131,15 @@ export const getInventoryReport = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    const start = new Date(startDate as string);
-    start.setUTCHours(0, 0, 0, 0);
-    const end = new Date(endDate as string);
-    end.setUTCHours(23, 59, 59, 999);
+    const startUTC = new Date(startDate as string);
+    startUTC.setUTCHours(0, 0, 0, 0);
+    const endUTC = new Date(endDate as string);
+    endUTC.setUTCHours(23, 59, 59, 999);
+
+    const txStart = localDayRange(startUTC).dayStart;
+    const endDateUTC = new Date(endDate as string);
+    endDateUTC.setUTCHours(0, 0, 0, 0);
+    const txEnd = localDayRange(endDateUTC).dayEnd;
 
     const products = await Product.find({ storeId }).lean();
     if (products.length === 0) {
@@ -145,26 +150,27 @@ export const getInventoryReport = async (req: Request, res: Response): Promise<v
     const productIds = products.map((p) => p._id);
     const productMap = new Map(products.map((p) => [String(p._id), p]));
 
+    // Inventory records use UTC-midnight dates, so query with UTC boundaries
     const records = await InventoryRecord.find({
       productId: { $in: productIds },
-      date: { $gte: start, $lte: end },
+      date: { $gte: startUTC, $lte: endUTC },
     })
       .sort({ date: 1 })
       .lean();
 
-    // Compute sold for each record's date per product
+    // Transactions use actual timestamps, so query with timezone-adjusted boundaries
     const activeTxs = await Transaction.find({
       storeId,
       orderStatus: { $ne: 'cancelled' },
-      createdAt: { $gte: start, $lte: end },
+      createdAt: { $gte: txStart, $lte: txEnd },
     })
       .select('_id createdAt')
       .lean();
 
-    // Group transactions by date string
+    // Group transactions by local date string
     const txByDate = new Map<string, string[]>();
     for (const tx of activeTxs) {
-      const dStr = tx.createdAt.toISOString().slice(0, 10);
+      const dStr = toLocalDateStr(tx.createdAt);
       const arr = txByDate.get(dStr) ?? [];
       arr.push(String(tx._id));
       txByDate.set(dStr, arr);
@@ -177,10 +183,10 @@ export const getInventoryReport = async (req: Request, res: Response): Promise<v
       productId: { $in: productIds },
     }).lean();
 
-    // Map: txId -> dateStr
+    // Map: txId -> local dateStr
     const txDateMap = new Map<string, string>();
     for (const tx of activeTxs) {
-      txDateMap.set(String(tx._id), tx.createdAt.toISOString().slice(0, 10));
+      txDateMap.set(String(tx._id), toLocalDateStr(tx.createdAt));
     }
 
     // Build sold: Map<"productId|date", number>
