@@ -16,6 +16,37 @@ function todayUTC(): Date {
   return toDateOnly(new Date());
 }
 
+async function computeSoldMap(
+  storeId: string | mongoose.Types.ObjectId,
+  date: Date,
+  productIds: mongoose.Types.ObjectId[]
+): Promise<Map<string, number>> {
+  const dayStart = new Date(date);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayEnd = new Date(date);
+  dayEnd.setUTCHours(23, 59, 59, 999);
+
+  const activeTxIds = await Transaction.find({
+    storeId,
+    orderStatus: { $ne: 'cancelled' },
+    createdAt: { $gte: dayStart, $lte: dayEnd },
+  })
+    .select('_id')
+    .lean();
+
+  const txIds = activeTxIds.map((t) => t._id);
+  if (txIds.length === 0) return new Map();
+
+  const soldAgg = await TransactionItem.aggregate([
+    { $match: { transactionId: { $in: txIds }, productId: { $in: productIds } } },
+    { $group: { _id: '$productId', totalSold: { $sum: '$quantity' } } },
+  ]);
+
+  return new Map<string, number>(
+    soldAgg.map((s) => [String(s._id), s.totalSold])
+  );
+}
+
 export const getDailyInventory = async (req: Request, res: Response): Promise<void> => {
   try {
     const storeId = req.query.storeId as string | undefined;
@@ -27,9 +58,6 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
     }
 
     const date = toDateOnly(dateStr);
-    const dayStart = new Date(date);
-    const dayEnd = new Date(date);
-    dayEnd.setUTCHours(23, 59, 59, 999);
 
     const products = await Product.find({ storeId }).lean();
     if (products.length === 0) {
@@ -39,114 +67,101 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
 
     const productIds = products.map((p) => p._id);
 
+    // --- Derive expected initialStock for every product from the previous day ---
+    const prevRecords = await InventoryRecord.aggregate([
+      {
+        $match: {
+          productId: { $in: productIds },
+          date: { $lt: date },
+        },
+      },
+      { $sort: { date: -1 } },
+      {
+        $group: {
+          _id: '$productId',
+          doc: { $first: '$$ROOT' },
+        },
+      },
+    ]);
+
+    const prevMap = new Map<string, any>(
+      prevRecords.map((r) => [String(r._id), r.doc])
+    );
+
+    // Compute sold for each previous-day record's date + store
+    const prevSoldMaps = new Map<string, number>();
+    for (const r of prevRecords) {
+      const doc = r.doc;
+      const prevProductIds = [doc.productId];
+      const sold = await computeSoldMap(doc.storeId, doc.date, prevProductIds);
+      prevSoldMaps.set(String(r._id), sold.get(String(doc.productId)) ?? 0);
+    }
+
+    // Build expected initialStock for each product
+    const expectedInitial = new Map<string, number>();
+    for (const product of products) {
+      const pid = String(product._id);
+      const prev = prevMap.get(pid);
+
+      if (prev) {
+        const prevSold = prevSoldMaps.get(pid) ?? 0;
+        const prevCurrent = prev.initialStock + prev.restock + prev.carryOverStock - prevSold;
+        const carryOver = product.isPerishable ? 0 : Math.max(0, prevCurrent);
+        expectedInitial.set(pid, carryOver);
+      } else {
+        expectedInitial.set(pid, product.stockQuantity);
+      }
+    }
+
+    // --- Ensure records exist and initialStock is correct ---
     let records = await InventoryRecord.find({
       productId: { $in: productIds },
       date,
     }).lean();
 
-    const existingProductIds = new Set(records.map((r) => String(r.productId)));
-    const missingProducts = products.filter((p) => !existingProductIds.has(String(p._id)));
+    const existingMap = new Map(records.map((r) => [String(r.productId), r]));
 
+    // Create missing records
+    const missingProducts = products.filter((p) => !existingMap.has(String(p._id)));
     if (missingProducts.length > 0) {
-      const prevRecords = await InventoryRecord.aggregate([
-        {
-          $match: {
-            productId: { $in: missingProducts.map((p) => p._id) },
-            date: { $lt: date },
-          },
-        },
-        { $sort: { date: -1 } },
-        {
-          $group: {
-            _id: '$productId',
-            doc: { $first: '$$ROOT' },
-          },
-        },
-      ]);
+      const newRecords = missingProducts.map((product) => ({
+        productId: product._id,
+        storeId: new mongoose.Types.ObjectId(storeId),
+        date,
+        initialStock: expectedInitial.get(String(product._id)) ?? 0,
+        restock: 0,
+        carryOverStock: 0,
+      }));
 
-      const prevMap = new Map(
-        prevRecords.map((r) => [String(r._id), r.doc])
-      );
+      await InventoryRecord.insertMany(newRecords, { ordered: false }).catch(() => {});
+    }
 
-      // Compute sold for previous-day records so we can derive carry-over
-      const prevDocs = prevRecords.map((r) => r.doc);
-      const prevSoldMap = await computeSoldForRecords(prevDocs);
+    // Fix existing records whose initialStock is stale
+    const updates: Promise<any>[] = [];
+    for (const [pid, existing] of existingMap) {
+      const expected = expectedInitial.get(pid) ?? 0;
+      const actualInitial = existing.initialStock + existing.carryOverStock;
+      if (actualInitial !== expected) {
+        updates.push(
+          InventoryRecord.updateOne(
+            { _id: existing._id },
+            { $set: { initialStock: expected, carryOverStock: 0 } }
+          )
+        );
+      }
+    }
+    if (updates.length > 0) await Promise.all(updates);
 
-      const newRecords = missingProducts.map((product) => {
-        const pid = String(product._id);
-        const prev = prevMap.get(pid);
-
-        if (prev) {
-          const prevSold = prevSoldMap.get(String(prev._id)) ?? 0;
-          const prevCurrent = prev.initialStock + prev.restock + prev.carryOverStock - prevSold;
-          const carryOver = product.isPerishable ? 0 : Math.max(0, prevCurrent);
-          return {
-            productId: product._id,
-            storeId: new mongoose.Types.ObjectId(storeId),
-            date,
-            initialStock: carryOver,
-            restock: 0,
-            carryOverStock: 0,
-          };
-        }
-
-        return {
-          productId: product._id,
-          storeId: new mongoose.Types.ObjectId(storeId),
-          date,
-          initialStock: product.stockQuantity,
-          restock: 0,
-          carryOverStock: 0,
-        };
-      });
-
-      await InventoryRecord.insertMany(newRecords, { ordered: false }).catch(() => {
-        // Ignore duplicate key errors from concurrent init
-      });
-
+    // Refetch if anything changed
+    if (missingProducts.length > 0 || updates.length > 0) {
       records = await InventoryRecord.find({
         productId: { $in: productIds },
         date,
       }).lean();
     }
 
-    // Migrate legacy records: move carryOverStock → initialStock
-    const legacyRecords = records.filter((r) => r.initialStock === 0 && r.carryOverStock > 0);
-    if (legacyRecords.length > 0) {
-      await Promise.all(
-        legacyRecords.map((r) =>
-          InventoryRecord.updateOne(
-            { _id: r._id },
-            { $set: { initialStock: r.carryOverStock, carryOverStock: 0 } }
-          )
-        )
-      );
-      for (const r of legacyRecords) {
-        (r as any).initialStock = r.carryOverStock;
-        (r as any).carryOverStock = 0;
-      }
-    }
-
-    // Compute sold per product for this date
-    const activeTxIds = await Transaction.find({
-      storeId,
-      orderStatus: { $ne: 'cancelled' },
-      createdAt: { $gte: dayStart, $lte: dayEnd },
-    })
-      .select('_id')
-      .lean();
-
-    const txIds = activeTxIds.map((t) => t._id);
-
-    const soldAgg = await TransactionItem.aggregate([
-      { $match: { transactionId: { $in: txIds }, productId: { $in: productIds } } },
-      { $group: { _id: '$productId', totalSold: { $sum: '$quantity' } } },
-    ]);
-
-    const soldMap = new Map<string, number>(
-      soldAgg.map((s) => [String(s._id), s.totalSold])
-    );
-
+    // --- Compute sold for current date and return results ---
+    const soldMap = await computeSoldMap(storeId, date, productIds);
     const productMap = new Map(products.map((p) => [String(p._id), p]));
 
     const result = records.map((rec) => {
@@ -176,50 +191,6 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
     res.status(500).json({ message: 'Server error', error: err });
   }
 };
-
-async function computeSoldForRecords(
-  records: Array<{ _id: unknown; productId: unknown; date: Date; storeId: unknown }>
-): Promise<Map<string, number>> {
-  if (records.length === 0) return new Map();
-
-  const result = new Map<string, number>();
-
-  for (const rec of records) {
-    const dayStart = new Date(rec.date);
-    dayStart.setUTCHours(0, 0, 0, 0);
-    const dayEnd = new Date(rec.date);
-    dayEnd.setUTCHours(23, 59, 59, 999);
-
-    const activeTxIds = await Transaction.find({
-      storeId: rec.storeId,
-      orderStatus: { $ne: 'cancelled' },
-      createdAt: { $gte: dayStart, $lte: dayEnd },
-    })
-      .select('_id')
-      .lean();
-
-    const txIds = activeTxIds.map((t) => t._id);
-
-    if (txIds.length === 0) {
-      result.set(String(rec._id), 0);
-      continue;
-    }
-
-    const soldAgg = await TransactionItem.aggregate([
-      {
-        $match: {
-          transactionId: { $in: txIds },
-          productId: rec.productId,
-        },
-      },
-      { $group: { _id: null, totalSold: { $sum: '$quantity' } } },
-    ]);
-
-    result.set(String(rec._id), soldAgg[0]?.totalSold ?? 0);
-  }
-
-  return result;
-}
 
 export const restockProduct = async (req: Request, res: Response): Promise<void> => {
   try {
