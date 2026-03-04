@@ -1,4 +1,10 @@
-const BASE_URL = import.meta.env.API_URL as string;
+function getBaseUrl(): string {
+  if (import.meta.env.API_URL) return import.meta.env.API_URL as string;
+  const port = typeof process !== 'undefined' && process.env?.PORT ? process.env.PORT : '3001';
+  return `http://localhost:${port}`;
+}
+
+const BASE_URL = getBaseUrl();
 
 export function createApiClient(token: string) {
   const headers = {
