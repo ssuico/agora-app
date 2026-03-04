@@ -4,8 +4,12 @@ const API_URL = import.meta.env.API_URL;
 
 export const GET: APIRoute = async ({ url, cookies }) => {
   const token = cookies.get('agora_token')?.value ?? '';
-  const storeId = url.searchParams.get('storeId');
-  const query = storeId ? `?storeId=${storeId}` : '';
+  const params = new URLSearchParams();
+  for (const key of ['storeId', 'claimStatus', 'paymentStatus', 'orderStatus']) {
+    const val = url.searchParams.get(key);
+    if (val) params.set(key, val);
+  }
+  const query = params.toString() ? `?${params}` : '';
   const res = await fetch(`${API_URL}/api/transactions${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   });

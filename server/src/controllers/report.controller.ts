@@ -6,7 +6,8 @@ import { TransactionItem } from '../models/TransactionItem.js';
 export const getSummary = async (req: Request, res: Response): Promise<void> => {
   try {
     const { storeId } = req.query;
-    const filter = storeId ? { storeId } : {};
+    const filter: Record<string, unknown> = { paymentStatus: 'paid', orderStatus: { $ne: 'cancelled' } };
+    if (storeId) filter.storeId = storeId;
 
     const transactions = await Transaction.find(filter);
 
@@ -41,6 +42,8 @@ export const getDailyReport = async (req: Request, res: Response): Promise<void>
 
     const transactions = await Transaction.find({
       storeId,
+      paymentStatus: 'paid',
+      orderStatus: { $ne: 'cancelled' },
       createdAt: { $gte: dayStart, $lte: dayEnd },
     });
 

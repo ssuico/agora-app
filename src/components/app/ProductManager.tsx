@@ -84,6 +84,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
 
   const [products, setProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
+  const [soldStats, setSoldStats] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [filterStoreId, setFilterStoreId] = useState<string>(fixedStoreId ?? 'all');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -113,6 +114,11 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       const query = effectiveId && effectiveId !== 'all' ? `?storeId=${effectiveId}` : '';
       const res = await fetch(`/api/products${query}`);
       if (res.ok) setProducts(await res.json());
+
+      if (effectiveId && effectiveId !== 'all') {
+        const statsRes = await fetch(`/api/products/sold-stats?storeId=${effectiveId}`);
+        if (statsRes.ok) setSoldStats(await statsRes.json());
+      }
     } catch {
       /* ignore */
     } finally {
@@ -301,6 +307,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 Selling Price
               </th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Stock</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Sold</th>
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
             </tr>
           </thead>
@@ -308,7 +315,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             {products.length === 0 ? (
               <tr>
                 <td
-                  colSpan={isScoped ? 6 : 7}
+                  colSpan={isScoped ? 7 : 8}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   No products found. Click "Add Product" to create one.
@@ -343,6 +350,9 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                     >
                       {product.stockQuantity}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {soldStats[product._id] ?? 0}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">

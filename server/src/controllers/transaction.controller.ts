@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { Product } from '../models/Product.js';
 import { Transaction } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
+import { getIO } from '../socket.js';
 import { UserRole } from '../types/index.js';
 
 interface CartItem {
@@ -67,7 +68,15 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
       req.user!.role === UserRole.CUSTOMER ? req.user!.userId : undefined;
 
     const [transaction] = await Transaction.create(
-      [{ storeId, totalAmount, totalCost, grossProfit, customerId }],
+      [{
+        storeId,
+        totalAmount,
+        totalCost,
+        grossProfit,
+        customerId,
+        claimStatus: 'unclaimed',
+        paymentStatus: 'unpaid',
+      }],
       { session }
     );
 
@@ -75,6 +84,16 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
     await TransactionItem.insertMany(txItems, { session });
 
     await session.commitTransaction();
+
+    const io = getIO();
+    const updatedProducts = await Product.find({ storeId }).lean();
+    io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+
+    const populatedTx = await Transaction.findById(transaction._id)
+      .populate('customerId', 'name email')
+      .lean();
+    io.to(`store:${storeId}`).emit('transaction:created', populatedTx);
+
     res.status(201).json({ transaction, items: txItems });
   } catch (err: unknown) {
     await session.abortTransaction();
@@ -87,8 +106,15 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
 export const getTransactions = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { storeId } = req.query;
-    const filter = storeId ? { storeId } : {};
+    const { storeId, claimStatus, paymentStatus, orderStatus } = req.query;
+    const filter: Record<string, unknown> = {};
+    if (storeId) filter.storeId = storeId;
+    if (claimStatus && claimStatus !== 'all') filter.claimStatus = claimStatus;
+    if (paymentStatus && paymentStatus !== 'all') filter.paymentStatus = paymentStatus;
+    if (orderStatus && orderStatus !== 'all') {
+      filter.orderStatus = orderStatus;
+    }
+
     const transactions = await Transaction.find(filter)
       .populate('customerId', 'name email')
       .sort({ createdAt: -1 });
@@ -112,6 +138,92 @@ export const getTransaction = async (req: Request, res: Response): Promise<void>
     res.json({ transaction, items });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
+export const updateTransactionStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { claimStatus, paymentStatus } = req.body;
+    const update: Record<string, string> = {};
+
+    if (claimStatus && ['unclaimed', 'claimed'].includes(claimStatus)) {
+      update.claimStatus = claimStatus;
+    }
+    if (paymentStatus && ['unpaid', 'paid'].includes(paymentStatus)) {
+      update.paymentStatus = paymentStatus;
+    }
+
+    if (Object.keys(update).length === 0) {
+      res.status(400).json({ message: 'No valid status fields provided' });
+      return;
+    }
+
+    const transaction = await Transaction.findByIdAndUpdate(req.params.id, update, { new: true })
+      .populate('customerId', 'name email');
+
+    if (!transaction) {
+      res.status(404).json({ message: 'Transaction not found' });
+      return;
+    }
+
+    const io = getIO();
+    io.to(`store:${transaction.storeId}`).emit('transaction:updated', transaction.toJSON());
+
+    res.json(transaction);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
+export const cancelTransaction = async (req: Request, res: Response): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const transaction = await Transaction.findById(req.params.id).session(session);
+    if (!transaction) {
+      await session.abortTransaction();
+      res.status(404).json({ message: 'Transaction not found' });
+      return;
+    }
+
+    if (transaction.orderStatus === 'cancelled') {
+      await session.abortTransaction();
+      res.status(400).json({ message: 'Transaction is already cancelled' });
+      return;
+    }
+
+    const items = await TransactionItem.find({ transactionId: transaction._id }).session(session);
+
+    for (const item of items) {
+      await Product.findByIdAndUpdate(
+        item.productId,
+        { $inc: { stockQuantity: item.quantity } },
+        { session }
+      );
+    }
+
+    transaction.orderStatus = 'cancelled';
+    await transaction.save({ session });
+
+    await session.commitTransaction();
+
+    const populated = await Transaction.findById(transaction._id)
+      .populate('customerId', 'name email')
+      .lean();
+
+    const io = getIO();
+    const storeId = String(transaction.storeId);
+    const updatedProducts = await Product.find({ storeId }).lean();
+    io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+    io.to(`store:${storeId}`).emit('transaction:updated', populated);
+
+    res.json(populated);
+  } catch (err) {
+    await session.abortTransaction();
+    res.status(500).json({ message: 'Server error', error: err });
+  } finally {
+    session.endSession();
   }
 };
 

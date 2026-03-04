@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Product } from '../models/Product.js';
+import { TransactionItem } from '../models/TransactionItem.js';
 import { UserRole } from '../types/index.js';
 
 export const getProducts = async (req: Request, res: Response): Promise<void> => {
@@ -64,6 +65,33 @@ export const deleteProduct = async (req: Request, res: Response): Promise<void> 
   try {
     await Product.findByIdAndDelete(req.params.id);
     res.json({ message: 'Product deleted' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
+export const getProductsSoldStats = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const storeId = req.query.storeId as string | undefined;
+    if (!storeId) {
+      res.status(400).json({ message: 'storeId is required' });
+      return;
+    }
+
+    const products = await Product.find({ storeId }).select('_id').lean();
+    const productIds = products.map((p) => p._id);
+
+    const stats = await TransactionItem.aggregate([
+      { $match: { productId: { $in: productIds } } },
+      { $group: { _id: '$productId', totalSold: { $sum: '$quantity' } } },
+    ]);
+
+    const soldMap: Record<string, number> = {};
+    for (const s of stats) {
+      soldMap[String(s._id)] = s.totalSold;
+    }
+
+    res.json(soldMap);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
   }
