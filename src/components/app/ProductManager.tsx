@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ChevronLeft, ChevronRight, ImageIcon, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ImageIcon, Package, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 
@@ -61,6 +61,35 @@ interface ProductFormData {
   sellingPrice: string;
   stockQuantity: string;
   isPerishable: boolean;
+}
+
+interface InvProductSummary {
+  productId: string;
+  productName: string;
+  totalInitialStock: number;
+  totalRestock: number;
+  totalSold: number;
+  latestCurrentStock: number;
+  latestDate: string;
+  daysTracked: number;
+}
+
+interface InvDailyRow {
+  date: string;
+  productId: string;
+  productName: string;
+  initialStock: number;
+  restock: number;
+  carryOverStock: number;
+  sold: number;
+  currentStock: number;
+}
+
+interface InventoryReportData {
+  startDate: string;
+  endDate: string;
+  products: InvProductSummary[];
+  dailyBreakdown: InvDailyRow[];
 }
 
 interface ProductManagerProps {
@@ -112,6 +141,189 @@ function StockBadge({ value }: { value: number }) {
   );
 }
 
+function ProductManagerInventoryReport({
+  storeId,
+  invStart,
+  invEnd,
+  invData,
+  invLoading,
+  invError,
+  onInvStartChange,
+  onInvEndChange,
+  onFetch,
+}: {
+  storeId: string | undefined;
+  invStart: string;
+  invEnd: string;
+  invData: InventoryReportData | null;
+  invLoading: boolean;
+  invError: string;
+  onInvStartChange: (d: string) => void;
+  onInvEndChange: (d: string) => void;
+  onFetch: () => void;
+}) {
+  const [viewMode, setViewMode] = useState<'summary' | 'daily'>('summary');
+
+  if (!storeId) {
+    return (
+      <p className="rounded-lg border bg-muted/50 px-4 py-8 text-center text-sm text-muted-foreground">
+        Select a store above to view the inventory report.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Start Date</Label>
+          <Input type="date" value={invStart} onChange={(e) => onInvStartChange(e.target.value)} className="w-40" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">End Date</Label>
+          <Input type="date" value={invEnd} onChange={(e) => onInvEndChange(e.target.value)} className="w-40" />
+        </div>
+        <Button onClick={onFetch} disabled={invLoading}>{invLoading ? 'Loading...' : 'Generate Report'}</Button>
+      </div>
+
+      {invError && (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">{invError}</div>
+      )}
+
+      {!invLoading && invData && (
+        <>
+          <div className="flex gap-1 rounded-lg border bg-muted/50 p-1 w-fit">
+            <button
+              type="button"
+              onClick={() => setViewMode('summary')}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${viewMode === 'summary' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Product Summary
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('daily')}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${viewMode === 'daily' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Daily Breakdown
+            </button>
+          </div>
+
+          {viewMode === 'summary' && <InvSummaryTable products={invData.products} />}
+          {viewMode === 'daily' && <InvDailyTable rows={invData.dailyBreakdown} />}
+        </>
+      )}
+
+      {!invLoading && !invData && !invError && (
+        <p className="py-8 text-center text-muted-foreground">Select a date range and click &quot;Generate Report&quot; to view inventory data.</p>
+      )}
+    </div>
+  );
+}
+
+function InvSummaryTable({ products }: { products: InvProductSummary[] }) {
+  if (products.length === 0) {
+    return <p className="py-8 text-center text-muted-foreground">No inventory records found for this date range.</p>;
+  }
+  const totals = products.reduce(
+    (acc, p) => ({
+      initialStock: acc.initialStock + p.totalInitialStock,
+      restock: acc.restock + p.totalRestock,
+      sold: acc.sold + p.totalSold,
+      currentStock: acc.currentStock + p.latestCurrentStock,
+    }),
+    { initialStock: 0, restock: 0, sold: 0, currentStock: 0 }
+  );
+  return (
+    <div className="rounded-lg border bg-card overflow-x-auto">
+      <div className="border-b px-4 py-3"><h3 className="text-sm font-semibold">Product Inventory Summary</h3></div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b">
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Product</th>
+            <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Days Tracked</th>
+            <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Total Initial</th>
+            <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Total Restock</th>
+            <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Total Sold</th>
+            <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Latest Stock</th>
+          </tr>
+        </thead>
+        <tbody>
+          {products.map((p) => (
+            <tr key={p.productId} className="border-b last:border-0 hover:bg-muted/50">
+              <td className="px-4 py-2.5 font-medium">{p.productName}</td>
+              <td className="px-4 py-2.5 text-right text-muted-foreground">{p.daysTracked}</td>
+              <td className="px-4 py-2.5 text-right tabular-nums">{p.totalInitialStock}</td>
+              <td className="px-4 py-2.5 text-right tabular-nums">
+                {p.totalRestock > 0 ? <span className="text-blue-600 font-medium">+{p.totalRestock}</span> : <span className="text-muted-foreground">0</span>}
+              </td>
+              <td className="px-4 py-2.5 text-right tabular-nums">
+                {p.totalSold > 0 ? <span className="text-orange-600 font-medium">{p.totalSold}</span> : <span className="text-muted-foreground">0</span>}
+              </td>
+              <td className="px-4 py-2.5 text-right"><StockBadge value={p.latestCurrentStock} /></td>
+            </tr>
+          ))}
+          <tr className="bg-muted/30 font-semibold">
+            <td className="px-4 py-2.5">Total</td>
+            <td className="px-4 py-2.5" />
+            <td className="px-4 py-2.5 text-right tabular-nums">{totals.initialStock}</td>
+            <td className="px-4 py-2.5 text-right tabular-nums text-blue-600">+{totals.restock}</td>
+            <td className="px-4 py-2.5 text-right tabular-nums text-orange-600">{totals.sold}</td>
+            <td className="px-4 py-2.5 text-right"><StockBadge value={totals.currentStock} /></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function InvDailyTable({ rows }: { rows: InvDailyRow[] }) {
+  if (rows.length === 0) {
+    return <p className="py-8 text-center text-muted-foreground">No daily records found for this date range.</p>;
+  }
+  const dates = [...new Set(rows.map((r) => r.date))].sort();
+  return (
+    <div className="space-y-4">
+      {dates.map((date) => {
+        const dayRows = rows.filter((r) => r.date === date);
+        return (
+          <div key={date} className="rounded-lg border bg-card overflow-x-auto">
+            <div className="border-b px-4 py-3"><h3 className="text-sm font-semibold">{date}</h3></div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Product</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Initial</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Restock</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Carry-over</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Sold</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Current</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dayRows.map((row) => (
+                  <tr key={`${row.date}-${row.productId}`} className="border-b last:border-0 hover:bg-muted/50">
+                    <td className="px-4 py-2 font-medium">{row.productName}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{row.initialStock}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {row.restock > 0 ? <span className="text-blue-600 font-medium">+{row.restock}</span> : <span className="text-muted-foreground">0</span>}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{row.carryOverStock}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {row.sold > 0 ? <span className="text-orange-600 font-medium">{row.sold}</span> : <span className="text-muted-foreground">0</span>}
+                    </td>
+                    <td className="px-4 py-2 text-right"><StockBadge value={row.currentStock} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const isScoped = !!fixedStoreId;
   const todayStr = toLocalDateStr(new Date());
@@ -141,6 +353,18 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [restockQty, setRestockQty] = useState('');
+
+  type MainTab = 'products' | 'inventory-report';
+  const [mainTab, setMainTab] = useState<MainTab>('products');
+  const [invStart, setInvStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return toLocalDateStr(d);
+  });
+  const [invEnd, setInvEnd] = useState(todayStr);
+  const [invData, setInvData] = useState<InventoryReportData | null>(null);
+  const [invLoading, setInvLoading] = useState(false);
+  const [invError, setInvError] = useState('');
 
   const isEditable = selectedDate >= todayStr;
   const storeMap = new Map(stores.map((s) => [s._id, s.name]));
@@ -200,6 +424,22 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     const d = new Date(selectedDate + 'T00:00:00');
     d.setDate(d.getDate() + days);
     setSelectedDate(toLocalDateStr(d));
+  };
+
+  const fetchInventoryReport = async () => {
+    if (!effectiveStoreId) return;
+    setInvLoading(true);
+    setInvError('');
+    try {
+      const params = new URLSearchParams({ storeId: effectiveStoreId, startDate: invStart, endDate: invEnd });
+      const res = await fetch(`/api/reports/inventory?${params}`);
+      if (!res.ok) throw new Error('Failed to load inventory report');
+      setInvData(await res.json());
+    } catch (e) {
+      setInvError(e instanceof Error ? e.message : 'Error');
+    } finally {
+      setInvLoading(false);
+    }
   };
 
   // --- Product CRUD helpers ---
@@ -403,13 +643,46 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           <h1 className="text-2xl font-bold tracking-tight">Products</h1>
           <p className="text-sm text-muted-foreground">Manage your product catalog and inventory</p>
         </div>
-        {isEditable && (
+        {isEditable && mainTab === 'products' && (
           <Button onClick={openCreate}>
             <Plus className="mr-1 h-4 w-4" />Add Product
           </Button>
         )}
       </div>
 
+      {/* Main tabs: Products | Inventory Report */}
+      <div className="flex gap-1 rounded-lg border bg-muted/50 p-1 w-fit">
+        <button
+          type="button"
+          onClick={() => setMainTab('products')}
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${mainTab === 'products' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Products
+        </button>
+        <button
+          type="button"
+          onClick={() => setMainTab('inventory-report')}
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${mainTab === 'inventory-report' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          <Package className="h-3.5 w-3.5" />
+          Inventory Report
+        </button>
+      </div>
+
+      {mainTab === 'inventory-report' ? (
+        <ProductManagerInventoryReport
+          storeId={effectiveStoreId}
+          invStart={invStart}
+          invEnd={invEnd}
+          invData={invData}
+          invLoading={invLoading}
+          invError={invError}
+          onInvStartChange={setInvStart}
+          onInvEndChange={setInvEnd}
+          onFetch={fetchInventoryReport}
+        />
+      ) : (
+        <>
       {/* Filters row */}
       <div className="flex flex-wrap items-center gap-4">
         {!isScoped && stores.length > 0 && (
@@ -738,6 +1011,8 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </>
+      )}
     </div>
   );
 }
