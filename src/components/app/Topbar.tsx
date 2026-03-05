@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -7,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown, LogOut } from 'lucide-react';
+import { ChevronDown, Clock, LogOut } from 'lucide-react';
 
 interface TopbarProps {
   name: string;
@@ -26,6 +27,35 @@ const ROLE_COLORS: Record<string, string> = {
   customer: 'bg-green-100 text-green-700',
 };
 
+const EST_TIMEZONE = 'America/New_York';
+
+function useEstClock() {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const time = now.toLocaleTimeString('en-US', {
+    timeZone: EST_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+
+  const date = now.toLocaleDateString('en-US', {
+    timeZone: EST_TIMEZONE,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  return { time, date };
+}
+
 export function Topbar({ name, role }: TopbarProps) {
   const initials = name
     .split(' ')
@@ -33,6 +63,8 @@ export function Topbar({ name, role }: TopbarProps) {
     .join('')
     .toUpperCase()
     .slice(0, 2);
+
+  const { time, date } = useEstClock();
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -42,7 +74,16 @@ export function Topbar({ name, role }: TopbarProps) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b bg-card px-6">
       <div />
-      <DropdownMenu>
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Clock className="h-4 w-4" />
+          <div className="text-sm leading-tight text-right">
+            <p className="font-medium tabular-nums">{time}</p>
+            <p className="text-xs">{date}</p>
+          </div>
+        </div>
+        <div className="h-8 w-px bg-border" />
+        <DropdownMenu>
         <DropdownMenuTrigger className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent outline-none">
           <Avatar className="h-8 w-8">
             <AvatarFallback className="text-xs">{initials}</AvatarFallback>
@@ -65,7 +106,8 @@ export function Topbar({ name, role }: TopbarProps) {
             Sign out
           </DropdownMenuItem>
         </DropdownMenuContent>
-      </DropdownMenu>
+        </DropdownMenu>
+      </div>
     </header>
   );
 }

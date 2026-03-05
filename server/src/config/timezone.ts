@@ -1,4 +1,4 @@
-export const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Manila';
+export const APP_TIMEZONE = process.env.APP_TIMEZONE || 'America/New_York';
 
 /**
  * Compute the offset (in minutes) between UTC and the given IANA timezone
