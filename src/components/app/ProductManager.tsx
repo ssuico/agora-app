@@ -627,11 +627,11 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Products</h1>
-            <p className="text-sm text-muted-foreground">Manage your product catalog and inventory</p>
+            <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
+            <p className="text-sm text-muted-foreground">Manage daily inventory and product catalog</p>
           </div>
         </div>
-        <div className="flex items-center justify-center py-12 text-muted-foreground">Loading products...</div>
+        <div className="flex items-center justify-center py-12 text-muted-foreground">Loading inventory...</div>
       </div>
     );
   }
@@ -640,8 +640,8 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Products</h1>
-          <p className="text-sm text-muted-foreground">Manage your product catalog and inventory</p>
+          <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
+          <p className="text-sm text-muted-foreground">Manage daily inventory and product catalog</p>
         </div>
         {isEditable && mainTab === 'products' && (
           <Button onClick={openCreate}>
@@ -650,14 +650,14 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         )}
       </div>
 
-      {/* Main tabs: Products | Inventory Report */}
+      {/* Main tabs: Inventory | Inventory Report */}
       <div className="flex gap-1 rounded-lg border bg-muted/50 p-1 w-fit">
         <button
           type="button"
           onClick={() => setMainTab('products')}
           className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${mainTab === 'products' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          Products
+          Inventory
         </button>
         <button
           type="button"

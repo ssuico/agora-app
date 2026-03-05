@@ -53,7 +53,7 @@ function getNavItems(storeId?: string): NavItem[] {
       roles: ['store_manager'],
     },
     {
-      label: 'Products',
+      label: 'Inventory',
       href: `${storePrefix}/products`,
       icon: <Package className="h-4 w-4" />,
       roles: ['store_manager'],
