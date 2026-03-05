@@ -74,7 +74,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
     for (const tx of transactions) {
       const customer =
         tx.customerId && typeof tx.customerId === 'object'
-          ? (tx.customerId as { name: string; email: string })
+          ? (tx.customerId as unknown as { name: string; email: string })
           : null;
       const items = itemsByTx.get(String(tx._id)) || [];
 
@@ -101,7 +101,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
           const item = items[i];
           const prod =
             item.productId && typeof item.productId === 'object'
-              ? (item.productId as { name: string; sellingPrice: number; costPrice: number })
+              ? (item.productId as unknown as { name: string; sellingPrice: number; costPrice: number })
               : null;
 
           sheet.addRow({
