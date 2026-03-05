@@ -11,6 +11,7 @@ import { productRoutes } from './routes/product.routes.js';
 import { reportRoutes } from './routes/report.routes.js';
 import { storeRoutes } from './routes/store.routes.js';
 import { transactionRoutes } from './routes/transaction.routes.js';
+import { transactionReportRoutes } from './routes/transactionReport.routes.js';
 import { userRoutes } from './routes/user.routes.js';
 
 export const app: Express = express();
@@ -41,6 +42,7 @@ app.use('/api/stores', storeRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/transaction-reports', transactionReportRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);

@@ -19,6 +19,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Pencil, Plus, Trash2, UserPlus, UserMinus } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 
 interface Location {
   _id: string;
@@ -164,13 +165,17 @@ export function StoreManager() {
       });
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
-        setError(data.message ?? 'Something went wrong');
+        const msg = data.message ?? 'Something went wrong';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success(editingStore ? 'Store updated' : 'Store created');
       setDialogOpen(false);
       await fetchStores();
     } catch {
       setError('Network error');
+      toast.error('Network error');
     } finally {
       setSubmitting(false);
     }
@@ -183,14 +188,18 @@ export function StoreManager() {
       const res = await fetch(`/api/stores/${deletingStore._id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
-        setError(data.message ?? 'Failed to delete');
+        const msg = data.message ?? 'Failed to delete';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success('Store deleted');
       setDeleteDialogOpen(false);
       setDeletingStore(null);
       await fetchStores();
     } catch {
       setError('Network error');
+      toast.error('Network error');
     } finally {
       setSubmitting(false);
     }
@@ -208,13 +217,17 @@ export function StoreManager() {
       });
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
-        setError(data.message ?? 'Failed to assign');
+        const msg = data.message ?? 'Failed to assign';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success('Manager assigned');
       setSelectedManagerId('');
       await openManagers(managingStore);
     } catch {
       setError('Network error');
+      toast.error('Network error');
     } finally {
       setSubmitting(false);
     }
@@ -232,12 +245,16 @@ export function StoreManager() {
       });
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
-        setError(data.message ?? 'Failed to unassign');
+        const msg = data.message ?? 'Failed to unassign';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success('Manager unassigned');
       await openManagers(managingStore);
     } catch {
       setError('Network error');
+      toast.error('Network error');
     } finally {
       setSubmitting(false);
     }

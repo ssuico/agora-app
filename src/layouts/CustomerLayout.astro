@@ -1,5 +1,6 @@
 ---
 import { Topbar } from '../components/app/Topbar';
+import { Toaster } from '../components/app/Toaster';
 import { decodeJWT } from '../lib/jwt';
 import '../styles/global.css';
 
@@ -22,6 +23,7 @@ const userRole = payload?.role ?? 'customer';
     <title>{title} — Agora POS</title>
   </head>
   <body class="bg-background text-foreground antialiased">
+    <Toaster client:load />
     <div class="flex min-h-screen flex-col">
       <Topbar name={userName} role={userRole} client:load />
       <main class="flex-1 p-6">

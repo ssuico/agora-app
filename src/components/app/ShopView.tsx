@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { AlertTriangle, ChevronLeft, ChevronRight, ImageIcon, Minus, Plus, ShoppingCart, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
 
 interface Product {
@@ -394,10 +395,13 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
 
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
-        setError(data.message ?? 'Reservation failed');
+        const msg = data.message ?? 'Reservation failed';
+        setError(msg);
+        toast.error(msg);
         return;
       }
 
+      toast.success('Reservation placed');
       setCart([]);
       setCartOpen(false);
       setSuccessOpen(true);
@@ -405,6 +409,7 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
       await fetchProducts();
     } catch {
       setError('Network error');
+      toast.error('Network error');
     } finally {
       setCheckoutLoading(false);
     }

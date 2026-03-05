@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { ChevronLeft, ChevronRight, ImageIcon, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 
 interface Store {
   _id: string;
@@ -273,7 +274,9 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
 
         if (!res.ok) {
           const data = (await res.json()) as { message?: string };
-          setError(data.message ?? 'Something went wrong');
+          const msg = data.message ?? 'Something went wrong';
+          setError(msg);
+          toast.error(msg);
           return;
         }
 
@@ -286,9 +289,14 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           });
           if (!restockRes.ok) {
             const data = (await restockRes.json()) as { message?: string };
-            setError(data.message ?? 'Restock failed');
+            const msg = data.message ?? 'Restock failed';
+            setError(msg);
+            toast.error(msg);
             return;
           }
+          toast.success('Product updated and restocked');
+        } else {
+          toast.success('Product updated');
         }
       } else {
         const payload = {
@@ -309,15 +317,19 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
 
         if (!res.ok) {
           const data = (await res.json()) as { message?: string };
-          setError(data.message ?? 'Something went wrong');
+          const msg = data.message ?? 'Something went wrong';
+          setError(msg);
+          toast.error(msg);
           return;
         }
+        toast.success('Product created');
       }
 
       setDialogOpen(false);
       await refreshData(filterStoreId);
     } catch {
       setError('Network error. Please try again.');
+      toast.error('Network error. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -331,14 +343,18 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       const res = await fetch(`/api/products/${deletingProduct._id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
-        setError(data.message ?? 'Failed to delete product');
+        const msg = data.message ?? 'Failed to delete product';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success('Product deleted');
       setDeleteDialogOpen(false);
       setDeletingProduct(null);
       await refreshData(filterStoreId);
     } catch {
       setError('Network error. Please try again.');
+      toast.error('Network error. Please try again.');
     } finally {
       setSubmitting(false);
     }

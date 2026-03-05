@@ -1,0 +1,27 @@
+import type { APIRoute } from 'astro';
+
+const API_URL = import.meta.env.API_URL;
+
+export const GET: APIRoute = async ({ params, cookies }) => {
+  const token = cookies.get('agora_token')?.value ?? '';
+  const res = await fetch(`${API_URL}/api/transaction-reports/${params.id}/download`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const buffer = await res.arrayBuffer();
+  return new Response(buffer, {
+    status: 200,
+    headers: {
+      'Content-Type': res.headers.get('Content-Type') || 'application/octet-stream',
+      'Content-Disposition': res.headers.get('Content-Disposition') || 'attachment',
+    },
+  });
+};

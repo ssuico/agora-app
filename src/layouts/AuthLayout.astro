@@ -1,4 +1,5 @@
 ---
+import { Toaster } from '../components/app/Toaster';
 import '../styles/global.css';
 interface Props {
   title?: string;
@@ -14,6 +15,7 @@ const { title = 'Agora POS' } = Astro.props;
     <title>{title}</title>
   </head>
   <body class="bg-background text-foreground antialiased">
+    <Toaster client:load />
     <div class="flex min-h-screen items-center justify-center p-4">
       <slot />
     </div>

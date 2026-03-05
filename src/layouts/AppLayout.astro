@@ -1,6 +1,7 @@
 ---
 import { Sidebar } from '../components/app/Sidebar';
 import { Topbar } from '../components/app/Topbar';
+import { Toaster } from '../components/app/Toaster';
 import { decodeJWT } from '../lib/jwt';
 import { createApiClient } from '../lib/api';
 import '../styles/global.css';
@@ -46,6 +47,7 @@ if (storeId) {
     <title>{title} — Agora POS</title>
   </head>
   <body class="bg-background text-foreground antialiased">
+    <Toaster client:load />
     <div class="flex h-screen overflow-hidden">
       <Sidebar
         role={userRole}

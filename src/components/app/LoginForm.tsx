@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useState } from 'react';
+import toast from 'react-hot-toast';
 
 interface LoginResponse {
   role?: string;
@@ -49,13 +50,18 @@ export function LoginForm() {
       const data = (await res.json()) as LoginResponse;
 
       if (!res.ok) {
-        setError(data.message ?? 'Login failed. Please try again.');
+        const msg = data.message ?? 'Login failed. Please try again.';
+        setError(msg);
+        toast.error(msg);
         return;
       }
 
+      toast.success('Signed in successfully');
       window.location.href = getRedirectUrl(data);
     } catch {
-      setError('Network error. Please check your connection.');
+      const msg = 'Network error. Please check your connection.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

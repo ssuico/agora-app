@@ -19,6 +19,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 
 interface User {
   _id: string;
@@ -105,14 +106,18 @@ export function UserManager() {
 
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
-        setError(data.message ?? 'Something went wrong');
+        const msg = data.message ?? 'Something went wrong';
+        setError(msg);
+        toast.error(msg);
         return;
       }
 
+      toast.success('User created');
       setDialogOpen(false);
       await fetchUsers();
     } catch {
       setError('Network error');
+      toast.error('Network error');
     } finally {
       setSubmitting(false);
     }
@@ -125,14 +130,18 @@ export function UserManager() {
       const res = await fetch(`/api/users/${deletingUser._id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
-        setError(data.message ?? 'Failed to delete');
+        const msg = data.message ?? 'Failed to delete';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success('User deleted');
       setDeleteDialogOpen(false);
       setDeletingUser(null);
       await fetchUsers();
     } catch {
       setError('Network error');
+      toast.error('Network error');
     } finally {
       setSubmitting(false);
     }

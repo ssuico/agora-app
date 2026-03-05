@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -67,8 +68,14 @@ export function Topbar({ name, role }: TopbarProps) {
   const { time, date } = useEstClock();
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    window.location.href = '/login';
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      toast.success('Signed out');
+      window.location.href = '/login';
+    } catch {
+      toast.error('Sign out failed');
+      window.location.href = '/login';
+    }
   };
 
   return (

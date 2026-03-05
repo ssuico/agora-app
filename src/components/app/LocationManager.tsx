@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 
 interface Location {
   _id: string;
@@ -78,13 +79,17 @@ export function LocationManager() {
       });
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
-        setError(data.message ?? 'Something went wrong');
+        const msg = data.message ?? 'Something went wrong';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success(editing ? 'Location updated' : 'Location created');
       setDialogOpen(false);
       await fetchLocations();
     } catch {
       setError('Network error');
+      toast.error('Network error');
     } finally {
       setSubmitting(false);
     }
@@ -97,14 +102,18 @@ export function LocationManager() {
       const res = await fetch(`/api/locations/${deleting._id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
-        setError(data.message ?? 'Failed to delete');
+        const msg = data.message ?? 'Failed to delete';
+        setError(msg);
+        toast.error(msg);
         return;
       }
+      toast.success('Location deleted');
       setDeleteDialogOpen(false);
       setDeleting(null);
       await fetchLocations();
     } catch {
       setError('Network error');
+      toast.error('Network error');
     } finally {
       setSubmitting(false);
     }
