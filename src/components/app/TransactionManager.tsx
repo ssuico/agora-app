@@ -724,6 +724,18 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                   <p className="text-sm text-muted-foreground py-4 text-center">No products in this store.</p>
                 )}
               </div>
+              {(() => {
+                const total = newTxProducts.reduce(
+                  (sum, p) => sum + (newTxQuantities[p._id] ?? 0) * p.sellingPrice,
+                  0
+                );
+                if (total <= 0) return null;
+                return (
+                  <p className="text-sm font-semibold text-right pt-1">
+                    Total: {fmt(total)}
+                  </p>
+                );
+              })()}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
