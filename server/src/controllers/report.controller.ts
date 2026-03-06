@@ -202,7 +202,8 @@ export const getInventoryReport = async (req: Request, res: Response): Promise<v
     const dailyBreakdown = records.map((rec) => {
       const dStr = rec.date.toISOString().slice(0, 10);
       const sold = soldByKey.get(`${String(rec.productId)}|${dStr}`) ?? 0;
-      const currentStock = rec.initialStock + rec.restock + rec.carryOverStock - sold;
+      const displayInitialStock = rec.initialStock + rec.restock;
+      const currentStock = displayInitialStock - sold;
       const product = productMap.get(String(rec.productId));
 
       return {
@@ -211,7 +212,7 @@ export const getInventoryReport = async (req: Request, res: Response): Promise<v
         productName: product?.name ?? 'Unknown',
         initialStock: rec.initialStock,
         restock: rec.restock,
-        carryOverStock: rec.carryOverStock,
+        displayInitialStock,
         sold,
         currentStock: Math.max(0, currentStock),
       };
@@ -231,7 +232,7 @@ export const getInventoryReport = async (req: Request, res: Response): Promise<v
     for (const row of dailyBreakdown) {
       const existing = aggMap.get(row.productId);
       if (existing) {
-        existing.totalInitialStock += row.initialStock;
+        existing.totalInitialStock += row.displayInitialStock;
         existing.totalRestock += row.restock;
         existing.totalSold += row.sold;
         existing.daysTracked += 1;
@@ -242,7 +243,7 @@ export const getInventoryReport = async (req: Request, res: Response): Promise<v
       } else {
         aggMap.set(row.productId, {
           productName: row.productName,
-          totalInitialStock: row.initialStock,
+          totalInitialStock: row.displayInitialStock,
           totalRestock: row.restock,
           totalSold: row.sold,
           latestCurrentStock: row.currentStock,

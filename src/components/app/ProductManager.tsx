@@ -16,7 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ChevronLeft, ChevronRight, ImageIcon, Package, Pencil, Plus, Trash2, X } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { Check, ChevronLeft, ChevronRight, ImageIcon, Info, Lock, LockOpen, Package, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 
@@ -47,10 +53,22 @@ interface DailyRow {
   isPerishable: boolean;
   initialStock: number;
   restock: number;
-  carryOverStock: number;
   sold: number;
+  displayInitialStock: number;
   currentStock: number;
   date: string;
+}
+
+interface StoreClosingData {
+  _id: string;
+  storeId: string;
+  date: string;
+  closedAt: string;
+  carryOverSelections: Array<{
+    productId: string;
+    carryOver: boolean;
+    currentStock: number;
+  }>;
 }
 
 interface ProductFormData {
@@ -80,7 +98,7 @@ interface InvDailyRow {
   productName: string;
   initialStock: number;
   restock: number;
-  carryOverStock: number;
+  displayInitialStock: number;
   sold: number;
   currentStock: number;
 }
@@ -99,11 +117,10 @@ interface ProductManagerProps {
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
 
+const APP_TIMEZONE = 'America/New_York';
+
 function toLocalDateStr(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return d.toLocaleDateString('en-CA', { timeZone: APP_TIMEZONE });
 }
 
 function ProductImage({ src, className }: { src?: string; className?: string }) {
@@ -295,7 +312,6 @@ function InvDailyTable({ rows }: { rows: InvDailyRow[] }) {
                   <th className="px-4 py-2 text-left font-medium text-muted-foreground">Product</th>
                   <th className="px-4 py-2 text-right font-medium text-muted-foreground">Initial</th>
                   <th className="px-4 py-2 text-right font-medium text-muted-foreground">Restock</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Carry-over</th>
                   <th className="px-4 py-2 text-right font-medium text-muted-foreground">Sold</th>
                   <th className="px-4 py-2 text-right font-medium text-muted-foreground">Current</th>
                 </tr>
@@ -304,11 +320,10 @@ function InvDailyTable({ rows }: { rows: InvDailyRow[] }) {
                 {dayRows.map((row) => (
                   <tr key={`${row.date}-${row.productId}`} className="border-b last:border-0 hover:bg-muted/50">
                     <td className="px-4 py-2 font-medium">{row.productName}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{row.initialStock}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{row.displayInitialStock ?? (row.initialStock + row.restock)}</td>
                     <td className="px-4 py-2 text-right tabular-nums">
                       {row.restock > 0 ? <span className="text-blue-600 font-medium">+{row.restock}</span> : <span className="text-muted-foreground">0</span>}
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{row.carryOverStock}</td>
                     <td className="px-4 py-2 text-right tabular-nums">
                       {row.sold > 0 ? <span className="text-orange-600 font-medium">{row.sold}</span> : <span className="text-muted-foreground">0</span>}
                     </td>
@@ -357,16 +372,25 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   type MainTab = 'products' | 'inventory-report';
   const [mainTab, setMainTab] = useState<MainTab>('products');
   const [invStart, setInvStart] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 7);
-    return toLocalDateStr(d);
+    const now = new Date();
+    const todayEst = toLocalDateStr(now);
+    const d = new Date(todayEst + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() - 7);
+    return d.toISOString().slice(0, 10);
   });
   const [invEnd, setInvEnd] = useState(todayStr);
   const [invData, setInvData] = useState<InventoryReportData | null>(null);
   const [invLoading, setInvLoading] = useState(false);
   const [invError, setInvError] = useState('');
 
-  const isEditable = selectedDate >= todayStr;
+  // Store closing state
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closingStatus, setClosingStatus] = useState<StoreClosingData | null>(null);
+  const [closeSelections, setCloseSelections] = useState<Map<string, boolean>>(new Map());
+  const [closeSubmitting, setCloseSubmitting] = useState(false);
+  const [reopenSubmitting, setReopenSubmitting] = useState(false);
+
+  const isEditable = selectedDate === todayStr;
   const storeMap = new Map(stores.map((s) => [s._id, s.name]));
   const effectiveStoreId = fixedStoreId ?? (filterStoreId !== 'all' ? filterStoreId : undefined);
 
@@ -400,10 +424,34 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     } catch { /* ignore */ }
   };
 
-  const refreshData = async (sid?: string) => {
+  const fetchClosingStatus = async (date: string, sid?: string) => {
+    const eid = sid ?? effectiveStoreId;
+    if (!eid) {
+      setClosingStatus(null);
+      return;
+    }
+    try {
+      const params = new URLSearchParams({ storeId: eid, date });
+      const res = await fetch(`/api/inventory/close-status?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setClosingStatus(data);
+      } else {
+        setClosingStatus(null);
+      }
+    } catch {
+      setClosingStatus(null);
+    }
+  };
+
+  const refreshData = async (sid?: string, date?: string) => {
+    const d = date ?? selectedDate;
     setLoading(true);
     await fetchProducts(sid);
-    await fetchDailyInventory(selectedDate, sid);
+    await Promise.all([
+      fetchDailyInventory(d, sid),
+      fetchClosingStatus(d, sid),
+    ]);
     setLoading(false);
   };
 
@@ -418,12 +466,16 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
 
   useEffect(() => {
     fetchDailyInventory(selectedDate);
+    fetchClosingStatus(selectedDate);
   }, [selectedDate]);
 
   const shiftDate = (days: number) => {
-    const d = new Date(selectedDate + 'T00:00:00');
-    d.setDate(d.getDate() + days);
-    setSelectedDate(toLocalDateStr(d));
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d + days));
+    const yyyy = dt.getUTCFullYear();
+    const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getUTCDate()).padStart(2, '0');
+    setSelectedDate(`${yyyy}-${mm}-${dd}`);
   };
 
   const fetchInventoryReport = async () => {
@@ -525,7 +577,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           const restockRes = await fetch(`/api/inventory/restock/${editingProduct._id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ quantity: qty, storeId: form.storeId, date: selectedDate }),
+            body: JSON.stringify({ quantity: qty, storeId: form.storeId, date: todayStr }),
           });
           if (!restockRes.ok) {
             const data = (await restockRes.json()) as { message?: string };
@@ -600,25 +652,122 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     }
   };
 
+  const openCloseStore = () => {
+    const dailyProductIds = new Set(dailyRows.map((r) => r.productId));
+    const defaults = new Map<string, boolean>();
+    if (closingStatus) {
+      for (const sel of closingStatus.carryOverSelections) {
+        if (dailyProductIds.has(sel.productId)) {
+          defaults.set(sel.productId, sel.carryOver);
+        }
+      }
+    }
+    for (const product of products) {
+      if (dailyProductIds.has(product._id) && !defaults.has(product._id)) {
+        defaults.set(product._id, !product.isPerishable);
+      }
+    }
+    setCloseSelections(defaults);
+    setCloseDialogOpen(true);
+  };
+
+  const handleCloseStore = async () => {
+    if (!effectiveStoreId) return;
+    setCloseSubmitting(true);
+    try {
+      const dailyProductIds = new Set(dailyRows.map((r) => r.productId));
+      const selections = products
+        .filter((p) => dailyProductIds.has(p._id))
+        .map((p) => ({
+          productId: p._id,
+          carryOver: closeSelections.get(p._id) ?? !p.isPerishable,
+        }));
+      const res = await fetch('/api/inventory/close-store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: effectiveStoreId, date: selectedDate, selections }),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to close store');
+        return;
+      }
+      const isEditing = !!closingStatus;
+      toast.success(isEditing ? 'Store closing updated' : 'Store closed for the day');
+      setCloseDialogOpen(false);
+
+      const [cy, cm, cd] = selectedDate.split('-').map(Number);
+      const nextDt = new Date(Date.UTC(cy, cm - 1, cd + 1));
+      const nextDayStr = `${nextDt.getUTCFullYear()}-${String(nextDt.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDt.getUTCDate()).padStart(2, '0')}`;
+      setSelectedDate(nextDayStr);
+      await refreshData(filterStoreId, nextDayStr);
+    } catch {
+      toast.error('Network error. Please try again.');
+    } finally {
+      setCloseSubmitting(false);
+    }
+  };
+
+  const handleReopenStore = async () => {
+    if (!effectiveStoreId || !closingStatus) return;
+    setReopenSubmitting(true);
+    try {
+      const res = await fetch('/api/inventory/reopen-store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: effectiveStoreId, date: selectedDate }),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to reopen store');
+        return;
+      }
+      toast.success('Store reopened');
+      await refreshData(filterStoreId);
+    } catch {
+      toast.error('Network error. Please try again.');
+    } finally {
+      setReopenSubmitting(false);
+    }
+  };
+
   const updateField = (field: keyof ProductFormData, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  // --- Build display rows from daily data + product fallback ---
+  // --- Build display rows from daily data ---
+  // Only show products that have an inventory record for the selected date.
+  // Products created after this date won't have records and should not appear.
 
-  const dailyMap = new Map(dailyRows.map((r) => [r.productId, r]));
+  const productMap = new Map(products.map((p) => [p._id, p]));
 
-  const displayRows = products.map((product) => {
-    const daily = dailyMap.get(product._id);
+  const displayRows = dailyRows.map((daily) => {
+    const product = productMap.get(daily.productId);
+    if (!product) return null;
+
+    const displayInitialStock = daily.displayInitialStock ?? daily.initialStock + daily.restock;
+    const currentStock = Math.max(0, displayInitialStock - daily.sold);
+    const productCreatedDate = product.createdAt?.slice(0, 10) ?? '';
+    const isCarriedOver = daily.initialStock > 0 && productCreatedDate < selectedDate;
+
     return {
       product,
-      initialStock: daily?.initialStock ?? 0,
-      restock: daily?.restock ?? 0,
-      carryOverStock: daily?.carryOverStock ?? 0,
-      sold: daily?.sold ?? 0,
-      currentStock: daily?.currentStock ?? product.stockQuantity,
+      displayInitialStock,
+      restock: daily.restock,
+      sold: daily.sold,
+      currentStock,
+      isCarriedOver,
+      carriedOverQty: isCarriedOver ? daily.initialStock : 0,
     };
-  });
+  }).filter(Boolean) as Array<{
+    product: Product;
+    displayInitialStock: number;
+    restock: number;
+    sold: number;
+    currentStock: number;
+    isCarriedOver: boolean;
+    carriedOverQty: number;
+  }>;
 
   // --- Render ---
 
@@ -637,6 +786,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   }
 
   return (
+    <TooltipProvider>
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -644,9 +794,20 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           <p className="text-sm text-muted-foreground">Manage daily inventory and product catalog</p>
         </div>
         {isEditable && mainTab === 'products' && (
-          <Button onClick={openCreate}>
-            <Plus className="mr-1 h-4 w-4" />Add Product
-          </Button>
+          <div className="flex items-center gap-2">
+            {effectiveStoreId && (
+              <Button
+                variant={closingStatus ? 'outline' : 'default'}
+                onClick={openCloseStore}
+              >
+                <Lock className="mr-1 h-4 w-4" />
+                {closingStatus ? 'Edit Close' : 'Close Store'}
+              </Button>
+            )}
+            <Button onClick={openCreate}>
+              <Plus className="mr-1 h-4 w-4" />Add Product
+            </Button>
+          </div>
         )}
       </div>
 
@@ -700,17 +861,13 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           </div>
         )}
 
-        {/* Date picker */}
         <div className="flex items-center gap-1 ml-auto">
           <Button variant="ghost" size="sm" onClick={() => shiftDate(-1)} title="Previous day">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <Input
-            type="date"
-            className="w-40 text-center"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-          />
+          <div className="rounded-md border bg-muted/50 px-3 py-1.5 text-sm font-medium tabular-nums w-32 text-center">
+            {selectedDate}
+          </div>
           <Button variant="ghost" size="sm" onClick={() => shiftDate(1)} title="Next day">
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -722,14 +879,29 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         </div>
       </div>
 
-      {selectedDate < todayStr && (
+      {!isEditable && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Viewing inventory for <strong>{selectedDate}</strong> (read-only). Switch to today or a future date to make changes.
+          Viewing inventory for <strong>{selectedDate}</strong> (read-only).
         </div>
       )}
-      {selectedDate > todayStr && (
-        <div className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-          Viewing future date <strong>{selectedDate}</strong> (test mode). Inventory records will be auto-initialized from the last known data.
+      {closingStatus && (
+        <div className="flex items-center gap-2 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+          <Check className="h-4 w-4 shrink-0" />
+          <span className="flex-1">
+            Store closed for <strong>{selectedDate}</strong>. Selected products have been carried over to the next day&apos;s inventory.
+          </span>
+          {isEditable && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto border-green-400 text-green-800 hover:bg-green-100"
+              onClick={handleReopenStore}
+              disabled={reopenSubmitting}
+            >
+              <LockOpen className="mr-1 h-3.5 w-3.5" />
+              {reopenSubmitting ? 'Reopening...' : 'Reopen Store'}
+            </Button>
+          )}
         </div>
       )}
 
@@ -748,7 +920,6 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Selling</th>
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Initial</th>
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Restock</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Carry-over</th>
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Sold</th>
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Current</th>
               {isEditable && (
@@ -760,14 +931,14 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             {displayRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={isScoped ? (isEditable ? 11 : 10) : (isEditable ? 12 : 11)}
+                  colSpan={isScoped ? (isEditable ? 10 : 9) : (isEditable ? 11 : 10)}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
-                  No products found. {isEditable ? 'Click "Add Product" to create one.' : ''}
+                  {isEditable ? 'No products found. Click "Add Product" to create one.' : 'No inventory records for this date.'}
                 </td>
               </tr>
             ) : (
-              displayRows.map(({ product, initialStock, restock, carryOverStock, sold, currentStock }) => (
+              displayRows.map(({ product, displayInitialStock, restock, sold, currentStock, isCarriedOver, carriedOverQty }) => (
                 <tr key={product._id} className="border-b last:border-0 hover:bg-muted/50">
                   <td className="px-4 py-2">
                     <ProductImage src={product.images?.[0]} className="h-10 w-10" />
@@ -783,7 +954,23 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                   )}
                   <td className="px-4 py-3">{fmt(product.costPrice)}</td>
                   <td className="px-4 py-3">{fmt(product.sellingPrice)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{initialStock}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    <div className="flex items-center justify-end gap-1">
+                      <span>{displayInitialStock}</span>
+                      {isCarriedOver && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-help inline-flex">
+                              <Info className="h-3.5 w-3.5 text-blue-500" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            Carried over {carriedOverQty} item{carriedOverQty !== 1 ? 's' : ''} from previous day
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     {restock > 0 ? (
                       <span className="text-blue-600 font-medium">+{restock}</span>
@@ -791,7 +978,6 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                       <span className="text-muted-foreground">0</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{carryOverStock}</td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     {sold > 0 ? (
                       <span className="text-orange-600 font-medium">{sold}</span>
@@ -1011,8 +1197,65 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Close Store dialog */}
+      <Dialog open={closeDialogOpen} onOpenChange={setCloseDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{closingStatus ? 'Edit Store Closing' : 'Close Store'}</DialogTitle>
+            <DialogDescription>
+              Select which products should carry over their remaining stock to tomorrow. Perishable products are unchecked by default.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            {displayRows.map(({ product, currentStock }) => {
+              const checked = closeSelections.get(product._id) ?? !product.isPerishable;
+              return (
+                <label
+                  key={product._id}
+                  className="flex items-center gap-3 rounded-md border px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300"
+                    checked={checked}
+                    onChange={(e) => {
+                      setCloseSelections((prev) => {
+                        const next = new Map(prev);
+                        next.set(product._id, e.target.checked);
+                        return next;
+                      });
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm truncate">{product.name}</span>
+                      <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${product.isPerishable ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
+                        {product.isPerishable ? 'Perishable' : 'Non-perishable'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right text-sm tabular-nums">
+                    <StockBadge value={currentStock} />
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          {displayRows.length === 0 && (
+            <p className="py-4 text-center text-sm text-muted-foreground">No products to close.</p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCloseDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleCloseStore} disabled={closeSubmitting || displayRows.length === 0}>
+              {closeSubmitting ? 'Saving...' : closingStatus ? 'Update Close' : 'Confirm Close'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
         </>
       )}
     </div>
+    </TooltipProvider>
   );
 }

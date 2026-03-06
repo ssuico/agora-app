@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
-import { localDayRange } from '../config/timezone.js';
+import { localDayRange, toLocalDateStr } from '../config/timezone.js';
 import { InventoryRecord } from '../models/InventoryRecord.js';
 import { Product } from '../models/Product.js';
+import { StoreClosing } from '../models/StoreClosing.js';
 import { Transaction } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { getIO } from '../socket.js';
@@ -13,8 +14,8 @@ function toDateOnly(input: string | Date): Date {
   return d;
 }
 
-function todayUTC(): Date {
-  return toDateOnly(new Date());
+function todayInAppTz(): Date {
+  return toDateOnly(toLocalDateStr(new Date()));
 }
 
 async function computeSoldMap(
@@ -45,6 +46,10 @@ async function computeSoldMap(
   );
 }
 
+// ---------------------------------------------------------------------------
+// GET /api/inventory/daily
+// ---------------------------------------------------------------------------
+
 export const getDailyInventory = async (req: Request, res: Response): Promise<void> => {
   try {
     const storeId = req.query.storeId as string | undefined;
@@ -65,40 +70,6 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
 
     const productIds = products.map((p) => p._id);
 
-    // --- Derive expected initialStock for every product from the previous day ---
-    const prevRecords = await InventoryRecord.aggregate([
-      {
-        $match: {
-          productId: { $in: productIds },
-          date: { $lt: date },
-        },
-      },
-      { $sort: { date: -1 } },
-      {
-        $group: {
-          _id: '$productId',
-          doc: { $first: '$$ROOT' },
-        },
-      },
-    ]);
-
-    const prevMap = new Map<string, any>(
-      prevRecords.map((r) => [String(r._id), r.doc])
-    );
-
-    // Compute sold for each previous-day record's date + store
-    const prevSoldMaps = new Map<string, number>();
-    for (const r of prevRecords) {
-      const doc = r.doc;
-      const prevProductIds = [doc.productId];
-      const sold = await computeSoldMap(doc.storeId, doc.date, prevProductIds);
-      prevSoldMaps.set(String(r._id), sold.get(String(doc.productId)) ?? 0);
-    }
-
-    // --- Compute sold for current date early (needed for correct initialStock) ---
-    const soldMap = await computeSoldMap(storeId, date, productIds);
-
-    // --- Ensure records exist and initialStock is correct ---
     let records = await InventoryRecord.find({
       productId: { $in: productIds },
       date,
@@ -106,71 +77,45 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
 
     const existingMap = new Map(records.map((r) => [String(r.productId), r]));
 
-    // Build expected initialStock for each product
-    const expectedInitial = new Map<string, number>();
+    // Auto-create records only for products that have never had an inventory
+    // record (brand-new products). Subsequent-day records are created by the
+    // Store Closing workflow.
+    const brandNewProducts = [];
     for (const product of products) {
       const pid = String(product._id);
-      const prev = prevMap.get(pid);
+      if (existingMap.has(pid)) continue;
 
-      if (prev) {
-        const prevSold = prevSoldMaps.get(pid) ?? 0;
-        const prevCurrent = prev.initialStock + prev.restock + prev.carryOverStock - prevSold;
-        const carryOver = product.isPerishable ? 0 : Math.max(0, prevCurrent);
-        expectedInitial.set(pid, carryOver);
-      } else {
-        // product.stockQuantity is a live value already decremented by today's
-        // transactions and incremented by today's restocks. Reverse those changes
-        // to recover the true start-of-day stock.
-        const todaySold = soldMap.get(pid) ?? 0;
-        const todayRestock = existingMap.get(pid)?.restock ?? 0;
-        expectedInitial.set(pid, product.stockQuantity + todaySold - todayRestock);
+      const anyPrev = await InventoryRecord.exists({ productId: product._id });
+      if (!anyPrev) {
+        brandNewProducts.push(product);
       }
     }
 
-    // Create missing records
-    const missingProducts = products.filter((p) => !existingMap.has(String(p._id)));
-    if (missingProducts.length > 0) {
-      const newRecords = missingProducts.map((product) => ({
+    if (brandNewProducts.length > 0) {
+      const newRecords = brandNewProducts.map((product) => ({
         productId: product._id,
         storeId: new mongoose.Types.ObjectId(storeId),
         date,
-        initialStock: expectedInitial.get(String(product._id)) ?? 0,
+        initialStock: product.stockQuantity,
         restock: 0,
-        carryOverStock: 0,
       }));
 
       await InventoryRecord.insertMany(newRecords, { ordered: false }).catch(() => {});
-    }
 
-    // Fix existing records whose initialStock is stale
-    const updates: Promise<any>[] = [];
-    for (const [pid, existing] of existingMap) {
-      const expected = expectedInitial.get(pid) ?? 0;
-      const actualInitial = existing.initialStock + existing.carryOverStock;
-      if (actualInitial !== expected) {
-        updates.push(
-          InventoryRecord.updateOne(
-            { _id: existing._id },
-            { $set: { initialStock: expected, carryOverStock: 0 } }
-          )
-        );
-      }
-    }
-    if (updates.length > 0) await Promise.all(updates);
-
-    // Refetch if anything changed
-    if (missingProducts.length > 0 || updates.length > 0) {
       records = await InventoryRecord.find({
         productId: { $in: productIds },
         date,
       }).lean();
     }
+
+    const soldMap = await computeSoldMap(storeId, date, productIds);
     const productMap = new Map(products.map((p) => [String(p._id), p]));
 
     const result = records.map((rec) => {
       const product = productMap.get(String(rec.productId));
       const sold = soldMap.get(String(rec.productId)) ?? 0;
-      const currentStock = rec.initialStock + rec.restock + rec.carryOverStock - sold;
+      const displayInitialStock = rec.initialStock + rec.restock;
+      const currentStock = displayInitialStock - sold;
 
       return {
         _id: rec._id,
@@ -182,8 +127,8 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
         isPerishable: product?.isPerishable ?? false,
         initialStock: rec.initialStock,
         restock: rec.restock,
-        carryOverStock: rec.carryOverStock,
         sold,
+        displayInitialStock,
         currentStock: Math.max(0, currentStock),
         date: rec.date,
       };
@@ -194,6 +139,10 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
     res.status(500).json({ message: 'Server error', error: err });
   }
 };
+
+// ---------------------------------------------------------------------------
+// PATCH /api/inventory/daily/:productId/restock
+// ---------------------------------------------------------------------------
 
 export const restockProduct = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -210,8 +159,8 @@ export const restockProduct = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const targetDate = dateStr ? toDateOnly(dateStr) : todayUTC();
-    const today = todayUTC();
+    const targetDate = dateStr ? toDateOnly(dateStr) : todayInAppTz();
+    const today = todayInAppTz();
 
     if (targetDate < today) {
       res.status(400).json({ message: 'Cannot restock for a past date' });
@@ -225,7 +174,7 @@ export const restockProduct = async (req: Request, res: Response): Promise<void>
     );
 
     if (!record) {
-      res.status(404).json({ message: 'No inventory record for this date. Open the products tab first to initialize daily records.' });
+      res.status(404).json({ message: 'No inventory record for this date. Open the inventory tab first to initialize daily records.' });
       return;
     }
 
@@ -242,5 +191,171 @@ export const restockProduct = async (req: Request, res: Response): Promise<void>
     const message = err instanceof Error ? err.message : 'Server error';
     console.error('[restockProduct]', message);
     res.status(500).json({ message });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /api/inventory/daily/close-store
+// ---------------------------------------------------------------------------
+
+export const closeStore = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { storeId, date: dateStr, selections } = req.body as {
+      storeId: string;
+      date: string;
+      selections: Array<{ productId: string; carryOver: boolean }>;
+    };
+
+    if (!storeId || !dateStr || !selections) {
+      res.status(400).json({ message: 'storeId, date, and selections are required' });
+      return;
+    }
+
+    const date = toDateOnly(dateStr);
+
+    const products = await Product.find({ storeId }).lean();
+    if (products.length === 0) {
+      res.status(400).json({ message: 'No products found for this store' });
+      return;
+    }
+
+    const productIds = products.map((p) => p._id);
+
+    // Fetch today's records and compute sold to derive current stock
+    const records = await InventoryRecord.find({
+      productId: { $in: productIds },
+      date,
+    }).lean();
+
+    const soldMap = await computeSoldMap(storeId, date, productIds);
+
+    const recordMap = new Map(records.map((r) => [String(r.productId), r]));
+    const selectionMap = new Map(selections.map((s) => [s.productId, s.carryOver]));
+
+    // Build carry-over selections with current stock snapshots
+    const carryOverSelections = products.map((product) => {
+      const pid = String(product._id);
+      const rec = recordMap.get(pid);
+      const sold = soldMap.get(pid) ?? 0;
+      const currentStock = rec
+        ? Math.max(0, rec.initialStock + rec.restock - sold)
+        : Math.max(0, product.stockQuantity);
+
+      return {
+        productId: product._id,
+        carryOver: selectionMap.get(pid) ?? !product.isPerishable,
+        currentStock,
+      };
+    });
+
+    // Upsert the StoreClosing record
+    const closing = await StoreClosing.findOneAndUpdate(
+      { storeId, date },
+      {
+        storeId,
+        date,
+        closedBy: req.user!.userId,
+        closedAt: new Date(),
+        carryOverSelections,
+      },
+      { upsert: true, new: true }
+    );
+
+    // Create / update next-day InventoryRecords only for products with stock
+    const nextDay = new Date(date.getTime() + 24 * 60 * 60 * 1000);
+
+    const carried = carryOverSelections.filter(
+      (sel) => sel.carryOver && sel.currentStock > 0
+    );
+
+    const bulkOps = carried.map((sel) => ({
+      updateOne: {
+        filter: { productId: sel.productId, date: nextDay },
+        update: {
+          $set: {
+            storeId: new mongoose.Types.ObjectId(storeId),
+            initialStock: sel.currentStock,
+          },
+          $setOnInsert: { restock: 0 },
+        },
+        upsert: true,
+      },
+    }));
+
+    if (bulkOps.length > 0) {
+      await InventoryRecord.bulkWrite(bulkOps);
+    }
+
+    res.json(closing);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Server error';
+    console.error('[closeStore]', message);
+    res.status(500).json({ message });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /api/inventory/daily/reopen-store
+// ---------------------------------------------------------------------------
+
+export const reopenStore = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { storeId, date: dateStr } = req.body as { storeId: string; date: string };
+
+    if (!storeId || !dateStr) {
+      res.status(400).json({ message: 'storeId and date are required' });
+      return;
+    }
+
+    const date = toDateOnly(dateStr);
+
+    const closing = await StoreClosing.findOne({ storeId, date }).lean();
+    if (!closing) {
+      res.status(404).json({ message: 'No closing record found for this date' });
+      return;
+    }
+
+    const nextDay = new Date(date.getTime() + 24 * 60 * 60 * 1000);
+    const productIds = closing.carryOverSelections.map((s) => s.productId);
+
+    // Remove next-day records that were created by the close, but only if they
+    // have no restocks (restock === 0) — otherwise they've been modified and
+    // should be kept.
+    await InventoryRecord.deleteMany({
+      productId: { $in: productIds },
+      date: nextDay,
+      restock: 0,
+    });
+
+    await StoreClosing.deleteOne({ _id: closing._id });
+
+    res.json({ message: 'Store reopened' });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Server error';
+    console.error('[reopenStore]', message);
+    res.status(500).json({ message });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/inventory/daily/close-status
+// ---------------------------------------------------------------------------
+
+export const getStoreClosingStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const storeId = req.query.storeId as string | undefined;
+    const dateStr = req.query.date as string | undefined;
+
+    if (!storeId || !dateStr) {
+      res.status(400).json({ message: 'storeId and date are required' });
+      return;
+    }
+
+    const date = toDateOnly(dateStr);
+    const closing = await StoreClosing.findOne({ storeId, date }).lean();
+
+    res.json(closing ?? null);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
   }
 };

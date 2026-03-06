@@ -6,7 +6,6 @@ export interface IInventoryRecord extends Document {
   date: Date;
   initialStock: number;
   restock: number;
-  carryOverStock: number;
 }
 
 const inventoryRecordSchema = new Schema<IInventoryRecord>({
@@ -15,7 +14,6 @@ const inventoryRecordSchema = new Schema<IInventoryRecord>({
   date: { type: Date, required: true },
   initialStock: { type: Number, default: 0, min: 0 },
   restock: { type: Number, default: 0, min: 0 },
-  carryOverStock: { type: Number, default: 0, min: 0 },
 });
 
 inventoryRecordSchema.index({ productId: 1, date: 1 }, { unique: true });

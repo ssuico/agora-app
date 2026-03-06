@@ -1,4 +1,6 @@
 import { Request, Response } from 'express';
+import { toLocalDateStr } from '../config/timezone.js';
+import { InventoryRecord } from '../models/InventoryRecord.js';
 import { Product } from '../models/Product.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { UserRole } from '../types/index.js';
@@ -39,6 +41,17 @@ export const getProduct = async (req: Request, res: Response): Promise<void> => 
 export const createProduct = async (req: Request, res: Response): Promise<void> => {
   try {
     const product = await Product.create(req.body);
+
+    const today = new Date(toLocalDateStr(new Date()));
+    today.setUTCHours(0, 0, 0, 0);
+    await InventoryRecord.create({
+      productId: product._id,
+      storeId: product.storeId,
+      date: today,
+      initialStock: product.stockQuantity,
+      restock: 0,
+    }).catch(() => {});
+
     res.status(201).json(product);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
