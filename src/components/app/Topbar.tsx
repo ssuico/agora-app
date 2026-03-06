@@ -31,12 +31,19 @@ const ROLE_COLORS: Record<string, string> = {
 const EST_TIMEZONE = 'America/New_York';
 
 function useEstClock() {
-  const [now, setNow] = useState(new Date());
+  const [mounted, setMounted] = useState(false);
+  const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
+    setMounted(true);
+    setNow(new Date());
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  if (!mounted || !now) {
+    return { time: '--:--:--', date: '--' };
+  }
 
   const time = now.toLocaleTimeString('en-US', {
     timeZone: EST_TIMEZONE,

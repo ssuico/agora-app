@@ -4,6 +4,7 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "astro dev",
+    "clean:cache": "node -e \"const fs=require('fs');const p=(d)=>fs.existsSync(d)&&fs.rmSync(d,{recursive:true,force:true});p('node_modules/.vite');p('node_modules/.astro');console.log('Vite/Astro cache cleared.');\"",
     "build": "astro build && cd server && pnpm install --frozen-lockfile && pnpm build",
     "start": "node server/dist/index.js",
     "preview": "astro preview",
