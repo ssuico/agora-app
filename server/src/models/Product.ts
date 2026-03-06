@@ -8,6 +8,8 @@ export interface IProduct extends Document {
   sellingPrice: number;
   stockQuantity: number;
   isPerishable: boolean;
+  sellerName: string;
+  notes: string;
 }
 
 const productSchema = new Schema<IProduct>(
@@ -19,6 +21,8 @@ const productSchema = new Schema<IProduct>(
     sellingPrice: { type: Number, required: true, min: 0 },
     stockQuantity: { type: Number, required: true, default: 0, min: 0 },
     isPerishable: { type: Boolean, default: false },
+    sellerName: { type: String, default: '', trim: true },
+    notes: { type: String, default: '', trim: true },
   },
   { timestamps: true }
 );

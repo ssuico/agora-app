@@ -125,6 +125,8 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
         costPrice: product?.costPrice ?? 0,
         sellingPrice: product?.sellingPrice ?? 0,
         isPerishable: product?.isPerishable ?? false,
+        sellerName: product?.sellerName ?? '',
+        notes: product?.notes ?? '',
         initialStock: rec.initialStock,
         restock: rec.restock,
         sold,
