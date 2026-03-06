@@ -1,68 +1,10 @@
 ---
 import AppLayout from '../../../layouts/AppLayout.astro';
-import { createApiClient } from '../../../lib/api';
+import { StoreReports } from '../../../components/app/StoreReports';
 
 const { storeId } = Astro.params;
-const token = Astro.cookies.get('agora_token')?.value ?? '';
-const api = createApiClient(token);
-
-interface Summary {
-  totalSales: number;
-  grossProfit: number;
-  totalCOGS: number;
-  transactionCount: number;
-}
-
-interface Store {
-  _id: string;
-  name: string;
-}
-
-let storeName = 'Store';
-let summary: Summary = {
-  totalSales: 0,
-  grossProfit: 0,
-  totalCOGS: 0,
-  transactionCount: 0,
-};
-
-try {
-  const [store, s] = await Promise.all([
-    api.get<Store>(`/api/stores/${storeId}`),
-    api.get<Summary>(`/api/reports/summary?storeId=${storeId}`),
-  ]);
-  storeName = store.name;
-  summary = s;
-} catch {
-  // handled below
-}
-
-const fmt = (n: number) =>
-  new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
-
-const cards = [
-  { label: 'Total Sales', value: fmt(summary.totalSales) },
-  { label: 'COGS', value: fmt(summary.totalCOGS) },
-  { label: 'Gross Profit', value: fmt(summary.grossProfit) },
-  { label: 'Transactions', value: summary.transactionCount.toString() },
-];
 ---
 
-<AppLayout title={`${storeName} Dashboard`} storeId={storeId}>
-  <div class="space-y-6">
-    <div>
-      <h1 class="text-2xl font-bold tracking-tight">{storeName}</h1>
-      <p class="text-sm text-muted-foreground">Store dashboard and financial overview</p>
-    </div>
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {
-        cards.map((card) => (
-          <div class="rounded-lg border bg-card p-5 shadow-sm">
-            <p class="text-sm font-medium text-muted-foreground">{card.label}</p>
-            <p class="mt-1 text-2xl font-bold">{card.value}</p>
-          </div>
-        ))
-      }
-    </div>
-  </div>
+<AppLayout title="Dashboard" storeId={storeId}>
+  <StoreReports storeId={storeId!} client:load />
 </AppLayout>

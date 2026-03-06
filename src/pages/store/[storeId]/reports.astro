@@ -1,10 +1,5 @@
 ---
-import AppLayout from '../../../layouts/AppLayout.astro';
-import { StoreReports } from '../../../components/app/StoreReports';
-
+// Reports is now the main dashboard; redirect to store index
 const { storeId } = Astro.params;
+return Astro.redirect(`/store/${storeId}`);
 ---
-
-<AppLayout title="Reports" storeId={storeId}>
-  <StoreReports storeId={storeId!} client:load />
-</AppLayout>

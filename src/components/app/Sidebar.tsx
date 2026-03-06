@@ -1,5 +1,4 @@
 import {
-  BarChart3,
   Home,
   MapPin,
   Package,
@@ -64,12 +63,6 @@ function getNavItems(storeId?: string): NavItem[] {
       icon: <ShoppingCart className="h-4 w-4" />,
       roles: ['store_manager'],
     },
-    {
-      label: 'Reports',
-      href: `${storePrefix}/reports`,
-      icon: <BarChart3 className="h-4 w-4" />,
-      roles: ['store_manager'],
-    },
   ];
 
   return [...adminItems, ...managerItems];
@@ -110,8 +103,11 @@ export function Sidebar({ role, currentPath, storeId, storeName, storeLocation }
 
       <nav className="flex flex-1 flex-col gap-1 p-3">
         {items.map((item) => {
+          const storeRoot = storeId ? `/store/${storeId}` : '';
+          const isExactStoreRoot = storeRoot && item.href === storeRoot;
           const isActive =
-            currentPath === item.href || currentPath.startsWith(item.href + '/');
+            currentPath === item.href ||
+            (!isExactStoreRoot && currentPath.startsWith(item.href + '/'));
           return (
             <a
               key={item.href}
