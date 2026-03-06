@@ -19,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Ban, Check, ChevronDown, ChevronRight, Download, FileSpreadsheet, History, Loader2, Package, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Ban, Check, ChevronDown, ChevronRight, Download, FileSpreadsheet, History, Loader2, Package, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -278,6 +278,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [newTxClaimStatus, setNewTxClaimStatus] = useState<ClaimStatus>('unclaimed');
   const [newTxPaymentStatus, setNewTxPaymentStatus] = useState<PaymentStatus>('unpaid');
   const [newTxSubmitting, setNewTxSubmitting] = useState(false);
+  const [newTxShowValidationWarning, setNewTxShowValidationWarning] = useState(false);
 
   useEffect(() => {
     if (!newTxOpen) return;
@@ -323,8 +324,15 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     const items = Object.entries(newTxQuantities)
       .filter(([, qty]) => qty > 0)
       .map(([productId, quantity]) => ({ productId, quantity }));
+    const hasCustomer = !!newTxCustomerId || (newTxWalkInName && newTxWalkInName.trim().length > 0);
     if (items.length === 0) {
-      toast.error('Add at least one product with quantity');
+      setNewTxShowValidationWarning(true);
+      toast.error('Add at least one product with quantity before creating the transaction.');
+      return;
+    }
+    if (!hasCustomer) {
+      setNewTxShowValidationWarning(true);
+      toast.error('Add a customer (select from list or enter walk-in name) before creating the transaction.');
       return;
     }
     setNewTxSubmitting(true);
@@ -354,6 +362,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       });
       if (res.ok) {
         toast.success('Transaction created');
+        setNewTxShowValidationWarning(false);
         setNewTxOpen(false);
         setNewTxQuantities({});
         setNewTxCustomerId('');
@@ -661,7 +670,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       </Tabs>
 
       {/* New Transaction modal */}
-      <Dialog open={newTxOpen} onOpenChange={setNewTxOpen}>
+      <Dialog open={newTxOpen} onOpenChange={(open) => { setNewTxOpen(open); if (!open) setNewTxShowValidationWarning(false); }}>
         <DialogContent className="max-w-xl max-h-[90vh] flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>New Transaction</DialogTitle>
@@ -759,6 +768,21 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               </div>
             </div>
           </div>
+
+          {newTxShowValidationWarning && (() => {
+            const itemCount = Object.values(newTxQuantities).reduce((a, b) => a + b, 0);
+            const hasCustomer = !!newTxCustomerId || (newTxWalkInName && newTxWalkInName.trim().length > 0);
+            const missing = [];
+            if (itemCount === 0) missing.push('at least one product with quantity');
+            if (!hasCustomer) missing.push('customer name (select or enter walk-in)');
+            if (missing.length === 0) return null;
+            return (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <p>Please add {missing.join(' and ')} before creating the transaction.</p>
+              </div>
+            );
+          })()}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewTxOpen(false)} disabled={newTxSubmitting}>Cancel</Button>
