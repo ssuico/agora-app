@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { AlertTriangle, ChevronLeft, ChevronRight, ImageIcon, Minus, Plus, ShoppingCart, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, ImageIcon, Loader2, Minus, Plus, ShoppingCart, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -144,8 +144,8 @@ function QuantityPicker({ value, max, onChange, size = 'sm' }: { value: number; 
 // Product detail dialog
 // ---------------------------------------------------------------------------
 
-function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart }: {
-  product: Product | null; open: boolean; onOpenChange: (open: boolean) => void; inCart?: CartItem; onAddToCart: (p: Product, qty: number) => void;
+function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart, isCooldown }: {
+  product: Product | null; open: boolean; onOpenChange: (open: boolean) => void; inCart?: CartItem; onAddToCart: (p: Product, qty: number) => void; isCooldown?: boolean;
 }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [failedSet, setFailedSet] = useState<Set<number>>(new Set());
@@ -225,8 +225,12 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart 
                   <p className="text-right text-sm text-muted-foreground">
                     Subtotal: <span className="font-medium text-foreground">{fmt(product.sellingPrice * qty)}</span>
                   </p>
-                  <Button className="w-full" onClick={() => { onAddToCart(product, qty); setQty(1); }}>
-                    <ShoppingCart className="mr-1.5 h-4 w-4" />Add {qty} to Cart
+                  <Button className="w-full" onClick={() => { onAddToCart(product, qty); setQty(1); }} disabled={isCooldown}>
+                    {isCooldown ? (
+                      <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Added to Cart</>
+                    ) : (
+                      <><ShoppingCart className="mr-1.5 h-4 w-4" />Add {qty} to Cart</>
+                    )}
                   </Button>
                 </>
               ) : (
@@ -254,6 +258,7 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
   const [error, setError] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [cardQuantities, setCardQuantities] = useState<Record<string, number>>({});
+  const [addToCartCooldowns, setAddToCartCooldowns] = useState<Set<string>>(new Set());
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]);
 
   const dismissAlert = (id: number) => {
@@ -328,6 +333,8 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
   // --- Cart helpers ---
 
   const addToCartWithQty = (product: Product, qty: number) => {
+    if (addToCartCooldowns.has(product._id)) return;
+
     setCart((prev) => {
       const existing = prev.find((c) => c.product._id === product._id);
       if (existing) {
@@ -337,6 +344,20 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
       return [...prev, { product, quantity: Math.min(qty, product.stockQuantity) }];
     });
     setCardQuantities((prev) => ({ ...prev, [product._id]: 1 }));
+
+    toast.success(`Added ${qty} × "${product.name}" to cart`, {
+      style: { background: '#16a34a', color: '#fff' },
+      iconTheme: { primary: '#fff', secondary: '#16a34a' },
+    });
+
+    setAddToCartCooldowns((prev) => new Set(prev).add(product._id));
+    setTimeout(() => {
+      setAddToCartCooldowns((prev) => {
+        const next = new Set(prev);
+        next.delete(product._id);
+        return next;
+      });
+    }, 3000);
   };
 
   const updateCartQuantity = (productId: string, newQty: number) => {
@@ -351,6 +372,12 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
 
   const removeFromCart = (productId: string) => {
     setCart((prev) => prev.filter((c) => c.product._id !== productId));
+  };
+
+  const clearAllCart = () => {
+    setCart([]);
+    setCardQuantities({});
+    toast.success('Cart cleared');
   };
 
   const removeUnavailableFromCart = () => {
@@ -523,8 +550,12 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
                           <span className="text-xs text-muted-foreground">Qty</span>
                           <QuantityPicker value={Math.min(cardQty, available)} max={available} onChange={(q) => setCardQty(product._id, q)} />
                         </div>
-                        <Button className="w-full" size="sm" onClick={() => addToCartWithQty(product, Math.min(cardQty, available))}>
-                          <ShoppingCart className="mr-1 h-3.5 w-3.5" />Add {Math.min(cardQty, available)} to Cart
+                        <Button className="w-full" size="sm" onClick={() => addToCartWithQty(product, Math.min(cardQty, available))} disabled={addToCartCooldowns.has(product._id)}>
+                          {addToCartCooldowns.has(product._id) ? (
+                            <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Added to Cart</>
+                          ) : (
+                            <><ShoppingCart className="mr-1 h-3.5 w-3.5" />Add {Math.min(cardQty, available)} to Cart</>
+                          )}
                         </Button>
                       </>
                     ) : (
@@ -545,6 +576,7 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
         onOpenChange={(open) => { if (!open) setSelectedProduct(null); }}
         inCart={selectedProduct ? getCartItem(selectedProduct._id) : undefined}
         onAddToCart={addToCartWithQty}
+        isCooldown={selectedProduct ? addToCartCooldowns.has(selectedProduct._id) : false}
       />
 
       {/* Cart Dialog */}
@@ -553,6 +585,11 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
           <DialogHeader>
             <DialogTitle>Reservation Cart</DialogTitle>
             <DialogDescription>Review items to reserve. Payment can be made upon claiming.</DialogDescription>
+            {cart.length > 0 && (
+              <Button variant="outline" size="sm" className="w-fit text-destructive border-destructive/50 hover:bg-destructive/10 hover:text-destructive mt-1" onClick={clearAllCart}>
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />Clear all items
+              </Button>
+            )}
           </DialogHeader>
 
           {/* Unavailable items banner */}
