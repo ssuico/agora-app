@@ -1,10 +1,13 @@
 import type { APIRoute } from 'astro';
+import { getApiBase } from '@/lib/api-base';
+
+const API_URL = getApiBase();
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   try {
     const body = await request.json();
 
-    const res = await fetch(`${import.meta.env.API_URL}/api/auth/login`, {
+    const res = await fetch(`${API_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

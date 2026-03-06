@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
+import { getApiBase } from '@/lib/api-base';
 
-const API_URL = import.meta.env.API_URL;
+const API_URL = getApiBase();
 
 export const PATCH: APIRoute = async ({ params, request, cookies }) => {
   const token = cookies.get('agora_token')?.value ?? '';

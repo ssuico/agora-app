@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
+import { getApiBase } from '@/lib/api-base';
 
-const API_URL = import.meta.env.API_URL;
+const API_URL = getApiBase();
 
 export const DELETE: APIRoute = async ({ params, cookies }) => {
   const token = cookies.get('agora_token')?.value ?? '';
