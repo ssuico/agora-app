@@ -76,13 +76,14 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
         tx.customerId && typeof tx.customerId === 'object'
           ? (tx.customerId as unknown as { name: string; email: string })
           : null;
+      const customerName = customer?.name ?? tx.walkInCustomerName ?? 'Walk-in';
       const items = itemsByTx.get(String(tx._id)) || [];
 
       if (items.length === 0) {
         sheet.addRow({
           id: String(tx._id),
           date: new Date(tx.createdAt).toLocaleString('en-US', { timeZone: APP_TIMEZONE }),
-          customer: customer?.name ?? 'Walk-in',
+          customer: customerName,
           email: customer?.email ?? '',
           product: '',
           quantity: '',
@@ -107,7 +108,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
           sheet.addRow({
             id: i === 0 ? String(tx._id) : '',
             date: i === 0 ? new Date(tx.createdAt).toLocaleString('en-US', { timeZone: APP_TIMEZONE }) : '',
-            customer: i === 0 ? (customer?.name ?? 'Walk-in') : '',
+            customer: i === 0 ? customerName : '',
             email: i === 0 ? (customer?.email ?? '') : '',
             product: prod?.name ?? 'Deleted product',
             quantity: item.quantity,

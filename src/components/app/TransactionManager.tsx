@@ -16,8 +16,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Ban, Check, ChevronDown, ChevronRight, Download, FileSpreadsheet, History, Loader2, Package, Trash2 } from 'lucide-react';
+import { Ban, Check, ChevronDown, ChevronRight, Download, FileSpreadsheet, History, Loader2, Package, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -30,6 +32,7 @@ interface Transaction {
   _id: string;
   storeId: string;
   customerId?: { _id: string; name: string; email: string } | null;
+  walkInCustomerName?: string | null;
   totalAmount: number;
   totalCost: number;
   grossProfit: number;
@@ -266,6 +269,109 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [generating, setGenerating] = useState(false);
   const [reportHistoryKey, setReportHistoryKey] = useState(0);
 
+  const [newTxOpen, setNewTxOpen] = useState(false);
+  const [newTxProducts, setNewTxProducts] = useState<Array<{ _id: string; name: string; sellingPrice: number; costPrice: number; stockQuantity: number }>>([]);
+  const [newTxCustomers, setNewTxCustomers] = useState<Array<{ _id: string; name: string; email: string }>>([]);
+  const [newTxQuantities, setNewTxQuantities] = useState<Record<string, number>>({});
+  const [newTxCustomerId, setNewTxCustomerId] = useState<string>('');
+  const [newTxWalkInName, setNewTxWalkInName] = useState('');
+  const [newTxClaimStatus, setNewTxClaimStatus] = useState<ClaimStatus>('unclaimed');
+  const [newTxPaymentStatus, setNewTxPaymentStatus] = useState<PaymentStatus>('unpaid');
+  const [newTxSubmitting, setNewTxSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!newTxOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [productsRes, customersRes] = await Promise.all([
+          fetch(`/api/products?storeId=${storeId}`),
+          fetch('/api/users?role=customer'),
+        ]);
+        if (cancelled) return;
+        if (productsRes.ok) {
+          const list = await productsRes.json();
+          setNewTxProducts(list);
+          setNewTxQuantities((prev) => {
+            const next = { ...prev };
+            for (const p of list) {
+              if (next[p._id] === undefined) next[p._id] = 0;
+            }
+            return next;
+          });
+        }
+        if (customersRes.ok) {
+          const list = await customersRes.json();
+          setNewTxCustomers(list);
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [newTxOpen, storeId]);
+
+  const setNewTxQty = (productId: string, delta: number) => {
+    setNewTxQuantities((prev) => {
+      const current = prev[productId] ?? 0;
+      const product = newTxProducts.find((p) => p._id === productId);
+      const max = product ? product.stockQuantity : 0;
+      const next = Math.max(0, Math.min(max, current + delta));
+      return { ...prev, [productId]: next };
+    });
+  };
+
+  const handleCreateTransaction = async () => {
+    const items = Object.entries(newTxQuantities)
+      .filter(([, qty]) => qty > 0)
+      .map(([productId, quantity]) => ({ productId, quantity }));
+    if (items.length === 0) {
+      toast.error('Add at least one product with quantity');
+      return;
+    }
+    setNewTxSubmitting(true);
+    try {
+      const body: {
+        storeId: string;
+        items: Array<{ productId: string; quantity: number }>;
+        customerId?: string;
+        walkInCustomerName?: string;
+        claimStatus: ClaimStatus;
+        paymentStatus: PaymentStatus;
+      } = {
+        storeId,
+        items,
+        claimStatus: newTxClaimStatus,
+        paymentStatus: newTxPaymentStatus,
+      };
+      if (newTxCustomerId) {
+        body.customerId = newTxCustomerId;
+      } else if (newTxWalkInName.trim()) {
+        body.walkInCustomerName = newTxWalkInName.trim();
+      }
+      const res = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        toast.success('Transaction created');
+        setNewTxOpen(false);
+        setNewTxQuantities({});
+        setNewTxCustomerId('');
+        setNewTxWalkInName('');
+        setNewTxClaimStatus('unclaimed');
+        setNewTxPaymentStatus('unpaid');
+        fetchTransactions();
+      } else {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to create transaction');
+      }
+    } catch {
+      toast.error('Failed to create transaction');
+    } finally {
+      setNewTxSubmitting(false);
+    }
+  };
+
   const fetchTransactions = async () => {
     try {
       const params = new URLSearchParams({ storeId });
@@ -472,6 +578,14 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
               </span>
               <Button
+                variant="default"
+                size="sm"
+                onClick={() => setNewTxOpen(true)}
+              >
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                New Transaction
+              </Button>
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={handleGenerateReport}
@@ -546,6 +660,115 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         </TabsContent>
       </Tabs>
 
+      {/* New Transaction modal */}
+      <Dialog open={newTxOpen} onOpenChange={setNewTxOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>New Transaction</DialogTitle>
+            <DialogDescription>
+              Add products, set customer, and choose claim/payment status.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 overflow-hidden flex-1 min-h-0">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Products</Label>
+              <div className="border rounded-md overflow-y-auto max-h-[280px] p-2 bg-muted/30">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {newTxProducts.map((p) => {
+                    const qty = newTxQuantities[p._id] ?? 0;
+                    return (
+                      <Card key={p._id} className="p-2 flex flex-col gap-1.5">
+                        <CardContent className="p-0 space-y-1">
+                          <p className="text-xs font-medium leading-tight line-clamp-2">{p.name}</p>
+                          <p className="text-xs text-muted-foreground">{fmt(p.sellingPrice)}</p>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              onClick={() => setNewTxQty(p._id, -1)}
+                              disabled={qty <= 0}
+                            >
+                              −
+                            </Button>
+                            <span className="text-xs font-medium min-w-6 text-center">{qty}</span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              onClick={() => setNewTxQty(p._id, 1)}
+                              disabled={qty >= p.stockQuantity}
+                            >
+                              +
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+                {newTxProducts.length === 0 && (
+                  <p className="text-sm text-muted-foreground py-4 text-center">No products in this store.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Customer</Label>
+                <Select value={newTxCustomerId || 'walk-in'} onValueChange={(v) => setNewTxCustomerId(v === 'walk-in' ? '' : v)}>
+                  <SelectTrigger><SelectValue placeholder="Walk-in" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="walk-in">Walk-in (enter name below)</SelectItem>
+                    {newTxCustomers.map((c) => (
+                      <SelectItem key={c._id} value={c._id}>{c.name} {c.email ? `(${c.email})` : ''}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(!newTxCustomerId || newTxCustomerId === '') && (
+                  <Input
+                    placeholder="Customer name (optional)"
+                    value={newTxWalkInName}
+                    onChange={(e) => setNewTxWalkInName(e.target.value)}
+                    className="mt-1"
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Claim / Payment</Label>
+                <div className="flex gap-2">
+                  <Select value={newTxClaimStatus} onValueChange={(v) => setNewTxClaimStatus(v as ClaimStatus)}>
+                    <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unclaimed">Unclaimed</SelectItem>
+                      <SelectItem value="claimed">Claimed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={newTxPaymentStatus} onValueChange={(v) => setNewTxPaymentStatus(v as PaymentStatus)}>
+                    <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unpaid">Unpaid</SelectItem>
+                      <SelectItem value="paid">Paid</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewTxOpen(false)} disabled={newTxSubmitting}>Cancel</Button>
+            <Button onClick={handleCreateTransaction} disabled={newTxSubmitting}>
+              {newTxSubmitting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {newTxSubmitting ? 'Creating...' : 'Create Transaction'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Cancel confirmation dialog */}
       <Dialog open={!!cancelTarget} onOpenChange={(open) => { if (!open) setCancelTarget(null); }}>
         <DialogContent>
@@ -558,7 +781,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
           {cancelTarget && (
             <div className="rounded-md border px-4 py-3 text-sm space-y-1">
               <p><span className="text-muted-foreground">Order ID:</span> <span className="font-mono">{cancelTarget._id.slice(-8)}</span></p>
-              <p><span className="text-muted-foreground">Customer:</span> {cancelTarget.customerId && typeof cancelTarget.customerId === 'object' ? cancelTarget.customerId.name : 'Walk-in'}</p>
+              <p><span className="text-muted-foreground">Customer:</span> {cancelTarget.customerId && typeof cancelTarget.customerId === 'object' ? cancelTarget.customerId.name : (cancelTarget.walkInCustomerName || 'Walk-in')}</p>
               <p><span className="text-muted-foreground">Amount:</span> <span className="font-medium">{fmt(cancelTarget.totalAmount)}</span></p>
             </div>
           )}
@@ -624,7 +847,7 @@ function TransactionRow({
               <span className="block text-xs text-muted-foreground">{tx.customerId.email}</span>
             </div>
           ) : (
-            <span className="text-xs text-muted-foreground italic">Walk-in</span>
+            <span className="text-xs text-muted-foreground italic">{tx.walkInCustomerName || 'Walk-in'}</span>
           )}
         </td>
         {/* Items summary */}

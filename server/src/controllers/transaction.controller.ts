@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { Product } from '../models/Product.js';
-import { Transaction } from '../models/Transaction.js';
+import { Transaction, type ClaimStatus, type PaymentStatus } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { getIO } from '../socket.js';
 import { UserRole } from '../types/index.js';
@@ -11,12 +11,22 @@ interface CartItem {
   quantity: number;
 }
 
+interface CreateTransactionBody {
+  storeId: string;
+  items: CartItem[];
+  customerId?: string;
+  walkInCustomerName?: string;
+  claimStatus?: ClaimStatus;
+  paymentStatus?: PaymentStatus;
+}
+
 export const createTransaction = async (req: Request, res: Response): Promise<void> => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const { storeId, items } = req.body as { storeId: string; items: CartItem[] };
+    const body = req.body as CreateTransactionBody;
+    const { storeId, items } = body;
 
     if (!items?.length) {
       res.status(400).json({ message: 'Transaction must include at least one item' });
@@ -64,8 +74,25 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
     const grossProfit = totalAmount - totalCost;
 
+    const isStaff = req.user!.role === UserRole.ADMIN || req.user!.role === UserRole.STORE_MANAGER;
     const customerId =
-      req.user!.role === UserRole.CUSTOMER ? req.user!.userId : undefined;
+      req.user!.role === UserRole.CUSTOMER
+        ? req.user!.userId
+        : isStaff && body.customerId
+          ? body.customerId
+          : undefined;
+    const walkInCustomerName =
+      isStaff && body.walkInCustomerName?.trim()
+        ? body.walkInCustomerName.trim()
+        : undefined;
+    const claimStatus =
+      isStaff && body.claimStatus && ['unclaimed', 'claimed'].includes(body.claimStatus)
+        ? body.claimStatus
+        : 'unclaimed';
+    const paymentStatus =
+      isStaff && body.paymentStatus && ['unpaid', 'paid'].includes(body.paymentStatus)
+        ? body.paymentStatus
+        : 'unpaid';
 
     const [transaction] = await Transaction.create(
       [{
@@ -73,9 +100,10 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         totalAmount,
         totalCost,
         grossProfit,
-        customerId,
-        claimStatus: 'unclaimed',
-        paymentStatus: 'unpaid',
+        customerId: customerId ?? null,
+        walkInCustomerName: walkInCustomerName ?? null,
+        claimStatus,
+        paymentStatus,
       }],
       { session }
     );
