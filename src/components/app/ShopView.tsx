@@ -346,8 +346,8 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
     setCardQuantities((prev) => ({ ...prev, [product._id]: 1 }));
 
     toast.success(`Added ${qty} × "${product.name}" to cart`, {
-      style: { background: '#16a34a', color: '#fff' },
-      iconTheme: { primary: '#fff', secondary: '#16a34a' },
+      style: { background: '#84B179', color: '#fff' },
+      iconTheme: { primary: '#fff', secondary: '#84B179' },
     });
 
     setAddToCartCooldowns((prev) => new Set(prev).add(product._id));

@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
 import { Pencil, Plus, Trash2, UserPlus, UserMinus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -67,6 +68,7 @@ export function StoreManager() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [page, setPage] = useState(1);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [managerDialogOpen, setManagerDialogOpen] = useState(false);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
@@ -290,26 +292,29 @@ export function StoreManager() {
         </Button>
       </div>
 
-      <div className="rounded-lg border bg-card">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b">
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Location</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Created</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stores.length === 0 ? (
+      <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col">
+        <div className="data-table-scroll-wrapper flex-1 min-h-0">
+          <table className="data-table">
+            <thead>
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                  No stores found. Click "Add Store" to create one.
-                </td>
+                <th>Name</th>
+                <th>Location</th>
+                <th>Created</th>
+                <th className="text-right">Actions</th>
               </tr>
-            ) : (
-              stores.map((store) => (
-                <tr key={store._id} className="border-b last:border-0 hover:bg-muted/50">
+            </thead>
+            <tbody>
+              {stores.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                    No stores found. Click "Add Store" to create one.
+                  </td>
+                </tr>
+              ) : (
+                stores
+                  .slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
+                  .map((store) => (
+                <tr key={store._id}>
                   <td className="px-4 py-3 font-medium">{store.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {getLocationName(store.locationId)}
@@ -336,10 +341,19 @@ export function StoreManager() {
                     </div>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                  ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        {stores.length > 0 && (
+          <TablePagination
+            currentPage={page}
+            totalItems={stores.length}
+            onPageChange={setPage}
+            label="stores"
+          />
+        )}
       </div>
 
       {/* Create / Edit Dialog */}

@@ -1,5 +1,6 @@
 ---
 import CustomerLayout from '../layouts/CustomerLayout.astro';
+import { PurchasesTable } from '../components/app/PurchasesTable';
 import { createApiClient } from '../lib/api';
 
 const token = Astro.cookies.get('agora_token')?.value ?? '';
@@ -18,14 +19,6 @@ try {
 } catch {
   // handled below
 }
-
-const fmt = (n: number) =>
-  new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
-
-function getStoreName(storeId: { _id: string; name: string } | string): string {
-  if (typeof storeId === 'object' && storeId !== null) return storeId.name;
-  return String(storeId).slice(-8);
-}
 ---
 
 <CustomerLayout title="My Purchases">
@@ -40,41 +33,6 @@ function getStoreName(storeId: { _id: string; name: string } | string): string {
       </a>
     </div>
 
-    <div class="rounded-lg border bg-card">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b">
-            <th class="px-4 py-3 text-left font-medium text-muted-foreground">Order ID</th>
-            <th class="px-4 py-3 text-left font-medium text-muted-foreground">Store</th>
-            <th class="px-4 py-3 text-left font-medium text-muted-foreground">Total</th>
-            <th class="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
-          </tr>
-        </thead>
-        <tbody>
-          {
-            purchases.length === 0 ? (
-              <tr>
-                <td colspan="4" class="px-4 py-8 text-center text-muted-foreground">
-                  No purchases yet
-                </td>
-              </tr>
-            ) : (
-              purchases.map((tx) => (
-                <tr class="border-b last:border-0 hover:bg-muted/50">
-                  <td class="px-4 py-3 font-mono text-xs text-muted-foreground">
-                    {tx._id.slice(-8)}
-                  </td>
-                  <td class="px-4 py-3 font-medium">{getStoreName(tx.storeId)}</td>
-                  <td class="px-4 py-3 font-medium">{fmt(tx.totalAmount)}</td>
-                  <td class="px-4 py-3 text-muted-foreground">
-                    {new Date(tx.createdAt).toLocaleString()}
-                  </td>
-                </tr>
-              ))
-            )
-          }
-        </tbody>
-      </table>
-    </div>
+    <PurchasesTable client:load purchases={purchases} />
   </div>
 </CustomerLayout>

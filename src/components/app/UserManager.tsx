@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
 import { Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -54,6 +55,7 @@ export function UserManager() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [page, setPage] = useState(1);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [form, setForm] = useState<UserFormData>(EMPTY_FORM);
@@ -174,27 +176,30 @@ export function UserManager() {
         </Button>
       </div>
 
-      <div className="rounded-lg border bg-card">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b">
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Email</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Role</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Created</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.length === 0 ? (
+      <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col">
+        <div className="data-table-scroll-wrapper flex-1 min-h-0">
+          <table className="data-table">
+            <thead>
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                  No users found.
-                </td>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Created</th>
+                <th className="text-right">Actions</th>
               </tr>
-            ) : (
-              users.map((user) => (
-                <tr key={user._id} className="border-b last:border-0 hover:bg-muted/50">
+            </thead>
+            <tbody>
+              {users.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                    No users found.
+                  </td>
+                </tr>
+              ) : (
+                users
+                  .slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
+                  .map((user) => (
+                <tr key={user._id}>
                   <td className="px-4 py-3 font-medium">{user.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
                   <td className="px-4 py-3">
@@ -219,10 +224,19 @@ export function UserManager() {
                     </Button>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                  ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        {users.length > 0 && (
+          <TablePagination
+            currentPage={page}
+            totalItems={users.length}
+            onPageChange={setPage}
+            label="users"
+          />
+        )}
       </div>
 
       {/* Create User Dialog */}

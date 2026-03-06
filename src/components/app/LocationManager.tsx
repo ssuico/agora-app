@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -29,6 +30,7 @@ export function LocationManager() {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [page, setPage] = useState(1);
 
   const fetchLocations = async () => {
     try {
@@ -140,25 +142,28 @@ export function LocationManager() {
         </Button>
       </div>
 
-      <div className="rounded-lg border bg-card">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b">
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Created</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {locations.length === 0 ? (
+      <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col">
+        <div className="data-table-scroll-wrapper flex-1 min-h-0">
+          <table className="data-table">
+            <thead>
               <tr>
-                <td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">
-                  No locations found. Click "Add Location" to create one.
-                </td>
+                <th>Name</th>
+                <th>Created</th>
+                <th className="text-right">Actions</th>
               </tr>
-            ) : (
-              locations.map((loc) => (
-                <tr key={loc._id} className="border-b last:border-0 hover:bg-muted/50">
+            </thead>
+            <tbody>
+              {locations.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">
+                    No locations found. Click "Add Location" to create one.
+                  </td>
+                </tr>
+              ) : (
+                locations
+                  .slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
+                  .map((loc) => (
+                <tr key={loc._id}>
                   <td className="px-4 py-3 font-medium">{loc.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {new Date(loc.createdAt).toLocaleDateString()}
@@ -179,10 +184,19 @@ export function LocationManager() {
                     </div>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                  ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        {locations.length > 0 && (
+          <TablePagination
+            currentPage={page}
+            totalItems={locations.length}
+            onPageChange={setPage}
+            label="locations"
+          />
+        )}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
