@@ -124,145 +124,76 @@ export const getDailyReport = async (req: Request, res: Response): Promise<void>
 
 export const getInventoryReport = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { storeId, startDate, endDate } = req.query;
+    const { storeId, date } = req.query;
 
-    if (!storeId || !startDate || !endDate) {
-      res.status(400).json({ message: 'storeId, startDate, and endDate are required' });
+    if (!storeId || !date) {
+      res.status(400).json({ message: 'storeId and date are required' });
       return;
     }
 
-    const startUTC = new Date(startDate as string);
-    startUTC.setUTCHours(0, 0, 0, 0);
-    const endUTC = new Date(endDate as string);
-    endUTC.setUTCHours(23, 59, 59, 999);
-
-    const txStart = localDayRange(startUTC).dayStart;
-    const endDateUTC = new Date(endDate as string);
-    endDateUTC.setUTCHours(0, 0, 0, 0);
-    const txEnd = localDayRange(endDateUTC).dayEnd;
+    const dateUTC = new Date(date as string);
+    dateUTC.setUTCHours(0, 0, 0, 0);
 
     const products = await Product.find({ storeId }).lean();
     if (products.length === 0) {
-      res.json({ products: [], dailyBreakdown: [] });
+      res.json({ date: date as string, products: [] });
       return;
     }
 
     const productIds = products.map((p) => p._id);
     const productMap = new Map(products.map((p) => [String(p._id), p]));
 
-    // Inventory records use UTC-midnight dates, so query with UTC boundaries
     const records = await InventoryRecord.find({
       productId: { $in: productIds },
-      date: { $gte: startUTC, $lte: endUTC },
-    })
-      .sort({ date: 1 })
-      .lean();
+      date: dateUTC,
+    }).lean();
 
-    // Transactions use actual timestamps, so query with timezone-adjusted boundaries
+    const { dayStart, dayEnd } = localDayRange(dateUTC);
+
     const activeTxs = await Transaction.find({
       storeId,
       orderStatus: { $ne: 'cancelled' },
-      createdAt: { $gte: txStart, $lte: txEnd },
+      createdAt: { $gte: dayStart, $lte: dayEnd },
     })
-      .select('_id createdAt')
+      .select('_id')
       .lean();
 
-    // Group transactions by local date string
-    const txByDate = new Map<string, string[]>();
-    for (const tx of activeTxs) {
-      const dStr = toLocalDateStr(tx.createdAt);
-      const arr = txByDate.get(dStr) ?? [];
-      arr.push(String(tx._id));
-      txByDate.set(dStr, arr);
-    }
+    const txIds = activeTxs.map((t) => t._id);
 
-    // Get all transaction items in the date range
-    const allTxIds = activeTxs.map((t) => t._id);
-    const txItems = await TransactionItem.find({
-      transactionId: { $in: allTxIds },
-      productId: { $in: productIds },
-    }).lean();
+    const soldAgg = txIds.length > 0
+      ? await TransactionItem.aggregate([
+          { $match: { transactionId: { $in: txIds }, productId: { $in: productIds } } },
+          { $group: { _id: '$productId', totalSold: { $sum: '$quantity' } } },
+        ])
+      : [];
 
-    // Map: txId -> local dateStr
-    const txDateMap = new Map<string, string>();
-    for (const tx of activeTxs) {
-      txDateMap.set(String(tx._id), toLocalDateStr(tx.createdAt));
-    }
+    const soldMap = new Map<string, number>(
+      soldAgg.map((s: { _id: unknown; totalSold: number }) => [String(s._id), s.totalSold])
+    );
 
-    // Build sold: Map<"productId|date", number>
-    const soldByKey = new Map<string, number>();
-    for (const item of txItems) {
-      const dStr = txDateMap.get(String(item.transactionId));
-      if (!dStr) continue;
-      const key = `${String(item.productId)}|${dStr}`;
-      soldByKey.set(key, (soldByKey.get(key) ?? 0) + item.quantity);
-    }
-
-    // Build daily breakdown with sold + currentStock
-    const dailyBreakdown = records.map((rec) => {
-      const dStr = rec.date.toISOString().slice(0, 10);
-      const sold = soldByKey.get(`${String(rec.productId)}|${dStr}`) ?? 0;
-      const displayInitialStock = rec.initialStock + rec.restock;
-      const currentStock = displayInitialStock - sold;
+    const reportProducts = records.map((rec) => {
       const product = productMap.get(String(rec.productId));
+      const sold = soldMap.get(String(rec.productId)) ?? 0;
+      const displayInitialStock = rec.initialStock + rec.restock;
+      const currentStock = Math.max(0, displayInitialStock - sold);
 
       return {
-        date: dStr,
         productId: String(rec.productId),
         productName: product?.name ?? 'Unknown',
+        isPerishable: product?.isPerishable ?? false,
+        costPrice: product?.costPrice ?? 0,
+        sellingPrice: product?.sellingPrice ?? 0,
         initialStock: rec.initialStock,
         restock: rec.restock,
         displayInitialStock,
         sold,
-        currentStock: Math.max(0, currentStock),
+        currentStock,
       };
     });
 
-    // Product-level aggregation across the date range
-    const aggMap = new Map<string, {
-      productName: string;
-      totalInitialStock: number;
-      totalRestock: number;
-      totalSold: number;
-      latestCurrentStock: number;
-      latestDate: string;
-      daysTracked: number;
-    }>();
-
-    for (const row of dailyBreakdown) {
-      const existing = aggMap.get(row.productId);
-      if (existing) {
-        existing.totalInitialStock += row.displayInitialStock;
-        existing.totalRestock += row.restock;
-        existing.totalSold += row.sold;
-        existing.daysTracked += 1;
-        if (row.date >= existing.latestDate) {
-          existing.latestCurrentStock = row.currentStock;
-          existing.latestDate = row.date;
-        }
-      } else {
-        aggMap.set(row.productId, {
-          productName: row.productName,
-          totalInitialStock: row.displayInitialStock,
-          totalRestock: row.restock,
-          totalSold: row.sold,
-          latestCurrentStock: row.currentStock,
-          latestDate: row.date,
-          daysTracked: 1,
-        });
-      }
-    }
-
-    const productSummaries = Array.from(aggMap.entries()).map(([productId, data]) => ({
-      productId,
-      ...data,
-    }));
-
     res.json({
-      startDate: startDate as string,
-      endDate: endDate as string,
-      products: productSummaries,
-      dailyBreakdown,
+      date: date as string,
+      products: reportProducts,
     });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
