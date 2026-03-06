@@ -1,14 +1,24 @@
 import { Request, Response } from 'express';
-import { localDayRange, toLocalDateStr } from '../config/timezone.js';
+import { localDayRange, localDayRangeFromDateString } from '../config/timezone.js';
 import { InventoryRecord } from '../models/InventoryRecord.js';
 import { Product } from '../models/Product.js';
 import { Transaction } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 
+/** Parse date string to UTC midnight (for InventoryRecord queries). */
+function toDateOnly(input: string | Date): Date {
+  const d = new Date(input);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Same filters as getSummary so daily report shows the same "sold" definition. */
+const REPORT_TX_FILTER = { paymentStatus: 'paid' as const, orderStatus: { $ne: 'cancelled' as const } };
+
 export const getSummary = async (req: Request, res: Response): Promise<void> => {
   try {
     const { storeId } = req.query;
-    const filter: Record<string, unknown> = { paymentStatus: 'paid', orderStatus: { $ne: 'cancelled' } };
+    const filter: Record<string, unknown> = { ...REPORT_TX_FILTER };
     if (storeId) filter.storeId = storeId;
 
     const transactions = await Transaction.find(filter);
@@ -24,7 +34,8 @@ export const getSummary = async (req: Request, res: Response): Promise<void> => 
       transactionCount: transactions.length,
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err });
+    const message = err instanceof Error ? err.message : 'Server error';
+    res.status(500).json({ message: 'Server error', error: message });
   }
 };
 
@@ -37,14 +48,23 @@ export const getDailyReport = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const dateUTC = new Date(date as string);
-    dateUTC.setUTCHours(0, 0, 0, 0);
-    const { dayStart, dayEnd } = localDayRange(dateUTC);
+    const dateStr = String(date).trim();
+    let dayStart: Date;
+    let dayEnd: Date;
+    try {
+      const range = localDayRangeFromDateString(dateStr);
+      dayStart = range.dayStart;
+      dayEnd = range.dayEnd;
+    } catch {
+      const dateObj = toDateOnly(dateStr);
+      const range = localDayRange(dateObj);
+      dayStart = range.dayStart;
+      dayEnd = range.dayEnd;
+    }
 
     const transactions = await Transaction.find({
       storeId,
-      paymentStatus: 'paid',
-      orderStatus: { $ne: 'cancelled' },
+      ...REPORT_TX_FILTER,
       createdAt: { $gte: dayStart, $lte: dayEnd },
     });
 
@@ -69,7 +89,8 @@ export const getDailyReport = async (req: Request, res: Response): Promise<void>
         name: string;
         sellingPrice: number;
         costPrice: number;
-      };
+      } | null;
+      if (!product) continue;
       const id = String(product._id);
       const existing = soldMap.get(id);
       if (existing) {
@@ -106,7 +127,7 @@ export const getDailyReport = async (req: Request, res: Response): Promise<void>
     }));
 
     res.json({
-      date: date as string,
+      date: dateStr,
       transactionCount: transactions.length,
       soldItems,
       totals: {
@@ -118,7 +139,8 @@ export const getDailyReport = async (req: Request, res: Response): Promise<void>
       inventory,
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err });
+    const message = err instanceof Error ? err.message : 'Server error';
+    res.status(500).json({ message: 'Server error', error: message });
   }
 };
 
@@ -131,12 +153,12 @@ export const getInventoryReport = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    const dateUTC = new Date(date as string);
-    dateUTC.setUTCHours(0, 0, 0, 0);
+    const dateStr = String(date).trim();
+    const dateObj = toDateOnly(dateStr);
 
     const products = await Product.find({ storeId }).lean();
     if (products.length === 0) {
-      res.json({ date: date as string, products: [] });
+      res.json({ date: dateStr, products: [] });
       return;
     }
 
@@ -145,10 +167,10 @@ export const getInventoryReport = async (req: Request, res: Response): Promise<v
 
     const records = await InventoryRecord.find({
       productId: { $in: productIds },
-      date: dateUTC,
+      date: dateObj,
     }).lean();
 
-    const { dayStart, dayEnd } = localDayRange(dateUTC);
+    const { dayStart, dayEnd } = localDayRange(dateObj);
 
     const activeTxs = await Transaction.find({
       storeId,
@@ -194,10 +216,11 @@ export const getInventoryReport = async (req: Request, res: Response): Promise<v
     });
 
     res.json({
-      date: date as string,
+      date: dateStr,
       products: reportProducts,
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err });
+    const message = err instanceof Error ? err.message : 'Server error';
+    res.status(500).json({ message: 'Server error', error: message });
   }
 };

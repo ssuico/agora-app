@@ -51,3 +51,20 @@ export function toLocalDateStr(date: Date): string {
   const local = new Date(date.getTime() - offsetMinutes * 60 * 1000);
   return local.toISOString().slice(0, 10);
 }
+
+/**
+ * Return the UTC instant range [dayStart, dayEnd] for the full calendar day
+ * given by `dateStr` (YYYY-MM-DD) in APP_TIMEZONE. Use this when the date
+ * string is intended as a local calendar date (e.g. from a date picker).
+ */
+export function localDayRangeFromDateString(dateStr: string): { dayStart: Date; dayEnd: Date } {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) {
+    throw new Error(`Invalid date string: ${dateStr}`);
+  }
+  const noonUtc = Date.UTC(y, m - 1, d, 12, 0, 0, 0);
+  const offsetMs = getTzOffsetMinutes(new Date(noonUtc), APP_TIMEZONE) * 60 * 1000;
+  const dayStart = new Date(noonUtc - 12 * 60 * 60 * 1000 - offsetMs);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+  return { dayStart, dayEnd };
+}
