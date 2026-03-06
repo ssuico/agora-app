@@ -62,6 +62,11 @@ interface TransactionManagerProps {
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
 
+/** Use EST for all transaction/report dates so they match server APP_TIMEZONE. */
+const EST_TIMEZONE = 'America/New_York';
+const fmtDate = (date: Date) =>
+  date.toLocaleString('en-US', { timeZone: EST_TIMEZONE });
+
 const COL_COUNT = 10;
 
 function ClaimBadge({ status }: { status: ClaimStatus }) {
@@ -179,7 +184,7 @@ function ReportHistory({ storeId }: { storeId: string }) {
               reports.map((r) => (
                 <tr key={r._id} className="border-b last:border-0 hover:bg-muted/50">
                   <td className="px-4 py-3 whitespace-nowrap">
-                    {new Date(r.createdAt).toLocaleString()}
+                    {fmtDate(new Date(r.createdAt))}
                   </td>
                   <td className="px-4 py-3">
                     {r.generatedBy?.name ?? <span className="text-muted-foreground italic">Unknown</span>}
@@ -639,7 +644,7 @@ function TransactionRow({
         <td className="px-4 py-3"><OrderBadge status={tx.orderStatus ?? 'active'} /></td>
         <td className="px-4 py-3">{isCancelled ? <span className="text-xs text-muted-foreground">—</span> : <ClaimBadge status={tx.claimStatus} />}</td>
         <td className="px-4 py-3">{isCancelled ? <span className="text-xs text-muted-foreground">—</span> : <PaymentBadge status={tx.paymentStatus} />}</td>
-        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{new Date(tx.createdAt).toLocaleString()}</td>
+        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{fmtDate(new Date(tx.createdAt))}</td>
         <td className="px-4 py-3 text-right">
           {isCancelled ? (
             <span className="text-xs text-muted-foreground italic">Cancelled</span>
