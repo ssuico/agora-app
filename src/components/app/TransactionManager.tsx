@@ -682,6 +682,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                         <CardContent className="p-0 space-y-1">
                           <p className="text-xs font-medium leading-tight line-clamp-2">{p.name}</p>
                           <p className="text-xs text-muted-foreground">{fmt(p.sellingPrice)}</p>
+                          <p className="text-xs text-muted-foreground">Stock: {p.stockQuantity}</p>
                           <div className="flex items-center gap-1">
                             <Button
                               type="button"
