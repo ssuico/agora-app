@@ -545,6 +545,8 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const [closeSubmitting, setCloseSubmitting] = useState(false);
   const [reopenSubmitting, setReopenSubmitting] = useState(false);
   const [productsPage, setProductsPage] = useState(1);
+  const [inventorySearch, setInventorySearch] = useState('');
+  const [inventoryTypeFilter, setInventoryTypeFilter] = useState<'all' | 'perishable' | 'non-perishable'>('all');
 
   const isEditable = selectedDate === todayStr;
   const storeMap = new Map(stores.map((s) => [s._id, s.name]));
@@ -627,7 +629,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
 
   useEffect(() => {
     setProductsPage(1);
-  }, [selectedDate, filterStoreId]);
+  }, [selectedDate, filterStoreId, inventorySearch, inventoryTypeFilter]);
 
   const shiftDate = (days: number) => {
     const [y, m, d] = selectedDate.split('-').map(Number);
@@ -984,6 +986,20 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     carriedOverQty: number;
   }>;
 
+  const filteredAndSortedRows = displayRows
+    .filter((row) => {
+      const q = inventorySearch.trim().toLowerCase();
+      if (q) {
+        const nameMatch = row.product.name.toLowerCase().includes(q);
+        const sellerMatch = (row.product.sellerName ?? '').toLowerCase().includes(q);
+        if (!nameMatch && !sellerMatch) return false;
+      }
+      if (inventoryTypeFilter === 'perishable' && !row.product.isPerishable) return false;
+      if (inventoryTypeFilter === 'non-perishable' && row.product.isPerishable) return false;
+      return true;
+    })
+    .sort((a, b) => a.product.name.localeCompare(b.product.name, undefined, { sensitivity: 'base' }));
+
   // --- Render ---
 
   if (loading) {
@@ -1104,6 +1120,28 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           </div>
         )}
 
+        <div className="flex items-center gap-2">
+          <Label className="text-sm text-muted-foreground whitespace-nowrap">Search:</Label>
+          <Input
+            type="search"
+            placeholder="Name or seller..."
+            value={inventorySearch}
+            onChange={(e) => setInventorySearch(e.target.value)}
+            className="w-44 h-9"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm text-muted-foreground whitespace-nowrap">Type:</Label>
+          <Select value={inventoryTypeFilter} onValueChange={(v: 'all' | 'perishable' | 'non-perishable') => setInventoryTypeFilter(v)}>
+            <SelectTrigger className="w-36 h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="perishable">Perishable</SelectItem>
+              <SelectItem value="non-perishable">Non-perishable</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="flex items-center gap-1 ml-auto">
           <Button variant="ghost" size="sm" onClick={() => shiftDate(-1)} title="Previous day">
             <ChevronLeft className="h-4 w-4" />
@@ -1154,37 +1192,41 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           <table className="data-table">
             <thead>
               <tr>
-                <th className="w-16">Image</th>
-                <th>Name</th>
-                <th>Seller</th>
-                <th className="w-10">Notes</th>
-                <th>Type</th>
+                <th className="w-16 text-center">Image</th>
+                <th className="text-center">Name</th>
+                <th className="text-center">Seller</th>
+                <th className="w-10 text-center">Notes</th>
+                <th className="text-center">Type</th>
                 {!isScoped && (
-                  <th>Store</th>
+                  <th className="text-center">Store</th>
                 )}
-                <th>Cost</th>
-                <th>Selling</th>
-                <th className="text-right">Initial</th>
-                <th className="text-right">Restock</th>
-                <th className="text-right">Sold</th>
-                <th className="text-right">Current</th>
+                <th className="text-center">Cost</th>
+                <th className="text-center">Selling</th>
+                <th className="text-center">Initial</th>
+                <th className="text-center">Restock</th>
+                <th className="text-center">Sold</th>
+                <th className="text-center">Current</th>
                 {isEditable && (
-                  <th className="text-right">Actions</th>
+                  <th className="text-center">Actions</th>
                 )}
               </tr>
             </thead>
             <tbody>
-              {displayRows.length === 0 ? (
+              {filteredAndSortedRows.length === 0 ? (
                 <tr>
                   <td
                     colSpan={isScoped ? (isEditable ? 12 : 11) : (isEditable ? 13 : 12)}
                     className="px-4 py-8 text-center text-muted-foreground"
                   >
-                    {isEditable ? 'No products found. Click "Add Product" to create one.' : 'No inventory records for this date.'}
+                    {displayRows.length > 0
+                      ? 'No products match your filters.'
+                      : isEditable
+                        ? 'No products found. Click "Add Product" to create one.'
+                        : 'No inventory records for this date.'}
                   </td>
                 </tr>
               ) : (
-                displayRows
+                filteredAndSortedRows
                   .slice((productsPage - 1) * ITEMS_PER_PAGE, productsPage * ITEMS_PER_PAGE)
                   .map(({ product, displayInitialStock, restock, sold, currentStock, isCarriedOver, carriedOverQty }) => (
                 <tr key={product._id}>
@@ -1276,10 +1318,10 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             </tbody>
           </table>
         </div>
-        {displayRows.length > 0 && (
+        {filteredAndSortedRows.length > 0 && (
           <TablePagination
             currentPage={productsPage}
-            totalItems={displayRows.length}
+            totalItems={filteredAndSortedRows.length}
             onPageChange={setProductsPage}
             label="products"
           />
