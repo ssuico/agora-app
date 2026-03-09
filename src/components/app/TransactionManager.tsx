@@ -71,6 +71,11 @@ const EST_TIMEZONE = 'America/New_York';
 const fmtDate = (date: Date) =>
   date.toLocaleString('en-US', { timeZone: EST_TIMEZONE });
 
+/** Today's date (YYYY-MM-DD) in EST for default date filter. */
+function todayInEST(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: EST_TIMEZONE });
+}
+
 const COL_COUNT = 10;
 
 function ClaimBadge({ status }: { status: ClaimStatus }) {
@@ -290,6 +295,8 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [updating, setUpdating] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Transaction | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [confirmStatusAction, setConfirmStatusAction] = useState<{
     tx: Transaction;
     field: 'claimStatus' | 'paymentStatus';
@@ -304,6 +311,8 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [filterCustomerNameDebounced, setFilterCustomerNameDebounced] = useState('');
   const [filterProductId, setFilterProductId] = useState('');
   const [filterProducts, setFilterProducts] = useState<Array<{ _id: string; name: string }>>([]);
+  const [filterDateFrom, setFilterDateFrom] = useState(() => todayInEST());
+  const [filterDateTo, setFilterDateTo] = useState(() => todayInEST());
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -451,6 +460,8 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       if (filterOrder !== 'all') params.set('orderStatus', filterOrder);
       if (filterCustomerNameDebounced.trim()) params.set('customerName', filterCustomerNameDebounced.trim());
       if (filterProductId) params.set('productId', filterProductId);
+      if (filterDateFrom) params.set('dateFrom', filterDateFrom);
+      if (filterDateTo) params.set('dateTo', filterDateTo);
       const res = await fetch(`/api/transactions?${params}`);
       if (res.ok) setTransactions(await res.json());
     } catch { /* ignore */ } finally {
@@ -486,7 +497,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     const isInitialLoad = transactions.length === 0;
     if (isInitialLoad) setLoading(true);
     fetchTransactions();
-  }, [filterClaim, filterPayment, filterOrder, filterCustomerNameDebounced, filterProductId]);
+  }, [filterClaim, filterPayment, filterOrder, filterCustomerNameDebounced, filterProductId, filterDateFrom, filterDateTo]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -572,10 +583,33 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/transactions/${deleteTarget._id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setTransactions((prev) => prev.filter((tx) => tx._id !== deleteTarget._id));
+        toast.success('Transaction deleted');
+      } else {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to delete transaction');
+      }
+    } catch {
+      toast.error('Failed to delete transaction');
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
+
   const handleGenerateReport = async () => {
     setGenerating(true);
     try {
-      const res = await fetch(`/api/transaction-reports/generate?storeId=${storeId}`, {
+      const params = new URLSearchParams({ storeId });
+      if (filterDateFrom) params.set('dateFrom', filterDateFrom);
+      if (filterDateTo) params.set('dateTo', filterDateTo);
+      const res = await fetch(`/api/transaction-reports/generate?${params}`, {
         method: 'POST',
       });
       if (res.ok) {
@@ -679,11 +713,60 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground whitespace-nowrap">Date:</Label>
+              <Input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-36"
+              />
+              <span className="text-muted-foreground">–</span>
+              <Input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="w-36"
+              />
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const today = todayInEST();
+                setFilterClaim('all');
+                setFilterPayment('all');
+                setFilterOrder('all');
+                setFilterCustomerName('');
+                setFilterCustomerNameDebounced('');
+                setFilterProductId('');
+                setFilterDateFrom(today);
+                setFilterDateTo(today);
+              }}
+              className="text-muted-foreground"
+            >
+              Clear filters
+            </Button>
 
-            <div className="ml-auto flex items-center gap-3">
-              <span className="text-xs text-muted-foreground">
-                {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
-              </span>
+            <div className="ml-auto flex items-center gap-4">
+              {(() => {
+                const active = transactions.filter((tx) => tx.orderStatus !== 'cancelled');
+                const totalPaid = active.filter((tx) => tx.paymentStatus === 'paid').reduce((s, tx) => s + tx.totalAmount, 0);
+                const totalUnpaid = active.filter((tx) => tx.paymentStatus === 'unpaid').reduce((s, tx) => s + tx.totalAmount, 0);
+                return (
+                  <>
+                    <span className="text-xs text-muted-foreground">
+                      Paid: <span className="font-medium text-green-600">{fmt(totalPaid)}</span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Unpaid: <span className="font-medium text-amber-600">{fmt(totalUnpaid)}</span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
+                    </span>
+                  </>
+                );
+              })()}
               <Button
                 variant="default"
                 size="sm"
@@ -711,7 +794,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
           {/* Table */}
           <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col">
             <div className="data-table-scroll-wrapper flex-1 min-h-0">
-              <table className="data-table">
+              <table className="data-table transactions-table">
                 <thead>
                   <tr>
                     <th className="w-8 px-2" />
@@ -724,7 +807,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                     <th>Claiming</th>
                     <th>Payment</th>
                     <th>Date</th>
-                    <th className="text-right">Actions</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -756,6 +839,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                         onToggleExpand={() => toggleExpand(tx._id)}
                         onRequestStatusChange={(tx, field, value) => setConfirmStatusAction({ tx, field, value })}
                         onCancelClick={() => setCancelTarget(tx)}
+                        onDeleteClick={() => setDeleteTarget(tx)}
                       />
                     );
                   })
@@ -949,6 +1033,31 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Transaction</DialogTitle>
+            <DialogDescription>
+              Permanently delete this transaction? If it was not cancelled, product stock will be restored. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteTarget && (
+            <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+              <p><span className="text-muted-foreground">Order ID:</span> <span className="font-mono">{deleteTarget._id.slice(-8)}</span></p>
+              <p><span className="text-muted-foreground">Customer:</span> {deleteTarget.customerId && typeof deleteTarget.customerId === 'object' ? deleteTarget.customerId.name : (deleteTarget.walkInCustomerName || 'Walk-in')}</p>
+              <p><span className="text-muted-foreground">Amount:</span> <span className="font-medium">{fmt(deleteTarget.totalAmount)}</span></p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Status action confirmation (Claim / Unclaim / Pay / Unpay) */}
       <Dialog open={!!confirmStatusAction} onOpenChange={(open) => { if (!open) setConfirmStatusAction(null); }}>
         <DialogContent>
@@ -997,6 +1106,7 @@ function TransactionRow({
   onToggleExpand,
   onRequestStatusChange,
   onCancelClick,
+  onDeleteClick,
 }: {
   tx: Transaction;
   isUpdating: boolean;
@@ -1008,6 +1118,7 @@ function TransactionRow({
   onToggleExpand: () => void;
   onRequestStatusChange: (tx: Transaction, field: 'claimStatus' | 'paymentStatus', value: string) => void;
   onCancelClick: () => void;
+  onDeleteClick: () => void;
 }) {
   return (
     <>
@@ -1055,7 +1166,12 @@ function TransactionRow({
         <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{fmtDate(new Date(tx.createdAt))}</td>
         <td className="px-4 py-3 text-right">
           {isCancelled ? (
-            <span className="text-xs text-muted-foreground italic">Cancelled</span>
+            <div className="flex items-center justify-end gap-1">
+              <span className="text-xs text-muted-foreground italic mr-1">Cancelled</span>
+              <Button variant="ghost" size="sm" disabled={isUpdating} onClick={onDeleteClick} title="Delete transaction" className="text-destructive hover:text-destructive">
+                <Trash2 className="mr-1 h-3.5 w-3.5" />Delete
+              </Button>
+            </div>
           ) : (
             <div className="flex items-center justify-end gap-1">
               {tx.claimStatus === 'unclaimed' ? (
@@ -1078,6 +1194,9 @@ function TransactionRow({
               )}
               <Button variant="ghost" size="sm" disabled={isUpdating} onClick={onCancelClick} title="Cancel order" className="text-destructive hover:text-destructive">
                 <Ban className="mr-1 h-3.5 w-3.5" />Cancel
+              </Button>
+              <Button variant="ghost" size="sm" disabled={isUpdating} onClick={onDeleteClick} title="Delete transaction" className="text-destructive hover:text-destructive">
+                <Trash2 className="mr-1 h-3.5 w-3.5" />Delete
               </Button>
             </div>
           )}

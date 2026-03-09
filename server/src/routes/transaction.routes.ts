@@ -2,6 +2,7 @@ import { Router, type Router as IRouter } from 'express';
 import {
   cancelTransaction,
   createTransaction,
+  deleteTransaction,
   getMyPurchases,
   getTransaction,
   getTransactions,
@@ -32,4 +33,9 @@ transactionRoutes.patch(
   '/:id/cancel',
   authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
   cancelTransaction
+);
+transactionRoutes.delete(
+  '/:id',
+  authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  deleteTransaction
 );

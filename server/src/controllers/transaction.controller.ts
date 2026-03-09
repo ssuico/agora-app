@@ -4,6 +4,7 @@ import { Product } from '../models/Product.js';
 import { Transaction, type ClaimStatus, type PaymentStatus } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { getIO } from '../socket.js';
+import { localDayRangeFromDateString } from '../config/timezone.js';
 import { UserRole } from '../types/index.js';
 
 interface CartItem {
@@ -136,13 +137,27 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
 export const getTransactions = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { storeId, claimStatus, paymentStatus, orderStatus, customerName, productId } = req.query;
+    const { storeId, claimStatus, paymentStatus, orderStatus, customerName, productId, dateFrom, dateTo } = req.query;
     const filter: Record<string, unknown> = {};
     if (storeId) filter.storeId = storeId;
     if (claimStatus && claimStatus !== 'all') filter.claimStatus = claimStatus;
     if (paymentStatus && paymentStatus !== 'all') filter.paymentStatus = paymentStatus;
     if (orderStatus && orderStatus !== 'all') {
       filter.orderStatus = orderStatus;
+    }
+
+    const fromStr = typeof dateFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ? dateFrom : null;
+    const toStr = typeof dateTo === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateTo) ? dateTo : null;
+    if (fromStr && toStr) {
+      const { dayStart } = localDayRangeFromDateString(fromStr);
+      const { dayEnd } = localDayRangeFromDateString(toStr);
+      filter.createdAt = { $gte: dayStart, $lte: dayEnd };
+    } else if (fromStr) {
+      const { dayStart, dayEnd } = localDayRangeFromDateString(fromStr);
+      filter.createdAt = { $gte: dayStart, $lte: dayEnd };
+    } else if (toStr) {
+      const { dayStart, dayEnd } = localDayRangeFromDateString(toStr);
+      filter.createdAt = { $gte: dayStart, $lte: dayEnd };
     }
 
     if (productId && typeof productId === 'string') {
@@ -275,6 +290,51 @@ export const cancelTransaction = async (req: Request, res: Response): Promise<vo
     } catch { /* socket broadcast is non-critical */ }
 
     res.json(populated);
+  } catch (err) {
+    await session.abortTransaction();
+    res.status(500).json({ message: 'Server error', error: err });
+  } finally {
+    session.endSession();
+  }
+};
+
+export const deleteTransaction = async (req: Request, res: Response): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const transaction = await Transaction.findById(req.params.id).session(session);
+    if (!transaction) {
+      await session.abortTransaction();
+      res.status(404).json({ message: 'Transaction not found' });
+      return;
+    }
+
+    const items = await TransactionItem.find({ transactionId: transaction._id }).session(session);
+
+    if (transaction.orderStatus !== 'cancelled') {
+      for (const item of items) {
+        await Product.findByIdAndUpdate(
+          item.productId,
+          { $inc: { stockQuantity: item.quantity } },
+          { session }
+        );
+      }
+    }
+
+    await TransactionItem.deleteMany({ transactionId: transaction._id }).session(session);
+    await Transaction.findByIdAndDelete(transaction._id).session(session);
+
+    await session.commitTransaction();
+
+    const storeId = String(transaction.storeId);
+    try {
+      const io = getIO();
+      const updatedProducts = await Product.find({ storeId }).lean();
+      io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+    } catch { /* socket broadcast is non-critical */ }
+
+    res.status(204).send();
   } catch (err) {
     await session.abortTransaction();
     res.status(500).json({ message: 'Server error', error: err });

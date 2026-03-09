@@ -151,6 +151,10 @@
 .data-table thead th {
   @apply px-4 py-3 text-left font-medium text-muted-foreground align-middle whitespace-nowrap;
 }
+/* Transactions table: center header text */
+.data-table.transactions-table thead th {
+  @apply text-center;
+}
 .data-table tbody tr {
   border-bottom: 1px solid var(--border);
   transition: background-color 0.15s ease;

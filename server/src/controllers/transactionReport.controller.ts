@@ -3,24 +3,42 @@ import ExcelJS from 'exceljs';
 import { Transaction } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { TransactionReport } from '../models/TransactionReport.js';
-import { APP_TIMEZONE, toLocalDateStr, localDayRange } from '../config/timezone.js';
+import { APP_TIMEZONE, toLocalDateStr, localDayRange, localDayRangeFromDateString } from '../config/timezone.js';
 
 export const generateReport = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { storeId } = req.query as { storeId?: string };
+    const { storeId, dateFrom, dateTo } = req.query as { storeId?: string; dateFrom?: string; dateTo?: string };
     if (!storeId) {
       res.status(400).json({ message: 'storeId is required' });
       return;
     }
 
-    const now = new Date();
-    const dateStr = toLocalDateStr(now);
-    const todayMidnightUtc = new Date(`${dateStr}T00:00:00Z`);
-    const { dayStart, dayEnd } = localDayRange(todayMidnightUtc);
+    let dayStart: Date;
+    let dayEnd: Date;
+    let dateStr: string;
+
+    const fromOk = dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom);
+    const toOk = dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo);
+
+    if (fromOk && toOk) {
+      const fromRange = localDayRangeFromDateString(dateFrom);
+      const toRange = localDayRangeFromDateString(dateTo);
+      dayStart = fromRange.dayStart;
+      dayEnd = toRange.dayEnd;
+      dateStr = dateFrom === dateTo ? dateFrom : `${dateFrom}_to_${dateTo}`;
+    } else {
+      const now = new Date();
+      dateStr = toLocalDateStr(now);
+      const todayMidnightUtc = new Date(`${dateStr}T00:00:00Z`);
+      const range = localDayRange(todayMidnightUtc);
+      dayStart = range.dayStart;
+      dayEnd = range.dayEnd;
+    }
 
     const transactions = await Transaction.find({
       storeId,
       createdAt: { $gte: dayStart, $lte: dayEnd },
+      orderStatus: { $ne: 'cancelled' },
     })
       .populate('customerId', 'name email')
       .sort({ createdAt: 1 })
@@ -144,7 +162,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    const fileName = `transactions_${dateStr}.xlsx`;
+    const fileName = `transactions_${dateStr.replace(/_/g, '-')}.xlsx`;
 
     const report = await TransactionReport.findOneAndUpdate(
       { storeId, transactionDate: dateStr },
