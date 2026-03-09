@@ -87,7 +87,14 @@ export function Topbar({ name, role }: TopbarProps) {
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b bg-card px-6">
-      <div />
+      <div className="flex items-center gap-2.5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-sm">
+          <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] text-primary-foreground" fill="currentColor">
+            <path d="M12 2L3 9h18zM3 9h18v2H3zM5 11h2v8H5zM11 11h2v8h-2zM17 11h2v8h-2zM3 19h18v2H3z" />
+          </svg>
+        </div>
+        <span className="text-lg font-bold tracking-tight text-foreground">Agora</span>
+      </div>
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Clock className="h-4 w-4" />

@@ -8,7 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { AlertTriangle, ChevronLeft, ChevronRight, ImageIcon, Loader2, Minus, Plus, ShoppingCart, Trash2, X } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { AlertTriangle, ChevronLeft, ChevronRight, ImageIcon, Loader2, MapPin, Minus, Package, Plus, Search, ShoppingCart, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -260,6 +261,7 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
   const [cardQuantities, setCardQuantities] = useState<Record<string, number>>({});
   const [addToCartCooldowns, setAddToCartCooldowns] = useState<Set<string>>(new Set());
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const dismissAlert = (id: number) => {
     setStockAlerts((prev) => prev.filter((a) => a.id !== id));
@@ -442,10 +444,50 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
     }
   };
 
+  const filteredProducts = products.filter((p) =>
+    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   // --- Render ---
 
   if (loading) {
-    return <div className="flex items-center justify-center py-12 text-muted-foreground">Loading products...</div>;
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="mt-2 h-4 w-64" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-9 w-28 rounded-lg" />
+            <Skeleton className="h-9 w-32 rounded-lg" />
+            <Skeleton className="h-9 w-20 rounded-lg" />
+          </div>
+        </div>
+        <Skeleton className="h-10 w-full max-w-sm rounded-xl" />
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border/40 bg-card/80 overflow-hidden flex flex-col">
+              <Skeleton className="h-48 w-full rounded-none" />
+              <div className="p-4 flex flex-col gap-3">
+                <Skeleton className="h-5 w-3/4" />
+                <div className="flex items-baseline justify-between">
+                  <Skeleton className="h-6 w-20" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+                <div className="mt-auto pt-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-8" />
+                    <Skeleton className="h-6 w-24" />
+                  </div>
+                  <Skeleton className="h-8 w-full rounded-lg" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -468,18 +510,26 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
       ))}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{storeName}</h1>
-          <p className="text-sm text-muted-foreground">Browse products and add to cart</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Browse products and add to cart</p>
         </div>
-        <div className="flex items-center gap-2">
-          <a href="/select-location" className="text-sm text-primary hover:underline mr-4">Change store</a>
-          <a href="/purchases" className="text-sm text-primary hover:underline mr-4">My Purchases</a>
-          <Button variant="outline" onClick={() => setCartOpen(true)} className="relative">
-            <ShoppingCart className="mr-2 h-4 w-4" />Cart
+        <div className="flex items-center gap-1.5">
+          <a href="/select-location" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-card/80 transition-colors">
+            <MapPin className="h-3.5 w-3.5" />
+            Change store
+          </a>
+          <a href="/purchases" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-card/80 transition-colors">
+            <Package className="h-3.5 w-3.5" />
+            My Purchases
+          </a>
+          <div className="h-6 w-px bg-border/60 mx-1" />
+          <Button variant="outline" onClick={() => setCartOpen(true)} className="relative gap-2 rounded-lg">
+            <ShoppingCart className="h-4 w-4" />
+            Cart
             {cartCount > 0 && (
-              <Badge className={`absolute -right-2 -top-2 h-5 w-5 rounded-full p-0 text-xs flex items-center justify-center ${hasUnavailable ? 'bg-destructive' : ''}`}>
+              <Badge className={`absolute -right-2 -top-2 h-5 min-w-5 rounded-full p-0 text-xs flex items-center justify-center ${hasUnavailable ? 'bg-destructive' : ''}`}>
                 {cartCount}
               </Badge>
             )}
@@ -493,53 +543,81 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
         </div>
       </div>
 
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
+        <input
+          type="text"
+          placeholder="Search products..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full rounded-xl border border-border/60 bg-card/50 py-2.5 pl-10 pr-4 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/30 transition-all"
+        />
+      </div>
+
       {/* Product grid */}
-      {products.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">No products available at this store yet.</p>
+      {filteredProducts.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          {searchQuery ? (
+            <>
+              <Search className="h-10 w-10 text-muted-foreground/30" />
+              <p className="text-muted-foreground">No products match &ldquo;{searchQuery}&rdquo;</p>
+              <Button variant="ghost" size="sm" onClick={() => setSearchQuery('')}>Clear search</Button>
+            </>
+          ) : (
+            <>
+              <ShoppingCart className="h-10 w-10 text-muted-foreground/30" />
+              <p className="text-muted-foreground">No products available at this store yet.</p>
+            </>
+          )}
+        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {products.map((product) => {
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filteredProducts.map((product) => {
             const available = getAvailable(product);
             const cardQty = getCardQty(product._id);
             const inCart = getCartItem(product._id);
             const isOOS = product.stockQuantity === 0;
 
             return (
-              <div key={product._id} className={`rounded-lg border bg-card shadow-sm flex flex-col overflow-hidden ${isOOS ? 'opacity-60' : ''}`}>
-                <div className="relative">
-                  <ImageCarousel images={product.images ?? []} className="h-44 w-full cursor-pointer" onClick={() => setSelectedProduct(product)} />
+              <div key={product._id} className={`group rounded-xl border border-border/40 bg-card/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col overflow-hidden ${isOOS ? 'opacity-65 hover:opacity-80' : ''}`}>
+                <div className="relative overflow-hidden">
+                  <ImageCarousel images={product.images ?? []} className="h-48 w-full cursor-pointer" onClick={() => setSelectedProduct(product)} />
                   {isOOS && (
-                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center pointer-events-none">
-                      <span className="bg-red-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full">All Reserved</span>
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
+                      <span className="bg-red-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-sm">All Reserved</span>
                     </div>
                   )}
                 </div>
                 <div className="p-4 flex flex-col flex-1">
                   <button className="text-left" onClick={() => setSelectedProduct(product)}>
-                    <h3 className={`font-semibold transition-colors ${isOOS ? 'text-muted-foreground' : 'hover:text-primary'}`}>{product.name}</h3>
+                    <h3 className={`font-semibold line-clamp-2 transition-colors ${isOOS ? 'text-muted-foreground' : 'group-hover:text-primary'}`}>{product.name}</h3>
                   </button>
-                  <p className={`mt-1 text-lg font-bold ${isOOS ? 'text-muted-foreground' : 'text-primary'}`}>{fmt(product.sellingPrice)}</p>
-                  <div className="mt-1 flex items-center gap-2">
+                  <div className="mt-2 flex items-baseline justify-between gap-2">
+                    <p className={`text-xl font-bold ${isOOS ? 'text-muted-foreground' : 'text-primary'}`}>{fmt(product.sellingPrice)}</p>
                     {isOOS ? (
-                      <span className="text-xs font-medium text-red-600">All reserved</span>
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
+                        <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                        Reserved
+                      </span>
                     ) : (
-                      <span className="text-xs text-muted-foreground">{product.stockQuantity} in stock</span>
-                    )}
-                    {inCart && (
-                      <span className={`text-xs font-medium ${isOOS ? 'text-red-600' : 'text-primary'}`}>
-                        {inCart.quantity} in cart{isOOS ? ' (unavailable)' : ''}
+                      <span className={`inline-flex items-center gap-1 text-xs ${product.stockQuantity < 10 ? 'text-amber-700 font-medium' : 'text-muted-foreground'}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${product.stockQuantity < 10 ? 'bg-amber-500' : 'bg-green-500'}`} />
+                        {product.stockQuantity} left
                       </span>
                     )}
-                    {(product.images?.length ?? 0) > 1 && (
-                      <span className="text-xs text-muted-foreground/60">{product.images.length} photos</span>
-                    )}
                   </div>
+                  {inCart && (
+                    <p className={`mt-1.5 text-xs font-medium ${isOOS ? 'text-red-600' : 'text-primary/80'}`}>
+                      {inCart.quantity} in cart{isOOS ? ' (unavailable)' : ''}
+                    </p>
+                  )}
 
                   <div className="mt-auto pt-3 space-y-2">
                     {isOOS ? (
                       inCart ? (
-                        <div className="rounded-md bg-red-50 border border-red-200 px-2 py-1.5 text-center">
-                          <p className="text-xs text-red-700">No longer available. Remove from cart to continue.</p>
+                        <div className="rounded-lg bg-red-50 border border-red-200 px-2 py-1.5 text-center">
+                          <p className="text-xs text-red-700">No longer available</p>
                         </div>
                       ) : (
                         <p className="text-center text-xs text-muted-foreground py-1">Currently unavailable</p>
@@ -550,11 +628,11 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
                           <span className="text-xs text-muted-foreground">Qty</span>
                           <QuantityPicker value={Math.min(cardQty, available)} max={available} onChange={(q) => setCardQty(product._id, q)} />
                         </div>
-                        <Button className="w-full" size="sm" onClick={() => addToCartWithQty(product, Math.min(cardQty, available))} disabled={addToCartCooldowns.has(product._id)}>
+                        <Button className="w-full rounded-lg" size="sm" onClick={() => addToCartWithQty(product, Math.min(cardQty, available))} disabled={addToCartCooldowns.has(product._id)}>
                           {addToCartCooldowns.has(product._id) ? (
-                            <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Added to Cart</>
+                            <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Added!</>
                           ) : (
-                            <><ShoppingCart className="mr-1 h-3.5 w-3.5" />Add {Math.min(cardQty, available)} to Cart</>
+                            <><ShoppingCart className="mr-1.5 h-3.5 w-3.5" />Add to Cart</>
                           )}
                         </Button>
                       </>
