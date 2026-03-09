@@ -699,7 +699,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
       {/* New Transaction modal */}
       <Dialog open={newTxOpen} onOpenChange={(open) => { setNewTxOpen(open); if (!open) setNewTxShowValidationWarning(false); }}>
-        <DialogContent className="max-w-xl max-h-[90vh] flex flex-col gap-4">
+        <DialogContent className="fixed! inset-0! z-50 w-screen! h-screen! max-w-none! max-h-none! translate-x-0! translate-y-0! rounded-none flex flex-col gap-4 p-6">
           <DialogHeader>
             <DialogTitle>New Transaction</DialogTitle>
             <DialogDescription>
@@ -707,10 +707,10 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 overflow-hidden flex-1 min-h-0">
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Products</Label>
-              <div className="border rounded-md overflow-y-auto max-h-[280px] p-2 bg-muted/30">
+          <div className="flex flex-col gap-4 overflow-hidden flex-1 min-h-0">
+            <div className="space-y-2 flex flex-col flex-1 min-h-0">
+              <Label className="text-sm font-medium shrink-0">Products</Label>
+              <div className="border rounded-md overflow-y-auto flex-1 min-h-[200px] p-2 bg-muted/30">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {newTxProducts.map((p) => {
                     const qty = newTxQuantities[p._id] ?? 0;
