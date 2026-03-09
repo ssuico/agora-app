@@ -300,7 +300,29 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [filterClaim, setFilterClaim] = useState('all');
   const [filterPayment, setFilterPayment] = useState('all');
   const [filterOrder, setFilterOrder] = useState('all');
+  const [filterCustomerName, setFilterCustomerName] = useState('');
+  const [filterCustomerNameDebounced, setFilterCustomerNameDebounced] = useState('');
+  const [filterProductId, setFilterProductId] = useState('');
+  const [filterProducts, setFilterProducts] = useState<Array<{ _id: string; name: string }>>([]);
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const t = setTimeout(() => setFilterCustomerNameDebounced(filterCustomerName), 600);
+    return () => clearTimeout(t);
+  }, [filterCustomerName]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/products?storeId=${storeId}`);
+        if (cancelled || !res.ok) return;
+        const list = await res.json();
+        setFilterProducts(list.map((p: { _id: string; name: string }) => ({ _id: p._id, name: p.name })));
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [storeId]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [itemsCache, setItemsCache] = useState<Record<string, TransactionItemDetail[]>>({});
@@ -427,6 +449,8 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       if (filterClaim !== 'all') params.set('claimStatus', filterClaim);
       if (filterPayment !== 'all') params.set('paymentStatus', filterPayment);
       if (filterOrder !== 'all') params.set('orderStatus', filterOrder);
+      if (filterCustomerNameDebounced.trim()) params.set('customerName', filterCustomerNameDebounced.trim());
+      if (filterProductId) params.set('productId', filterProductId);
       const res = await fetch(`/api/transactions?${params}`);
       if (res.ok) setTransactions(await res.json());
     } catch { /* ignore */ } finally {
@@ -458,10 +482,11 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   };
 
   useEffect(() => {
-    setLoading(true);
     setPage(1);
+    const isInitialLoad = transactions.length === 0;
+    if (isInitialLoad) setLoading(true);
     fetchTransactions();
-  }, [filterClaim, filterPayment, filterOrder]);
+  }, [filterClaim, filterPayment, filterOrder, filterCustomerNameDebounced, filterProductId]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -630,6 +655,27 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                   <SelectItem value="all">All</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground whitespace-nowrap">Customer:</Label>
+              <Input
+                placeholder="Search by name..."
+                value={filterCustomerName}
+                onChange={(e) => setFilterCustomerName(e.target.value)}
+                className="w-44"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground whitespace-nowrap">Product:</Label>
+              <Select value={filterProductId || 'all'} onValueChange={(v) => setFilterProductId(v === 'all' ? '' : v)}>
+                <SelectTrigger className="w-44"><SelectValue placeholder="All products" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All products</SelectItem>
+                  {filterProducts.map((p) => (
+                    <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

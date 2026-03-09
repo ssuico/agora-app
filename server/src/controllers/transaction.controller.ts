@@ -136,7 +136,7 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
 export const getTransactions = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { storeId, claimStatus, paymentStatus, orderStatus } = req.query;
+    const { storeId, claimStatus, paymentStatus, orderStatus, customerName, productId } = req.query;
     const filter: Record<string, unknown> = {};
     if (storeId) filter.storeId = storeId;
     if (claimStatus && claimStatus !== 'all') filter.claimStatus = claimStatus;
@@ -145,9 +145,31 @@ export const getTransactions = async (req: Request, res: Response): Promise<void
       filter.orderStatus = orderStatus;
     }
 
-    const transactions = await Transaction.find(filter)
+    if (productId && typeof productId === 'string') {
+      const txIds = await TransactionItem.distinct('transactionId', { productId });
+      if (txIds.length === 0) {
+        res.json([]);
+        return;
+      }
+      filter._id = { $in: txIds };
+    }
+
+    let transactions = await Transaction.find(filter)
       .populate('customerId', 'name email')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const customerSearch = typeof customerName === 'string' ? customerName.trim().toLowerCase() : '';
+    if (customerSearch) {
+      transactions = transactions.filter((tx) => {
+        const cust = tx.customerId as unknown as { name?: string; email?: string } | null;
+        const nameMatch = cust?.name?.toLowerCase().includes(customerSearch);
+        const emailMatch = cust?.email?.toLowerCase().includes(customerSearch);
+        const walkInMatch = (tx.walkInCustomerName ?? '').toLowerCase().includes(customerSearch);
+        return !!(nameMatch || emailMatch || walkInMatch);
+      });
+    }
+
     res.json(transactions);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
