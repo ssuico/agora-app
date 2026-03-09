@@ -7,9 +7,7 @@ const token = Astro.cookies.get('agora_token')?.value ?? '';
 const payload = decodeJWT(token);
 const storeIds = payload?.storeIds ?? [];
 
-if (storeIds.length === 0) {
-  return Astro.redirect('/login');
-}
+const noStores = storeIds.length === 0;
 
 if (storeIds.length === 1) {
   return Astro.redirect(`/store/${storeIds[0]}`);
@@ -24,36 +22,62 @@ interface Store {
 }
 
 let stores: Store[] = [];
-try {
-  const all = await api.get<Store[]>('/api/stores');
-  stores = all.filter((s) => storeIds.includes(s._id));
-} catch {
-  // handled below
+if (!noStores) {
+  try {
+    const all = await api.get<Store[]>('/api/stores');
+    stores = all.filter((s) => storeIds.includes(s._id));
+  } catch {
+    // handled below
+  }
 }
 ---
 
 <AppLayout title="Select Store">
   <div class="mx-auto max-w-2xl space-y-6">
-    <div class="text-center">
-      <h1 class="text-2xl font-bold tracking-tight">Select a Store</h1>
-      <p class="text-sm text-muted-foreground">
-        You are assigned to multiple stores. Choose one to manage.
-      </p>
-    </div>
-    <div class="grid gap-4 sm:grid-cols-2">
-      {
-        stores.map((store) => (
-          <a
-            href={`/store/${store._id}`}
-            class="rounded-lg border bg-card p-6 shadow-sm transition-colors hover:bg-accent"
+    {noStores ? (
+      <div class="text-center space-y-4 py-12">
+        <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/10">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+        </div>
+        <h1 class="text-2xl font-bold tracking-tight">No Stores Assigned</h1>
+        <p class="text-sm text-muted-foreground max-w-md mx-auto">
+          Your account doesn't have any stores assigned yet. Please contact an administrator to get assigned to a store.
+        </p>
+        <form method="POST" action="/api/auth/logout">
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90"
           >
-            <p class="text-lg font-semibold">{store.name}</p>
-            {store.locationId && typeof store.locationId === 'object' && (
-              <p class="mt-1 text-sm text-muted-foreground">{store.locationId.name}</p>
-            )}
-          </a>
-        ))
-      }
-    </div>
+            Sign out
+          </button>
+        </form>
+      </div>
+    ) : (
+      <>
+        <div class="text-center">
+          <h1 class="text-2xl font-bold tracking-tight">Select a Store</h1>
+          <p class="text-sm text-muted-foreground">
+            You are assigned to multiple stores. Choose one to manage.
+          </p>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          {
+            stores.map((store) => (
+              <a
+                href={`/store/${store._id}`}
+                class="rounded-lg border bg-card p-6 shadow-sm transition-colors hover:bg-accent"
+              >
+                <p class="text-lg font-semibold">{store.name}</p>
+                {store.locationId && typeof store.locationId === 'object' && (
+                  <p class="mt-1 text-sm text-muted-foreground">{store.locationId.name}</p>
+                )}
+              </a>
+            ))
+          }
+        </div>
+      </>
+    )}
   </div>
 </AppLayout>

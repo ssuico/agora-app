@@ -19,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertTriangle, Ban, Check, ChevronDown, ChevronRight, Download, FileSpreadsheet, History, Loader2, Package, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Ban, Check, ChevronDown, ChevronRight, Download, FileSpreadsheet, History, ImageIcon, Loader2, Package, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -94,6 +94,25 @@ function OrderBadge({ status }: { status: OrderStatus }) {
     <Badge variant="destructive" className="text-xs border-0">Cancelled</Badge>
   ) : (
     <Badge variant="secondary" className="text-xs border-0">Active</Badge>
+  );
+}
+
+function ProductImageThumb({ src, className }: { src?: string; className?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <div className={`flex items-center justify-center bg-muted rounded shrink-0 ${className}`}>
+        <ImageIcon className="h-4 w-4 text-muted-foreground/40" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      className={`object-cover rounded shrink-0 ${className}`}
+      onError={() => setFailed(true)}
+    />
   );
 }
 
@@ -271,6 +290,12 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [updating, setUpdating] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Transaction | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [confirmStatusAction, setConfirmStatusAction] = useState<{
+    tx: Transaction;
+    field: 'claimStatus' | 'paymentStatus';
+    value: string;
+  } | null>(null);
+  const [executingStatusAction, setExecutingStatusAction] = useState(false);
 
   const [filterClaim, setFilterClaim] = useState('all');
   const [filterPayment, setFilterPayment] = useState('all');
@@ -285,7 +310,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [reportHistoryKey, setReportHistoryKey] = useState(0);
 
   const [newTxOpen, setNewTxOpen] = useState(false);
-  const [newTxProducts, setNewTxProducts] = useState<Array<{ _id: string; name: string; sellingPrice: number; costPrice: number; stockQuantity: number }>>([]);
+  const [newTxProducts, setNewTxProducts] = useState<Array<{ _id: string; name: string; sellingPrice: number; costPrice: number; stockQuantity: number; images?: string[] }>>([]);
   const [newTxCustomers, setNewTxCustomers] = useState<Array<{ _id: string; name: string; email: string }>>([]);
   const [newTxQuantities, setNewTxQuantities] = useState<Record<string, number>>({});
   const [newTxCustomerId, setNewTxCustomerId] = useState<string>('');
@@ -486,6 +511,17 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     }
   };
 
+  const handleConfirmStatusAction = async () => {
+    if (!confirmStatusAction) return;
+    setExecutingStatusAction(true);
+    try {
+      await updateStatus(confirmStatusAction.tx._id, confirmStatusAction.field, confirmStatusAction.value);
+      setConfirmStatusAction(null);
+    } finally {
+      setExecutingStatusAction(false);
+    }
+  };
+
   const handleCancel = async () => {
     if (!cancelTarget) return;
     setCancelling(true);
@@ -672,7 +708,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                         itemCount={itemCount}
                         isLoadingItems={isLoadingItems}
                         onToggleExpand={() => toggleExpand(tx._id)}
-                        onUpdateStatus={updateStatus}
+                        onRequestStatusChange={(tx, field, value) => setConfirmStatusAction({ tx, field, value })}
                         onCancelClick={() => setCancelTarget(tx)}
                       />
                     );
@@ -712,37 +748,45 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               <Label className="text-sm font-medium shrink-0">Products</Label>
               <div className="border rounded-md overflow-y-auto flex-1 min-h-[200px] p-2 bg-muted/30">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {newTxProducts.map((p) => {
+                  {[...newTxProducts]
+                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+                    .map((p) => {
                     const qty = newTxQuantities[p._id] ?? 0;
                     return (
                       <Card key={p._id} className="p-2 flex flex-col gap-1.5">
-                        <CardContent className="p-0 space-y-1">
-                          <p className="text-xs font-medium leading-tight line-clamp-2">{p.name}</p>
-                          <p className="text-xs text-muted-foreground">{fmt(p.sellingPrice)}</p>
-                          <p className="text-xs text-muted-foreground">Stock: {p.stockQuantity}</p>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7 shrink-0"
-                              onClick={() => setNewTxQty(p._id, -1)}
-                              disabled={qty <= 0}
-                            >
-                              −
-                            </Button>
-                            <span className="text-xs font-medium min-w-6 text-center">{qty}</span>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7 shrink-0"
-                              onClick={() => setNewTxQty(p._id, 1)}
-                              disabled={qty >= p.stockQuantity}
-                            >
-                              +
-                            </Button>
+                        <CardContent className="p-0 flex gap-2">
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <p className="text-xs font-medium leading-tight line-clamp-2">{p.name}</p>
+                            <p className="text-xs text-muted-foreground">{fmt(p.sellingPrice)}</p>
+                            <p className="text-xs text-muted-foreground">Stock: {p.stockQuantity}</p>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7 shrink-0"
+                                onClick={() => setNewTxQty(p._id, -1)}
+                                disabled={qty <= 0}
+                              >
+                                −
+                              </Button>
+                              <span className="text-xs font-medium min-w-6 text-center">{qty}</span>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7 shrink-0"
+                                onClick={() => setNewTxQty(p._id, 1)}
+                                disabled={qty >= p.stockQuantity}
+                              >
+                                +
+                              </Button>
+                            </div>
                           </div>
+                          <ProductImageThumb
+                            src={p.images?.[0]}
+                            className="h-12 w-12 rounded border border-border"
+                          />
                         </CardContent>
                       </Card>
                     );
@@ -858,6 +902,36 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Status action confirmation (Claim / Unclaim / Pay / Unpay) */}
+      <Dialog open={!!confirmStatusAction} onOpenChange={(open) => { if (!open) setConfirmStatusAction(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm action</DialogTitle>
+            <DialogDescription>
+              {confirmStatusAction && (() => {
+                const { field, value } = confirmStatusAction;
+                if (field === 'claimStatus') return value === 'claimed' ? 'Are you sure you want to mark this order as claimed?' : 'Are you sure you want to revert this order to unclaimed?';
+                if (field === 'paymentStatus') return value === 'paid' ? 'Are you sure you want to mark this order as paid?' : 'Are you sure you want to revert this order to unpaid?';
+                return 'Are you sure you want to perform this action?';
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          {confirmStatusAction && (
+            <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+              <p><span className="text-muted-foreground">Order ID:</span> <span className="font-mono">{confirmStatusAction.tx._id.slice(-8)}</span></p>
+              <p><span className="text-muted-foreground">Customer:</span> {confirmStatusAction.tx.customerId && typeof confirmStatusAction.tx.customerId === 'object' ? confirmStatusAction.tx.customerId.name : (confirmStatusAction.tx.walkInCustomerName || 'Walk-in')}</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmStatusAction(null)} disabled={executingStatusAction}>Cancel</Button>
+            <Button onClick={handleConfirmStatusAction} disabled={executingStatusAction}>
+              {executingStatusAction ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {executingStatusAction ? 'Updating...' : 'Confirm'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -875,7 +949,7 @@ function TransactionRow({
   itemCount,
   isLoadingItems,
   onToggleExpand,
-  onUpdateStatus,
+  onRequestStatusChange,
   onCancelClick,
 }: {
   tx: Transaction;
@@ -886,7 +960,7 @@ function TransactionRow({
   itemCount: number | null;
   isLoadingItems: boolean;
   onToggleExpand: () => void;
-  onUpdateStatus: (txId: string, field: 'claimStatus' | 'paymentStatus', value: string) => void;
+  onRequestStatusChange: (tx: Transaction, field: 'claimStatus' | 'paymentStatus', value: string) => void;
   onCancelClick: () => void;
 }) {
   return (
@@ -939,20 +1013,20 @@ function TransactionRow({
           ) : (
             <div className="flex items-center justify-end gap-1">
               {tx.claimStatus === 'unclaimed' ? (
-                <Button variant="outline" size="sm" disabled={isUpdating} onClick={() => onUpdateStatus(tx._id, 'claimStatus', 'claimed')} title="Mark as claimed">
+                <Button variant="outline" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'claimStatus', 'claimed')} title="Mark as claimed">
                   <Package className="mr-1 h-3.5 w-3.5" />Claim
                 </Button>
               ) : (
-                <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onUpdateStatus(tx._id, 'claimStatus', 'unclaimed')} title="Revert to unclaimed" className="text-muted-foreground">
+                <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'claimStatus', 'unclaimed')} title="Revert to unclaimed" className="text-muted-foreground">
                   <Package className="mr-1 h-3.5 w-3.5" />Unclaim
                 </Button>
               )}
               {tx.paymentStatus === 'unpaid' ? (
-                <Button variant="default" size="sm" disabled={isUpdating} onClick={() => onUpdateStatus(tx._id, 'paymentStatus', 'paid')} title="Mark as paid">
+                <Button variant="default" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'paid')} title="Mark as paid">
                   <Check className="mr-1 h-3.5 w-3.5" />Pay
                 </Button>
               ) : (
-                <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onUpdateStatus(tx._id, 'paymentStatus', 'unpaid')} title="Revert to unpaid" className="text-muted-foreground">
+                <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'unpaid')} title="Revert to unpaid" className="text-muted-foreground">
                   <Check className="mr-1 h-3.5 w-3.5" />Unpay
                 </Button>
               )}

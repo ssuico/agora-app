@@ -29,7 +29,15 @@ export const onRequest = defineMiddleware(({ url, cookies }, next) => {
   const payload = decodeJWT(token);
   if (!payload) {
     cookies.delete('agora_token', { path: '/' });
-    return redirect('/login');
+    // When returning a custom redirect, Astro does not attach cookie changes to the response.
+    // Send Set-Cookie to clear the token so the browser doesn't send it again (avoids redirect loop).
+    const clearCookie =
+      'agora_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' +
+      (import.meta.env.PROD ? '; Secure' : '');
+    return new Response(null, {
+      status: 302,
+      headers: { Location: '/login', 'Set-Cookie': clearCookie },
+    });
   }
 
   const { role } = payload;

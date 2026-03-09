@@ -16,7 +16,10 @@ switch (payload.role) {
     if (storeIds.length === 1) {
       return Astro.redirect(`/store/${storeIds[0]}`);
     }
-    return Astro.redirect('/store/select');
+    if (storeIds.length > 1) {
+      return Astro.redirect('/store/select');
+    }
+    return Astro.redirect('/store/select?noStores=1');
   }
   case 'customer':
     return Astro.redirect('/select-location');

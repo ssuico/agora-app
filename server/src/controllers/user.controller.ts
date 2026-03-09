@@ -38,6 +38,27 @@ export const getUserAssignments = async (req: Request, res: Response): Promise<v
   }
 };
 
+export const updateUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, role } = req.body;
+    const updates: { name?: string; role?: string } = {};
+    if (typeof name === 'string' && name.trim()) updates.name = name.trim();
+    if (typeof role === 'string' && role.trim()) updates.role = role.trim();
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).select('-password');
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
 export const deleteUser = async (req: Request, res: Response): Promise<void> => {
   try {
     await StoreManagerAssignment.deleteMany({ userId: req.params.id });

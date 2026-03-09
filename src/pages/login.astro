@@ -1,11 +1,32 @@
 ---
 import AuthLayout from '../layouts/AuthLayout.astro';
 import { LoginForm } from '../components/app/LoginForm';
+import { decodeJWT } from '../lib/jwt';
 
+let sessionExpired = false;
 const token = Astro.cookies.get('agora_token')?.value;
-if (token) return Astro.redirect('/');
+if (token) {
+  const payload = decodeJWT(token);
+  // Only redirect if token is valid; otherwise clear stale cookie to avoid redirect loop
+  if (payload) {
+    const isExpired = payload.exp != null && payload.exp * 1000 < Date.now();
+    if (!isExpired) return Astro.redirect('/');
+  }
+  Astro.cookies.delete('agora_token', { path: '/' });
+  sessionExpired = true;
+}
 ---
 
 <AuthLayout title="Sign in">
-  <LoginForm client:load />
+  <div class="flex flex-col items-center gap-4 w-full max-w-sm">
+    {sessionExpired && (
+      <div
+        role="alert"
+        class="w-full rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200"
+      >
+        Your session has expired. Please sign in again.
+      </div>
+    )}
+    <LoginForm client:load />
+  </div>
 </AuthLayout>
