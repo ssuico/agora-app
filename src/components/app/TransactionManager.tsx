@@ -19,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertTriangle, Ban, Check, ChevronDown, ChevronRight, Download, FileSpreadsheet, History, ImageIcon, Loader2, Package, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Download, FileSpreadsheet, History, ImageIcon, Loader2, Package, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -76,7 +76,7 @@ function todayInEST(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: EST_TIMEZONE });
 }
 
-const COL_COUNT = 10;
+const COL_COUNT = 11;
 
 function ClaimBadge({ status }: { status: ClaimStatus }) {
   return status === 'claimed' ? (
@@ -797,6 +797,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               <table className="data-table transactions-table">
                 <thead>
                   <tr>
+                    <th className="w-10 px-2" title="Complete order (claimed & paid)" />
                     <th className="w-8 px-2" />
                     <th>ID</th>
                     <th>Customer</th>
@@ -877,7 +878,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
             <div className="space-y-2 flex flex-col flex-1 min-h-0">
               <Label className="text-sm font-medium shrink-0">Products</Label>
               <div className="border rounded-md overflow-y-auto flex-1 min-h-[200px] p-2 bg-muted/30">
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
                   {[...newTxProducts]
                     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
                     .map((p) => {
@@ -915,7 +916,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                           </div>
                           <ProductImageThumb
                             src={p.images?.[0]}
-                            className="h-12 w-12 rounded border border-border"
+                            className="h-16 w-16 rounded border border-border shrink-0"
                           />
                         </CardContent>
                       </Card>
@@ -1120,9 +1121,19 @@ function TransactionRow({
   onCancelClick: () => void;
   onDeleteClick: () => void;
 }) {
+  const isComplete = !isCancelled && tx.claimStatus === 'claimed' && tx.paymentStatus === 'paid';
+
   return (
     <>
       <tr className={isCancelled ? 'row-muted' : undefined}>
+        {/* Complete order indicator (claimed & paid) */}
+        <td className="px-2 py-3 text-center">
+          {isComplete ? (
+            <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mx-auto" title="Order complete (claimed & paid)" />
+          ) : (
+            <span className="text-muted-foreground/40">—</span>
+          )}
+        </td>
         {/* Expand toggle */}
         <td className="px-2 py-3">
           <button onClick={onToggleExpand} className="flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors" title="View items">
