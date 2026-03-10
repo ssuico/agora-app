@@ -564,7 +564,7 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
 
   const fetchProducts = useCallback(async (silent = false) => {
     try {
-      const res = await fetch(`/api/products?storeId=${storeId}`);
+      const res = await fetch(`/api/products?storeId=${storeId}&dailyOnly=true`);
       if (res.ok) {
         const data: RtProduct[] = await res.json();
         if (silent) {
@@ -580,16 +580,43 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
-  // Socket-based updates
+  // Socket-based updates — filter to only daily-inventory products
   useEffect(() => {
     const socket = getSocket();
     socket.emit('join:store', storeId);
-    socket.on('stock:updated', applyUpdate);
+
+    const handleSocketUpdate = (updated: RtProduct[]) => {
+      setProducts((prev) => {
+        const dailyIds = new Set(prev.map((p) => p._id));
+        const filtered = updated.filter((p) => dailyIds.has(p._id));
+        const prevMap = new Map(prev.map((p) => [p._id, p]));
+        const changedIds: string[] = [];
+        for (const p of filtered) {
+          const old = prevMap.get(p._id);
+          if (old && old.stockQuantity !== p.stockQuantity) {
+            changedIds.push(p._id);
+          }
+        }
+
+        if (changedIds.length > 0) {
+          for (const id of changedIds) flashSet.current.add(id);
+          forceRender((n) => n + 1);
+          setTimeout(() => {
+            for (const id of changedIds) flashSet.current.delete(id);
+            forceRender((n) => n + 1);
+          }, 1200);
+        }
+
+        return filtered;
+      });
+    };
+
+    socket.on('stock:updated', handleSocketUpdate);
     return () => {
-      socket.off('stock:updated', applyUpdate);
+      socket.off('stock:updated', handleSocketUpdate);
       socket.emit('leave:store', storeId);
     };
-  }, [storeId, applyUpdate]);
+  }, [storeId]);
 
   // Polling fallback — keeps data fresh even when sockets aren't available
   useEffect(() => {
