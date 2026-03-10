@@ -22,9 +22,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Check, ChevronLeft, ChevronRight, Download, History, ImageIcon, Info, Lock, LockOpen, NotepadText, Package, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Activity, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Lock, LockOpen, NotepadText, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
+import { getSocket } from '@/lib/socket';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
 
 interface Store {
@@ -496,6 +497,244 @@ function ProductManagerInventoryReport({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Realtime Stocks — live product stock overview with WebSocket updates
+// ---------------------------------------------------------------------------
+
+type GridCols = 3 | 6 | 9;
+
+interface RtProduct {
+  _id: string;
+  name: string;
+  images: string[];
+  sellingPrice: number;
+  stockQuantity: number;
+}
+
+function RealtimeStocksImage({ src, className }: { src?: string; className?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <div className={`flex items-center justify-center bg-muted ${className}`}>
+        <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      className={`object-cover ${className}`}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function RealtimeStocks({ storeId }: { storeId: string }) {
+  const [products, setProducts] = useState<RtProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [cols, setCols] = useState<GridCols>(6);
+  const [search, setSearch] = useState('');
+  const flashSet = useRef<Set<string>>(new Set());
+  const [, forceRender] = useState(0);
+
+  const applyUpdate = useCallback((updated: RtProduct[]) => {
+    setProducts((prev) => {
+      const prevMap = new Map(prev.map((p) => [p._id, p]));
+      const changedIds: string[] = [];
+      for (const p of updated) {
+        const old = prevMap.get(p._id);
+        if (old && old.stockQuantity !== p.stockQuantity) {
+          changedIds.push(p._id);
+        }
+      }
+
+      if (changedIds.length > 0) {
+        for (const id of changedIds) flashSet.current.add(id);
+        forceRender((n) => n + 1);
+        setTimeout(() => {
+          for (const id of changedIds) flashSet.current.delete(id);
+          forceRender((n) => n + 1);
+        }, 1200);
+      }
+
+      return updated;
+    });
+  }, []);
+
+  const fetchProducts = useCallback(async (silent = false) => {
+    try {
+      const res = await fetch(`/api/products?storeId=${storeId}`);
+      if (res.ok) {
+        const data: RtProduct[] = await res.json();
+        if (silent) {
+          applyUpdate(data);
+        } else {
+          setProducts(data);
+        }
+      }
+    } catch { /* ignore */ } finally {
+      setLoading(false);
+    }
+  }, [storeId, applyUpdate]);
+
+  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+
+  // Socket-based updates
+  useEffect(() => {
+    const socket = getSocket();
+    socket.emit('join:store', storeId);
+    socket.on('stock:updated', applyUpdate);
+    return () => {
+      socket.off('stock:updated', applyUpdate);
+      socket.emit('leave:store', storeId);
+    };
+  }, [storeId, applyUpdate]);
+
+  // Polling fallback — keeps data fresh even when sockets aren't available
+  useEffect(() => {
+    const interval = setInterval(() => fetchProducts(true), 5000);
+    return () => clearInterval(interval);
+  }, [fetchProducts]);
+
+  const LOW_STOCK_THRESHOLD = 5;
+
+  const filtered = products
+    .filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      const aOOS = a.stockQuantity === 0 ? 1 : 0;
+      const bOOS = b.stockQuantity === 0 ? 1 : 0;
+      if (aOOS !== bOOS) return aOOS - bOOS;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
+
+  const gridClass =
+    cols === 3
+      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+      : cols === 6
+        ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
+        : 'grid-cols-3 sm:grid-cols-5 lg:grid-cols-9';
+
+  if (loading) {
+    return <div className="py-12 text-center text-muted-foreground">Loading products…</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
+          <input
+            type="text"
+            placeholder="Search products..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/30 transition-all"
+          />
+        </div>
+        <div className="flex items-center gap-1 rounded-lg border bg-muted/50 p-1">
+          {([3, 6, 9] as GridCols[]).map((n) => {
+            const Icon = n === 3 ? LayoutGrid : n === 6 ? Grid3x3 : Grid2x2;
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setCols(n)}
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  cols === n
+                    ? 'bg-background shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                title={`${n} columns`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {n}
+              </button>
+            );
+          })}
+        </div>
+        <span className="text-xs text-muted-foreground ml-auto">
+          {filtered.length} product{filtered.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* Product grid */}
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <Package className="h-10 w-10 text-muted-foreground/30" />
+          <p className="text-muted-foreground">
+            {search ? 'No products match your search.' : 'No products in this store.'}
+          </p>
+        </div>
+      ) : (
+        <div className={`grid gap-3 ${gridClass}`}>
+          {filtered.map((product) => {
+            const isOOS = product.stockQuantity === 0;
+            const isLow = !isOOS && product.stockQuantity <= LOW_STOCK_THRESHOLD;
+            const isFlashing = flashSet.current.has(product._id);
+
+            return (
+              <div
+                key={product._id}
+                className={`relative rounded-xl border bg-card overflow-hidden flex flex-col transition-all duration-300 ${
+                  isOOS ? 'opacity-50 border-border/40' : 'border-border/60'
+                } ${isFlashing ? 'ring-2 ring-primary/60 shadow-lg shadow-primary/10' : ''}`}
+              >
+                <div className="relative aspect-square overflow-hidden bg-muted">
+                  <RealtimeStocksImage
+                    src={product.images?.[0]}
+                    className="h-full w-full"
+                  />
+                  {isOOS && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <span className="bg-destructive text-destructive-foreground text-[10px] font-semibold px-2.5 py-1 rounded-full">
+                        Out of Stock
+                      </span>
+                    </div>
+                  )}
+                  {isLow && (
+                    <div className="absolute top-1.5 right-1.5">
+                      <span className="bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">
+                        Low
+                      </span>
+                    </div>
+                  )}
+                  {isFlashing && (
+                    <div className="absolute inset-0 bg-primary/10 animate-pulse pointer-events-none" />
+                  )}
+                </div>
+                <div className="p-3 flex flex-col gap-1 flex-1">
+                  <p className="text-sm font-semibold leading-tight line-clamp-2">{product.name}</p>
+                  <p className="text-sm font-bold text-primary">{fmt(product.sellingPrice)}</p>
+                  <div className="mt-auto pt-1.5 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Stock</span>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
+                        isOOS
+                          ? 'bg-destructive/15 text-destructive'
+                          : isLow
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-primary/15 text-primary'
+                      }`}
+                    >
+                      {product.stockQuantity}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main ProductManager
+// ---------------------------------------------------------------------------
+
 export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const isScoped = !!fixedStoreId;
   const todayStr = toLocalDateStr(new Date());
@@ -528,7 +767,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const [submitting, setSubmitting] = useState(false);
   const [restockQty, setRestockQty] = useState('');
 
-  type MainTab = 'products' | 'inventory-report';
+  type MainTab = 'products' | 'realtime-stocks' | 'inventory-report';
   const [mainTab, setMainTab] = useState<MainTab>('products');
   const [invDate, setInvDate] = useState(todayStr);
   const [invData, setInvData] = useState<InventoryReportData | null>(null);
@@ -1042,7 +1281,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         )}
       </div>
 
-      {/* Main tabs: Inventory | Inventory Report */}
+      {/* Main tabs: Inventory | Realtime Stocks | Inventory Report */}
       <div className="flex gap-1 rounded-lg border bg-muted/50 p-1 w-fit">
         <button
           type="button"
@@ -1050,6 +1289,14 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${mainTab === 'products' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
         >
           Inventory
+        </button>
+        <button
+          type="button"
+          onClick={() => setMainTab('realtime-stocks')}
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${mainTab === 'realtime-stocks' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          <Activity className="h-3.5 w-3.5" />
+          Realtime Stocks
         </button>
         <button
           type="button"
@@ -1061,7 +1308,15 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         </button>
       </div>
 
-      {mainTab === 'inventory-report' ? (
+      {mainTab === 'realtime-stocks' ? (
+        effectiveStoreId ? (
+          <RealtimeStocks storeId={effectiveStoreId} />
+        ) : (
+          <p className="rounded-lg border bg-muted/50 px-4 py-8 text-center text-sm text-muted-foreground">
+            Select a store above to view realtime stocks.
+          </p>
+        )
+      ) : mainTab === 'inventory-report' ? (
         <div className="space-y-4">
           <div className="flex gap-1 rounded-lg border bg-muted/50 p-1 w-fit">
             <button
