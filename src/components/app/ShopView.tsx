@@ -267,14 +267,17 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
     setStockAlerts((prev) => prev.filter((a) => a.id !== id));
   };
 
+  const [availableProductIds, setAvailableProductIds] = useState<Set<string> | null>(null);
+
   // --- Data fetching ---
 
   const fetchProducts = async () => {
     try {
-      const res = await fetch(`/api/products?storeId=${storeId}`);
+      const res = await fetch(`/api/products?storeId=${storeId}&dailyOnly=true`);
       if (res.ok) {
         const data: Product[] = await res.json();
         setProducts(data);
+        setAvailableProductIds(new Set(data.map((p) => p._id)));
       }
     } catch { /* ignore */ } finally {
       setLoading(false);
@@ -290,7 +293,10 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
     socket.emit('join:store', storeId);
 
     const handleStockUpdate = (updatedProducts: Product[]) => {
-      setProducts(updatedProducts);
+      setProducts((prev) => {
+        const currentIds = availableProductIds ?? new Set(prev.map((p) => p._id));
+        return updatedProducts.filter((p) => currentIds.has(p._id));
+      });
 
       const productMap = new Map(updatedProducts.map((p) => [p._id, p]));
 
@@ -330,7 +336,7 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
       socket.off('stock:updated', handleStockUpdate);
       socket.emit('leave:store', storeId);
     };
-  }, [storeId]);
+  }, [storeId, availableProductIds]);
 
   // --- Cart helpers ---
 

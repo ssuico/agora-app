@@ -356,13 +356,26 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     let cancelled = false;
     (async () => {
       try {
-        const [productsRes, customersRes] = await Promise.all([
+        const today = todayInEST();
+        const dailyParams = new URLSearchParams({ storeId, date: today });
+        const [productsRes, customersRes, dailyRes] = await Promise.all([
           fetch(`/api/products?storeId=${storeId}`),
           fetch('/api/users?role=customer'),
+          fetch(`/api/inventory/daily?${dailyParams}`),
         ]);
         if (cancelled) return;
+
+        let dailyIds: Set<string> | null = null;
+        if (dailyRes.ok) {
+          const rows: Array<{ productId: string }> = await dailyRes.json();
+          dailyIds = new Set(rows.map((r) => r.productId));
+        }
+
         if (productsRes.ok) {
-          const list = await productsRes.json();
+          let list = await productsRes.json();
+          if (dailyIds) {
+            list = list.filter((p: { _id: string }) => dailyIds!.has(p._id));
+          }
           setNewTxProducts(list);
           setNewTxQuantities((prev) => {
             const next = { ...prev };

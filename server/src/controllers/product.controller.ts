@@ -8,6 +8,7 @@ import { UserRole } from '../types/index.js';
 export const getProducts = async (req: Request, res: Response): Promise<void> => {
   try {
     const storeId = req.query.storeId as string | undefined;
+    const dailyOnly = req.query.dailyOnly === 'true';
 
     if (req.user!.role === UserRole.STORE_MANAGER && !storeId) {
       const products = await Product.find({ storeId: { $in: req.user!.storeIds ?? [] } }).sort({
@@ -19,6 +20,24 @@ export const getProducts = async (req: Request, res: Response): Promise<void> =>
 
     const filter = storeId ? { storeId } : {};
     const products = await Product.find(filter).sort({ createdAt: -1 });
+
+    if (dailyOnly && storeId) {
+      const today = new Date(toLocalDateStr(new Date()));
+      today.setUTCHours(0, 0, 0, 0);
+
+      const dailyRecords = await InventoryRecord.find({
+        storeId,
+        date: today,
+      })
+        .select('productId')
+        .lean();
+
+      const dailyProductIds = new Set(dailyRecords.map((r) => String(r.productId)));
+      const filtered = products.filter((p) => dailyProductIds.has(String(p._id)));
+      res.json(filtered);
+      return;
+    }
+
     res.json(products);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
