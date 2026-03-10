@@ -893,7 +893,12 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               <div className="border rounded-md overflow-y-auto flex-1 min-h-[200px] p-2 bg-muted/30">
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
                   {[...newTxProducts]
-                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+                    .sort((a, b) => {
+                      const aInStock = a.stockQuantity > 0 ? 0 : 1;
+                      const bInStock = b.stockQuantity > 0 ? 0 : 1;
+                      if (aInStock !== bInStock) return aInStock - bInStock;
+                      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+                    })
                     .map((p) => {
                     const qty = newTxQuantities[p._id] ?? 0;
                     return (

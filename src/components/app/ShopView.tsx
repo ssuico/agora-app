@@ -450,9 +450,14 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
     }
   };
 
-  const filteredProducts = products.filter((p) =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredProducts = products
+    .filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    .sort((a, b) => {
+      const aInStock = a.stockQuantity > 0 ? 0 : 1;
+      const bInStock = b.stockQuantity > 0 ? 0 : 1;
+      if (aInStock !== bInStock) return aInStock - bInStock;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
 
   // --- Render ---
 
