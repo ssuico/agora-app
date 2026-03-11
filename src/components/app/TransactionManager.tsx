@@ -387,7 +387,11 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         }
         if (customersRes.ok) {
           const list = await customersRes.json();
-          setNewTxCustomers(list);
+          setNewTxCustomers(
+            [...list].sort((a: { name: string }, b: { name: string }) =>
+              (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+            )
+          );
         }
       } catch { /* ignore */ }
     })();
@@ -982,21 +986,61 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               </div>
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Claim / Payment</Label>
-                <div className="flex gap-2">
-                  <Select value={newTxClaimStatus} onValueChange={(v) => setNewTxClaimStatus(v as ClaimStatus)}>
-                    <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unclaimed">Unclaimed</SelectItem>
-                      <SelectItem value="claimed">Claimed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={newTxPaymentStatus} onValueChange={(v) => setNewTxPaymentStatus(v as PaymentStatus)}>
-                    <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unpaid">Unpaid</SelectItem>
-                      <SelectItem value="paid">Paid</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs text-muted-foreground">Claim</span>
+                    <div className="flex rounded-md border border-input p-0.5 bg-muted/30">
+                      <button
+                        type="button"
+                        onClick={() => setNewTxClaimStatus('unclaimed')}
+                        className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
+                          newTxClaimStatus === 'unclaimed'
+                            ? 'bg-background text-foreground shadow'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Unclaimed
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewTxClaimStatus('claimed')}
+                        className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
+                          newTxClaimStatus === 'claimed'
+                            ? 'bg-background text-foreground shadow'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Claimed
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs text-muted-foreground">Payment</span>
+                    <div className="flex rounded-md border border-input p-0.5 bg-muted/30">
+                      <button
+                        type="button"
+                        onClick={() => setNewTxPaymentStatus('unpaid')}
+                        className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
+                          newTxPaymentStatus === 'unpaid'
+                            ? 'bg-background text-foreground shadow'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Unpaid
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewTxPaymentStatus('paid')}
+                        className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
+                          newTxPaymentStatus === 'paid'
+                            ? 'bg-background text-foreground shadow'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Paid
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
