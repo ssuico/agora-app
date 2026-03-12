@@ -11,19 +11,22 @@ interface Store {
   _id: string;
   name: string;
   isOpen: boolean;
+  isMaintenance: boolean;
 }
 
 let storeName = 'Store';
 let storeIsOpen = true;
+let storeIsMaintenance = false;
 try {
   const store = await api.get<Store>(`/api/stores/${storeId}`);
   storeName = store.name;
   storeIsOpen = store.isOpen ?? true;
+  storeIsMaintenance = store.isMaintenance ?? false;
 } catch {
   // handled in component
 }
 ---
 
 <CustomerLayout title={storeName}>
-  <ShopView storeId={storeId!} storeName={storeName} initialIsOpen={storeIsOpen} client:load />
+  <ShopView storeId={storeId!} storeName={storeName} initialIsOpen={storeIsOpen} initialIsMaintenance={storeIsMaintenance} client:load />
 </CustomerLayout>

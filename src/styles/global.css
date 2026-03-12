@@ -155,6 +155,14 @@
 .data-table.transactions-table thead th {
   @apply text-center;
 }
+/* Stores table: align headers with column content */
+.data-table.stores-table thead th:nth-child(4),
+.data-table.stores-table thead th:nth-child(5) {
+  @apply text-center;
+}
+.data-table.stores-table thead th:nth-child(6) {
+  @apply text-right;
+}
 .data-table tbody tr {
   border-bottom: 1px solid var(--border);
   transition: background-color 0.15s ease;

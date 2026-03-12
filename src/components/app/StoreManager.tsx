@@ -17,8 +17,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
-import { Pencil, Plus, Trash2, UserPlus, UserMinus } from 'lucide-react';
+import { Pencil, Plus, Trash2, UserPlus, UserMinus, WrenchIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 
@@ -32,6 +33,8 @@ interface Store {
   name: string;
   locationId: Location | string;
   createdAt: string;
+  isOpen?: boolean;
+  isMaintenance?: boolean;
 }
 
 interface StoreFormData {
@@ -262,6 +265,62 @@ export function StoreManager() {
     }
   };
 
+  const handleToggleOpen = async (store: Store) => {
+    const nextOpen = !(store.isOpen ?? true);
+    setStores((prev) =>
+      prev.map((s) => (s._id === store._id ? { ...s, isOpen: nextOpen } : s))
+    );
+    try {
+      const res = await fetch(`/api/stores/${store._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isOpen: nextOpen }),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to update');
+        setStores((prev) =>
+          prev.map((s) => (s._id === store._id ? { ...s, isOpen: store.isOpen } : s))
+        );
+        return;
+      }
+      toast.success(nextOpen ? 'Store is now open for customers' : 'Store is now closed for customers');
+    } catch {
+      toast.error('Network error');
+      setStores((prev) =>
+        prev.map((s) => (s._id === store._id ? { ...s, isOpen: store.isOpen } : s))
+      );
+    }
+  };
+
+  const handleToggleMaintenance = async (store: Store) => {
+    const next = !(store.isMaintenance ?? false);
+    setStores((prev) =>
+      prev.map((s) => (s._id === store._id ? { ...s, isMaintenance: next } : s))
+    );
+    try {
+      const res = await fetch(`/api/stores/${store._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isMaintenance: next }),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to update');
+        setStores((prev) =>
+          prev.map((s) => (s._id === store._id ? { ...s, isMaintenance: store.isMaintenance } : s))
+        );
+        return;
+      }
+      toast.success(next ? 'Maintenance mode enabled — store page is now unavailable' : 'Maintenance mode disabled — store page is accessible again');
+    } catch {
+      toast.error('Network error');
+      setStores((prev) =>
+        prev.map((s) => (s._id === store._id ? { ...s, isMaintenance: store.isMaintenance } : s))
+      );
+    }
+  };
+
   const updateField = (field: keyof StoreFormData, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -294,19 +353,21 @@ export function StoreManager() {
 
       <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col">
         <div className="data-table-scroll-wrapper flex-1 min-h-0">
-          <table className="data-table">
+          <table className="data-table stores-table">
             <thead>
               <tr>
                 <th>Name</th>
                 <th>Location</th>
                 <th>Created</th>
-                <th className="text-right">Actions</th>
+                <th>Open for customers</th>
+                <th>Maintenance</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {stores.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                     No stores found. Click "Add Store" to create one.
                   </td>
                 </tr>
@@ -321,6 +382,30 @@ export function StoreManager() {
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {new Date(store.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <Switch
+                        checked={store.isOpen !== false}
+                        onCheckedChange={() => handleToggleOpen(store)}
+                        aria-label={`${store.isOpen !== false ? 'Open' : 'Closed'} for customers`}
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        {store.isOpen !== false ? 'Open' : 'Closed'}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <Switch
+                        checked={store.isMaintenance === true}
+                        onCheckedChange={() => handleToggleMaintenance(store)}
+                        aria-label={`Maintenance mode ${store.isMaintenance ? 'on' : 'off'}`}
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        {store.isMaintenance ? 'On' : 'Off'}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">

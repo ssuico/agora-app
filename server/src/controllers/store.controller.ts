@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Store } from '../models/Store.js';
 import { StoreManagerAssignment } from '../models/StoreManagerAssignment.js';
 import { User } from '../models/User.js';
+import { getIO } from '../socket.js';
 import { UserRole } from '../types/index.js';
 
 export const getStores = async (req: Request, res: Response): Promise<void> => {
@@ -57,6 +58,26 @@ export const updateStore = async (req: Request, res: Response): Promise<void> =>
     if (!store) {
       res.status(404).json({ message: 'Store not found' });
       return;
+    }
+    const body = req.body as { isOpen?: boolean; isMaintenance?: boolean };
+    if (typeof body.isOpen === 'boolean' || typeof body.isMaintenance === 'boolean') {
+      try {
+        const io = getIO();
+        if (typeof body.isOpen === 'boolean') {
+          io.to(`store:${store._id}`).emit('store:status-changed', {
+            storeId: String(store._id),
+            isOpen: store.isOpen,
+          });
+        }
+        if (typeof body.isMaintenance === 'boolean') {
+          io.to(`store:${store._id}`).emit('store:maintenance-changed', {
+            storeId: String(store._id),
+            isMaintenance: store.isMaintenance,
+          });
+        }
+      } catch {
+        /* socket not required for REST update */
+      }
     }
     res.json(store);
   } catch (err) {

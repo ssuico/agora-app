@@ -36,6 +36,7 @@ interface ShopViewProps {
   storeId: string;
   storeName: string;
   initialIsOpen?: boolean;
+  initialIsMaintenance?: boolean;
 }
 
 const fmt = (n: number) =>
@@ -250,7 +251,7 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
 // Main ShopView
 // ---------------------------------------------------------------------------
 
-export function ShopView({ storeId, storeName, initialIsOpen = true }: ShopViewProps) {
+export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMaintenance = false }: ShopViewProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -264,6 +265,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true }: ShopViewP
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isStoreOpen, setIsStoreOpen] = useState(initialIsOpen);
+  const [isMaintenance, setIsMaintenance] = useState(initialIsMaintenance);
 
   const dismissAlert = (id: number) => {
     setStockAlerts((prev) => prev.filter((a) => a.id !== id));
@@ -339,11 +341,19 @@ export function ShopView({ storeId, storeName, initialIsOpen = true }: ShopViewP
       }
     };
 
+    const handleMaintenanceChange = (data: { storeId: string; isMaintenance: boolean }) => {
+      if (data.storeId === storeId) {
+        setIsMaintenance(data.isMaintenance);
+      }
+    };
+
     socket.on('stock:updated', handleStockUpdate);
     socket.on('store:status-changed', handleStatusChange);
+    socket.on('store:maintenance-changed', handleMaintenanceChange);
     return () => {
       socket.off('stock:updated', handleStockUpdate);
       socket.off('store:status-changed', handleStatusChange);
+      socket.off('store:maintenance-changed', handleMaintenanceChange);
       socket.emit('leave:store', storeId);
     };
   }, [storeId, availableProductIds]);
@@ -470,6 +480,44 @@ export function ShopView({ storeId, storeName, initialIsOpen = true }: ShopViewP
     });
 
   // --- Render ---
+
+  if (isMaintenance) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+        <div className="w-full max-w-md text-center space-y-6">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+            <AlertTriangle className="h-10 w-10 text-amber-500" />
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold tracking-tight">Maintenance Ongoing</h1>
+            <p className="text-muted-foreground">
+              <span className="font-medium text-foreground">{storeName}</span> is currently undergoing maintenance and is temporarily unavailable.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-3 flex flex-col items-center">
+            <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+              <Clock className="h-4 w-4 shrink-0" />
+              <span>Maintenance mode or maintenance ongoing.</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              We apologize for the inconvenience. Please check back soon.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <Button asChild variant="outline">
+              <a href="/purchases">
+                <Package className="mr-1.5 h-4 w-4" />
+                My Purchases
+              </a>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isStoreOpen) {
     return (
