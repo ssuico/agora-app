@@ -3,6 +3,7 @@ import {
   closeStore,
   getDailyInventory,
   getStoreClosingStatus,
+  reduceStock,
   reopenStore,
   restockProduct,
 } from '../controllers/inventory.controller.js';
@@ -24,6 +25,12 @@ inventoryRoutes.patch(
   '/daily/:productId/restock',
   authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
   restockProduct
+);
+
+inventoryRoutes.patch(
+  '/daily/:productId/reduce',
+  authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  reduceStock
 );
 
 inventoryRoutes.post(

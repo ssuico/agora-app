@@ -115,7 +115,8 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
     const result = records.map((rec) => {
       const product = productMap.get(String(rec.productId));
       const sold = soldMap.get(String(rec.productId)) ?? 0;
-      const displayInitialStock = rec.initialStock + rec.restock;
+      const reduction = (rec as { reduction?: number }).reduction ?? 0;
+      const displayInitialStock = Math.max(0, rec.initialStock + rec.restock - reduction);
       const currentStock = displayInitialStock - sold;
 
       return {
@@ -130,9 +131,10 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
         notes: product?.notes ?? '',
         initialStock: rec.initialStock,
         restock: rec.restock,
+        reduction,
         sold,
         displayInitialStock,
-        currentStock: Math.max(0, currentStock),
+        currentStock: Math.max(0, displayInitialStock - sold),
         date: rec.date,
       };
     });
@@ -193,6 +195,75 @@ export const restockProduct = async (req: Request, res: Response): Promise<void>
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Server error';
     console.error('[restockProduct]', message);
+    res.status(500).json({ message });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// PATCH /api/inventory/daily/:productId/reduce
+// ---------------------------------------------------------------------------
+
+export const reduceStock = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { productId } = req.params;
+    const { quantity, storeId, date: dateStr } = req.body as { quantity: number; storeId: string; date?: string };
+
+    if (!quantity || quantity <= 0) {
+      res.status(400).json({ message: 'quantity must be a positive number' });
+      return;
+    }
+
+    if (!storeId) {
+      res.status(400).json({ message: 'storeId is required' });
+      return;
+    }
+
+    const targetDate = dateStr ? toDateOnly(dateStr) : todayInAppTz();
+    const today = todayInAppTz();
+
+    if (targetDate < today) {
+      res.status(400).json({ message: 'Cannot reduce stock for a past date' });
+      return;
+    }
+
+    const product = await Product.findById(productId).lean();
+    if (!product) {
+      res.status(404).json({ message: 'Product not found' });
+      return;
+    }
+
+    const currentStock = product.stockQuantity ?? 0;
+    const actualReduce = Math.min(quantity, Math.max(0, currentStock));
+    if (actualReduce <= 0) {
+      res.status(400).json({ message: 'No stock available to reduce' });
+      return;
+    }
+
+    const record = await InventoryRecord.findOneAndUpdate(
+      { productId, date: targetDate },
+      { $inc: { reduction: actualReduce } },
+      { new: true, upsert: false }
+    );
+
+    if (!record) {
+      res.status(404).json({
+        message: 'No inventory record for this date. Open the inventory tab first to initialize daily records.',
+      });
+      return;
+    }
+
+    await Product.findByIdAndUpdate(productId, { $inc: { stockQuantity: -actualReduce } });
+
+    try {
+      const io = getIO();
+      const updatedProducts = await Product.find({ storeId }).lean();
+      io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+    } catch { /* socket broadcast is non-critical */ }
+
+    res.json({ record, reduced: actualReduce });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Server error';
+    console.error('[reduceStock]', message);
     res.status(500).json({ message });
   }
 };

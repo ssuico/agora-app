@@ -22,7 +22,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Activity, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Lock, LockOpen, NotepadText, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { Activity, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Lock, LockOpen, Minus, NotepadText, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -530,7 +530,13 @@ function RealtimeStocksImage({ src, className }: { src?: string; className?: str
   );
 }
 
-function RealtimeStocks({ storeId }: { storeId: string }) {
+function RealtimeStocks({
+  storeId,
+  onReduceStock,
+}: {
+  storeId: string;
+  onReduceStock?: (product: RtProduct) => void;
+}) {
   const [products, setProducts] = useState<RtProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [cols, setCols] = useState<GridCols>(6);
@@ -734,19 +740,43 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
                 <div className="p-3 flex flex-col gap-1 flex-1">
                   <p className="text-sm font-semibold leading-tight line-clamp-2">{product.name}</p>
                   <p className="text-sm font-bold text-primary">{fmt(product.sellingPrice)}</p>
-                  <div className="mt-auto pt-1.5 flex items-center justify-between">
+                  <div className="mt-auto pt-1.5 flex items-center justify-between gap-2">
                     <span className="text-xs text-muted-foreground">Stock</span>
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
-                        isOOS
-                          ? 'bg-destructive/15 text-destructive'
-                          : isLow
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-primary/15 text-primary'
-                      }`}
-                    >
-                      {product.stockQuantity}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      {onReduceStock && product.stockQuantity > 0 && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onReduceStock(product);
+                                }}
+                                aria-label="Reduce stock"
+                              >
+                                <Minus className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">Reduce or remove stock</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
+                          isOOS
+                            ? 'bg-destructive/15 text-destructive'
+                            : isLow
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-primary/15 text-primary'
+                        }`}
+                      >
+                        {product.stockQuantity}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -793,6 +823,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [restockQty, setRestockQty] = useState('');
+  const [reduceQty, setReduceQty] = useState('');
 
   type MainTab = 'products' | 'realtime-stocks' | 'inventory-report';
   const [mainTab, setMainTab] = useState<MainTab>('products');
@@ -813,6 +844,9 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const [productsPage, setProductsPage] = useState(1);
   const [inventorySearch, setInventorySearch] = useState('');
   const [inventoryTypeFilter, setInventoryTypeFilter] = useState<'all' | 'perishable' | 'non-perishable'>('all');
+  const [reduceDialogProduct, setReduceDialogProduct] = useState<{ _id: string; name: string; stockQuantity: number } | null>(null);
+  const [reduceDialogQty, setReduceDialogQty] = useState('');
+  const [reduceSubmitting, setReduceSubmitting] = useState(false);
 
   const isEditable = selectedDate === todayStr;
   const storeMap = new Map(stores.map((s) => [s._id, s.name]));
@@ -947,6 +981,40 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     }
   };
 
+  const handleReduceStockSubmit = async () => {
+    if (!reduceDialogProduct || !effectiveStoreId) return;
+    const qty = parseInt(reduceDialogQty, 10);
+    if (!qty || qty <= 0) {
+      toast.error('Enter a valid quantity to reduce');
+      return;
+    }
+    setReduceSubmitting(true);
+    try {
+      const res = await fetch(`/api/inventory/reduce/${reduceDialogProduct._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quantity: qty,
+          storeId: effectiveStoreId,
+          date: todayStr,
+        }),
+      });
+      const data = (await res.json()) as { message?: string };
+      if (!res.ok) {
+        toast.error(data.message ?? 'Failed to reduce stock');
+        return;
+      }
+      toast.success('Stock reduced');
+      setReduceDialogProduct(null);
+      setReduceDialogQty('');
+      await refreshData(filterStoreId);
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setReduceSubmitting(false);
+    }
+  };
+
   const handleDownloadExcel = async () => {
     if (!effectiveStoreId) return;
     try {
@@ -977,6 +1045,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     setEditingProduct(null);
     setForm(emptyForm);
     setRestockQty('');
+    setReduceQty('');
     setNewImageUrl('');
     setError('');
     setDialogOpen(true);
@@ -996,6 +1065,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       notes: product.notes ?? '',
     });
     setRestockQty('');
+    setReduceQty('');
     setNewImageUrl('');
     setError('');
     setDialogOpen(true);
@@ -1054,6 +1124,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         }
 
         const qty = parseInt(restockQty, 10);
+        const reduceAmount = parseInt(reduceQty, 10);
         if (qty > 0) {
           const restockRes = await fetch(`/api/inventory/restock/${editingProduct._id}`, {
             method: 'PATCH',
@@ -1068,7 +1139,23 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             return;
           }
           toast.success('Product updated and restocked');
-        } else {
+        }
+        if (reduceAmount > 0) {
+          const reduceRes = await fetch(`/api/inventory/reduce/${editingProduct._id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ quantity: reduceAmount, storeId: form.storeId, date: todayStr }),
+          });
+          if (!reduceRes.ok) {
+            const data = (await reduceRes.json()) as { message?: string };
+            const msg = data.message ?? 'Failed to reduce stock';
+            setError(msg);
+            toast.error(msg);
+            return;
+          }
+          toast.success('Stock reduced');
+        }
+        if (qty <= 0 && reduceAmount <= 0) {
           toast.success('Product updated');
         }
       } else {
@@ -1337,7 +1424,13 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
 
       {mainTab === 'realtime-stocks' ? (
         effectiveStoreId ? (
-          <RealtimeStocks storeId={effectiveStoreId} />
+          <RealtimeStocks
+            storeId={effectiveStoreId}
+            onReduceStock={(p) => {
+              setReduceDialogProduct(p);
+              setReduceDialogQty('');
+            }}
+          />
         ) : (
           <p className="rounded-lg border bg-muted/50 px-4 py-8 text-center text-sm text-muted-foreground">
             Select a store above to view realtime stocks.
@@ -1749,20 +1842,37 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             </div>
 
             {editingProduct ? (
-              <div className="space-y-2">
-                <Label htmlFor="product-restock">Restock Quantity</Label>
-                <Input
-                  id="product-restock"
-                  type="number"
-                  min="0"
-                  step="1"
-                  placeholder="0"
-                  value={restockQty}
-                  onChange={(e) => setRestockQty(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Enter the number of units to add to current stock. Leave at 0 if no restock.
-                </p>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="product-restock">Restock Quantity</Label>
+                  <Input
+                    id="product-restock"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="0"
+                    value={restockQty}
+                    onChange={(e) => setRestockQty(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter the number of units to add to current stock. Leave at 0 if no restock.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="product-reduce">Reduce / Remove Stock</Label>
+                  <Input
+                    id="product-reduce"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="0"
+                    value={reduceQty}
+                    onChange={(e) => setReduceQty(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Use when items are withdrawn, lost, damaged, or expired. Quantity is capped at current stock.
+                  </p>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">
@@ -1812,6 +1922,46 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             <Button type="button" variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={submitting}>
               {submitting ? 'Deleting...' : 'Delete Product'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reduce stock dialog (from Realtime Stocks) */}
+      <Dialog
+        open={!!reduceDialogProduct}
+        onOpenChange={(open) => {
+          if (!open) setReduceDialogProduct(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reduce stock</DialogTitle>
+            <DialogDescription>
+              Remove or reduce quantity for <strong>{reduceDialogProduct?.name}</strong>. Use for withdrawn, lost, damaged, or expired items. Current stock: <strong>{reduceDialogProduct?.stockQuantity ?? 0}</strong>. Quantity is capped at current stock.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="reduce-dialog-qty">Quantity to reduce</Label>
+              <Input
+                id="reduce-dialog-qty"
+                type="number"
+                min="1"
+                max={reduceDialogProduct?.stockQuantity ?? 0}
+                step="1"
+                placeholder="0"
+                value={reduceDialogQty}
+                onChange={(e) => setReduceDialogQty(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setReduceDialogProduct(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleReduceStockSubmit} disabled={reduceSubmitting || !reduceDialogQty.trim()}>
+              {reduceSubmitting ? 'Reducing...' : 'Reduce stock'}
             </Button>
           </DialogFooter>
         </DialogContent>
