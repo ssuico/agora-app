@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { Product } from '../models/Product.js';
+import { Store } from '../models/Store.js';
 import { Transaction, type ClaimStatus, type PaymentStatus } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { getIO } from '../socket.js';
@@ -31,6 +32,18 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
     if (!items?.length) {
       res.status(400).json({ message: 'Transaction must include at least one item' });
+      await session.abortTransaction();
+      return;
+    }
+
+    const store = await Store.findById(storeId).session(session);
+    if (!store) {
+      res.status(404).json({ message: 'Store not found' });
+      await session.abortTransaction();
+      return;
+    }
+    if (!store.isOpen) {
+      res.status(403).json({ message: 'This store is currently closed. Please try again later.' });
       await session.abortTransaction();
       return;
     }
@@ -347,8 +360,39 @@ export const getMyPurchases = async (req: Request, res: Response): Promise<void>
   try {
     const transactions = await Transaction.find({ customerId: req.user!.userId })
       .populate('storeId', 'name')
-      .sort({ createdAt: -1 });
-    res.json(transactions);
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (transactions.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const txIds = transactions.map((t) => t._id);
+    const items = await TransactionItem.find({ transactionId: { $in: txIds } })
+      .populate('productId', 'name sellingPrice')
+      .lean();
+
+    const itemsByTx = new Map<string, Array<{ productName: string; quantity: number; subtotal: number; sellingPrice: number }>>();
+    for (const item of items) {
+      const txId = String(item.transactionId);
+      const product = item.productId as unknown as { name: string; sellingPrice: number } | null;
+      const list = itemsByTx.get(txId) ?? [];
+      list.push({
+        productName: product?.name ?? 'Unknown',
+        quantity: item.quantity,
+        subtotal: item.subtotal,
+        sellingPrice: product?.sellingPrice ?? 0,
+      });
+      itemsByTx.set(txId, list);
+    }
+
+    const result = transactions.map((tx) => ({
+      ...tx,
+      items: itemsByTx.get(String(tx._id)) ?? [],
+    }));
+
+    res.json(result);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
   }

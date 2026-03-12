@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { localDayRange, toLocalDateStr } from '../config/timezone.js';
 import { InventoryRecord } from '../models/InventoryRecord.js';
 import { Product } from '../models/Product.js';
+import { Store } from '../models/Store.js';
 import { StoreClosing } from '../models/StoreClosing.js';
 import { Transaction } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
@@ -288,6 +289,13 @@ export const closeStore = async (req: Request, res: Response): Promise<void> => 
       await InventoryRecord.bulkWrite(bulkOps);
     }
 
+    await Store.findByIdAndUpdate(storeId, { isOpen: false });
+
+    try {
+      const io = getIO();
+      io.to(`store:${storeId}`).emit('store:status-changed', { storeId, isOpen: false });
+    } catch { /* socket broadcast is non-critical */ }
+
     res.json(closing);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Server error';
@@ -330,6 +338,13 @@ export const reopenStore = async (req: Request, res: Response): Promise<void> =>
     });
 
     await StoreClosing.deleteOne({ _id: closing._id });
+
+    await Store.findByIdAndUpdate(storeId, { isOpen: true });
+
+    try {
+      const io = getIO();
+      io.to(`store:${storeId}`).emit('store:status-changed', { storeId, isOpen: true });
+    } catch { /* socket broadcast is non-critical */ }
 
     res.json({ message: 'Store reopened' });
   } catch (err) {

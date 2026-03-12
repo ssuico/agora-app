@@ -20,6 +20,7 @@ interface Store {
   _id: string;
   name: string;
   locationId: Location | string;
+  isOpen?: boolean;
 }
 
 let stores: Store[] = [];
@@ -59,25 +60,51 @@ try {
         </p>
       ) : (
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {stores.map((store) => (
-            <a
-              href={`/shop/${store._id}`}
-              class="group rounded-lg border bg-card p-6 shadow-sm transition-all hover:border-primary hover:shadow-md"
-            >
-              <div class="flex items-center gap-3">
-                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" />
-                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-                    <path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4" />
-                    <path d="M2 7h20" />
-                    <path d="M22 7v3a2 2 0 0 1-2 2a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7" />
-                  </svg>
+          {stores.map((store) => {
+            const isClosed = store.isOpen === false;
+            return (
+              <a
+                href={isClosed ? undefined : `/shop/${store._id}`}
+                class:list={[
+                  'group rounded-lg border bg-card p-6 shadow-sm transition-all',
+                  isClosed
+                    ? 'opacity-60 cursor-not-allowed border-border'
+                    : 'hover:border-primary hover:shadow-md',
+                ]}
+                aria-disabled={isClosed}
+                onclick={isClosed ? 'event.preventDefault()' : undefined}
+              >
+                <div class="flex items-center gap-3">
+                  <div class:list={[
+                    'flex h-10 w-10 items-center justify-center rounded-full',
+                    isClosed ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary',
+                  ]}>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" />
+                      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                      <path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4" />
+                      <path d="M2 7h20" />
+                      <path d="M22 7v3a2 2 0 0 1-2 2a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7" />
+                    </svg>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class:list={[
+                      'text-lg font-semibold',
+                      isClosed ? 'text-muted-foreground' : 'group-hover:text-primary',
+                    ]}>{store.name}</p>
+                    {isClosed && (
+                      <p class="text-xs font-medium text-red-600 mt-0.5">Closed for the day</p>
+                    )}
+                  </div>
+                  {isClosed && (
+                    <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
+                      Closed
+                    </span>
+                  )}
                 </div>
-                <p class="text-lg font-semibold group-hover:text-primary">{store.name}</p>
-              </div>
-            </a>
-          ))}
+              </a>
+            );
+          })}
         </div>
       )
     }

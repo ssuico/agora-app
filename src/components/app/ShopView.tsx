@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, ChevronLeft, ChevronRight, ImageIcon, Loader2, MapPin, Minus, Package, Plus, Search, ShoppingCart, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Clock, ImageIcon, Loader2, Minus, Package, Plus, Search, ShoppingCart, Store, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -35,6 +35,7 @@ interface StockAlert {
 interface ShopViewProps {
   storeId: string;
   storeName: string;
+  initialIsOpen?: boolean;
 }
 
 const fmt = (n: number) =>
@@ -249,7 +250,7 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
 // Main ShopView
 // ---------------------------------------------------------------------------
 
-export function ShopView({ storeId, storeName }: ShopViewProps) {
+export function ShopView({ storeId, storeName, initialIsOpen = true }: ShopViewProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -262,6 +263,7 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
   const [addToCartCooldowns, setAddToCartCooldowns] = useState<Set<string>>(new Set());
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isStoreOpen, setIsStoreOpen] = useState(initialIsOpen);
 
   const dismissAlert = (id: number) => {
     setStockAlerts((prev) => prev.filter((a) => a.id !== id));
@@ -331,9 +333,17 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
       });
     };
 
+    const handleStatusChange = (data: { storeId: string; isOpen: boolean }) => {
+      if (data.storeId === storeId) {
+        setIsStoreOpen(data.isOpen);
+      }
+    };
+
     socket.on('stock:updated', handleStockUpdate);
+    socket.on('store:status-changed', handleStatusChange);
     return () => {
       socket.off('stock:updated', handleStockUpdate);
+      socket.off('store:status-changed', handleStatusChange);
       socket.emit('leave:store', storeId);
     };
   }, [storeId, availableProductIds]);
@@ -461,6 +471,44 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
 
   // --- Render ---
 
+  if (!isStoreOpen) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+        <div className="w-full max-w-md text-center space-y-6">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-muted">
+            <Store className="h-10 w-10 text-muted-foreground" />
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold tracking-tight">Store Closed</h1>
+            <p className="text-muted-foreground">
+              <span className="font-medium text-foreground">{storeName}</span> is currently closed and not accepting reservations.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-border/60 bg-card/80 p-4 space-y-3 flex flex-col items-center">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Clock className="h-4 w-4 shrink-0" />
+              <span>The store manager has closed this store for the day.</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Please check back later or tomorrow.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <Button asChild variant="outline">
+              <a href="/purchases">
+                <Package className="mr-1.5 h-4 w-4" />
+                My Purchases
+              </a>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -527,10 +575,6 @@ export function ShopView({ storeId, storeName }: ShopViewProps) {
           <p className="text-sm text-muted-foreground mt-0.5">Browse products and add to cart</p>
         </div>
         <div className="flex items-center gap-1.5">
-          <a href="/select-location" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-card/80 transition-colors">
-            <MapPin className="h-3.5 w-3.5" />
-            Change store
-          </a>
           <a href="/purchases" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-card/80 transition-colors">
             <Package className="h-3.5 w-3.5" />
             My Purchases

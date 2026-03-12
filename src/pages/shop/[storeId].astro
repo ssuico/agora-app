@@ -10,17 +10,20 @@ const api = createApiClient(token);
 interface Store {
   _id: string;
   name: string;
+  isOpen: boolean;
 }
 
 let storeName = 'Store';
+let storeIsOpen = true;
 try {
   const store = await api.get<Store>(`/api/stores/${storeId}`);
   storeName = store.name;
+  storeIsOpen = store.isOpen ?? true;
 } catch {
   // handled in component
 }
 ---
 
 <CustomerLayout title={storeName}>
-  <ShopView storeId={storeId!} storeName={storeName} client:load />
+  <ShopView storeId={storeId!} storeName={storeName} initialIsOpen={storeIsOpen} client:load />
 </CustomerLayout>

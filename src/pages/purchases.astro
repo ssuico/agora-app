@@ -6,11 +6,19 @@ import { createApiClient } from '../lib/api';
 const token = Astro.cookies.get('agora_token')?.value ?? '';
 const api = createApiClient(token);
 
+interface TransactionItem {
+  productName: string;
+  quantity: number;
+  subtotal: number;
+  sellingPrice: number;
+}
+
 interface Transaction {
   _id: string;
   storeId: { _id: string; name: string } | string;
   totalAmount: number;
   createdAt: string;
+  items: TransactionItem[];
 }
 
 let purchases: Transaction[] = [];
@@ -28,9 +36,6 @@ try {
         <h1 class="text-2xl font-bold tracking-tight">My Purchases</h1>
         <p class="text-sm text-muted-foreground">Your purchase history</p>
       </div>
-      <a href="/select-location" class="text-sm text-primary hover:underline">
-        Continue Shopping
-      </a>
     </div>
 
     <PurchasesTable client:load purchases={purchases} />
