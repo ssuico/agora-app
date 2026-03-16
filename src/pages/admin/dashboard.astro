@@ -40,6 +40,7 @@ let summary: Summary = {
   remainingCapital: 0,
   transactionCount: 0,
 };
+let perStoreSummaries: Array<{ store: Store; summary: Summary }> = [];
 
 try {
   [locations, stores, users, summary] = await Promise.all([
@@ -52,8 +53,52 @@ try {
   // Data may be unavailable on first load
 }
 
+const toSafeNumber = (value: unknown): number => {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const normalizeSummary = (raw: Partial<Summary> | undefined): Summary => {
+  const totalSales = toSafeNumber(raw?.totalSales);
+  const grossProfit = toSafeNumber(raw?.grossProfit);
+  const totalExpenses = toSafeNumber(raw?.totalExpenses);
+  const totalCOGS = toSafeNumber(raw?.totalCOGS);
+  const transactionCount = Math.round(toSafeNumber(raw?.transactionCount));
+  const netProfitRaw = raw?.netProfit;
+  const netProfit = Number.isFinite(Number(netProfitRaw))
+    ? toSafeNumber(netProfitRaw)
+    : grossProfit - totalExpenses;
+
+  return {
+    totalSales,
+    grossProfit,
+    netProfit,
+    totalExpenses,
+    totalCOGS,
+    remainingCapital: toSafeNumber(raw?.remainingCapital),
+    transactionCount,
+  };
+};
+
+summary = normalizeSummary(summary);
+
+if (stores.length > 0) {
+  perStoreSummaries = await Promise.all(
+    stores.map(async (store) => {
+      try {
+        const storeSummary = await api.get<Partial<Summary>>(
+          `/api/reports/summary?storeId=${store._id}`
+        );
+        return { store, summary: normalizeSummary(storeSummary) };
+      } catch {
+        return { store, summary: normalizeSummary(undefined) };
+      }
+    })
+  );
+}
+
 const fmt = (n: number) =>
-  new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
+  new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(toSafeNumber(n));
 
 const managerCount = users.filter((u) => u.role === 'store_manager').length;
 const customerCount = users.filter((u) => u.role === 'customer').length;
@@ -107,6 +152,47 @@ const financeCards = [
           ))
         }
       </div>
+    </div>
+
+    <div>
+      <h2 class="mb-3 text-lg font-semibold">Financial Summary Per Store</h2>
+      {
+        perStoreSummaries.length === 0 ? (
+          <div class="rounded-lg border bg-card p-5 text-sm text-muted-foreground">
+            No stores found.
+          </div>
+        ) : (
+          <div class="grid gap-4 lg:grid-cols-2">
+            {perStoreSummaries.map(({ store, summary: storeSummary }) => (
+              <div class="rounded-lg border bg-card p-5 shadow-sm">
+                <h3 class="text-base font-semibold">{store.name}</h3>
+                <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p class="text-xs text-muted-foreground">Total Sales</p>
+                    <p class="text-lg font-bold">{fmt(storeSummary.totalSales)}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-muted-foreground">Gross Profit</p>
+                    <p class="text-lg font-bold">{fmt(storeSummary.grossProfit)}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-muted-foreground">Total Expenses</p>
+                    <p class="text-lg font-bold">{fmt(storeSummary.totalExpenses)}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-muted-foreground">Net Profit</p>
+                    <p class="text-lg font-bold">{fmt(storeSummary.netProfit)}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-muted-foreground">Transactions</p>
+                    <p class="text-lg font-bold">{storeSummary.transactionCount}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      }
     </div>
   </div>
 </AppLayout>

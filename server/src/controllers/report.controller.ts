@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { localDayRange, localDayRangeFromDateString } from '../config/timezone.js';
+import { Expense } from '../models/Expense.js';
 import { InventoryRecord } from '../models/InventoryRecord.js';
 import { Product } from '../models/Product.js';
 import { Transaction } from '../models/Transaction.js';
@@ -14,23 +15,39 @@ function toDateOnly(input: string | Date): Date {
 
 /** Same filters as getSummary so daily report shows the same "sold" definition. */
 const REPORT_TX_FILTER = { paymentStatus: 'paid' as const, orderStatus: { $ne: 'cancelled' as const } };
+const toSafeNumber = (value: unknown): number => {
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
 
 export const getSummary = async (req: Request, res: Response): Promise<void> => {
   try {
     const { storeId } = req.query;
     const filter: Record<string, unknown> = { ...REPORT_TX_FILTER };
-    if (storeId) filter.storeId = storeId;
+    const normalizedStoreId = typeof storeId === 'string' && storeId.trim() ? storeId : null;
+    if (normalizedStoreId) filter.storeId = normalizedStoreId;
 
-    const transactions = await Transaction.find(filter);
+    const expenseFilter: Record<string, unknown> = {};
+    if (normalizedStoreId) expenseFilter.storeId = normalizedStoreId;
 
-    const totalSales = transactions.reduce((sum, t) => sum + t.totalAmount, 0);
-    const totalCOGS = transactions.reduce((sum, t) => sum + t.totalCost, 0);
+    const [transactions, expenses] = await Promise.all([
+      Transaction.find(filter),
+      Expense.find(expenseFilter).select('amount').lean(),
+    ]);
+
+    const totalSales = transactions.reduce((sum, t) => sum + toSafeNumber(t.totalAmount), 0);
+    const totalCOGS = transactions.reduce((sum, t) => sum + toSafeNumber(t.totalCost), 0);
+    const totalExpenses = expenses.reduce((sum, e) => sum + toSafeNumber(e.amount), 0);
     const grossProfit = totalSales - totalCOGS;
+    const netProfit = grossProfit - totalExpenses;
 
     res.json({
       totalSales,
       totalCOGS,
       grossProfit,
+      totalExpenses,
+      netProfit,
+      remainingCapital: 0,
       transactionCount: transactions.length,
     });
   } catch (err) {
