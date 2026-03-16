@@ -8,6 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "seed": "tsx src/seed.ts",
     "seed:customers": "tsx src/seedCustomers.ts",
+    "seed:customers:excel": "tsx src/seedCustomersFromExcel.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },
