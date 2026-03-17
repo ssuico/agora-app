@@ -6,6 +6,7 @@ import {
   getMyPurchases,
   getTransaction,
   getTransactions,
+  updateTransactionNotes,
   updateTransactionStatus,
 } from '../controllers/transaction.controller.js';
 import { authenticate } from '../middleware/auth.js';
@@ -28,6 +29,11 @@ transactionRoutes.patch(
   '/:id/status',
   authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
   updateTransactionStatus
+);
+transactionRoutes.patch(
+  '/:id/notes',
+  authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  updateTransactionNotes
 );
 transactionRoutes.patch(
   '/:id/cancel',

@@ -20,6 +20,9 @@ interface CreateTransactionBody {
   walkInCustomerName?: string;
   claimStatus?: ClaimStatus;
   paymentStatus?: PaymentStatus;
+  amountPaid?: number;
+  notes?: string;
+  customerNotes?: string;
 }
 
 export const createTransaction = async (req: Request, res: Response): Promise<void> => {
@@ -103,10 +106,26 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
       isStaff && body.claimStatus && ['unclaimed', 'claimed'].includes(body.claimStatus)
         ? body.claimStatus
         : 'unclaimed';
-    const paymentStatus =
-      isStaff && body.paymentStatus && ['unpaid', 'paid'].includes(body.paymentStatus)
-        ? body.paymentStatus
-        : 'unpaid';
+    let paymentStatus: PaymentStatus = 'unpaid';
+    let amountPaid = 0;
+    if (isStaff && body.paymentStatus && ['unpaid', 'paid', 'partial'].includes(body.paymentStatus)) {
+      paymentStatus = body.paymentStatus as PaymentStatus;
+      if (paymentStatus === 'partial') {
+        const raw = typeof body.amountPaid === 'number' ? body.amountPaid : Number(body.amountPaid);
+        amountPaid = Number.isFinite(raw) ? Math.max(0, Math.min(raw, totalAmount - 0.01)) : 0;
+      } else if (paymentStatus === 'paid') {
+        amountPaid = totalAmount;
+      }
+    }
+
+    const notes =
+      typeof body.notes === 'string' && body.notes.trim()
+        ? body.notes.trim()
+        : null;
+    const customerNotes =
+      typeof body.customerNotes === 'string' && body.customerNotes.trim()
+        ? body.customerNotes.trim()
+        : null;
 
     const [transaction] = await Transaction.create(
       [{
@@ -118,6 +137,9 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         walkInCustomerName: walkInCustomerName ?? null,
         claimStatus,
         paymentStatus,
+        amountPaid,
+        notes,
+        customerNotes,
       }],
       { session }
     );
@@ -223,14 +245,31 @@ export const getTransaction = async (req: Request, res: Response): Promise<void>
 
 export const updateTransactionStatus = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { claimStatus, paymentStatus } = req.body;
-    const update: Record<string, string> = {};
+    const { claimStatus, paymentStatus, amountPaid: bodyAmountPaid } = req.body;
+    const update: Record<string, unknown> = {};
 
     if (claimStatus && ['unclaimed', 'claimed'].includes(claimStatus)) {
       update.claimStatus = claimStatus;
     }
-    if (paymentStatus && ['unpaid', 'paid'].includes(paymentStatus)) {
+    if (paymentStatus && ['unpaid', 'paid', 'partial'].includes(paymentStatus)) {
       update.paymentStatus = paymentStatus;
+      if (paymentStatus === 'paid') {
+        const tx = await Transaction.findById(req.params.id).select('totalAmount').lean();
+        if (tx) update.amountPaid = tx.totalAmount;
+      } else if (paymentStatus === 'unpaid') {
+        update.amountPaid = 0;
+      } else if (paymentStatus === 'partial' && typeof bodyAmountPaid === 'number') {
+        const tx = await Transaction.findById(req.params.id).select('totalAmount').lean();
+        if (!tx) {
+          res.status(404).json({ message: 'Transaction not found' });
+          return;
+        }
+        const totalAmount = tx.totalAmount as number;
+        const amountPaid = Number.isFinite(bodyAmountPaid)
+          ? Math.max(0, Math.min(bodyAmountPaid, totalAmount - 0.01))
+          : 0;
+        update.amountPaid = amountPaid;
+      }
     }
 
     if (Object.keys(update).length === 0) {
@@ -239,6 +278,34 @@ export const updateTransactionStatus = async (req: Request, res: Response): Prom
     }
 
     const transaction = await Transaction.findByIdAndUpdate(req.params.id, update, { new: true })
+      .populate('customerId', 'name email');
+
+    if (!transaction) {
+      res.status(404).json({ message: 'Transaction not found' });
+      return;
+    }
+
+    try {
+      const io = getIO();
+      io.to(`store:${transaction.storeId}`).emit('transaction:updated', transaction.toJSON());
+    } catch { /* socket broadcast is non-critical */ }
+
+    res.json(transaction);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
+export const updateTransactionNotes = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { notes: bodyNotes } = req.body as { notes?: string };
+    const notes = typeof bodyNotes === 'string' && bodyNotes.trim() ? bodyNotes.trim() : null;
+
+    const transaction = await Transaction.findByIdAndUpdate(
+      req.params.id,
+      { notes },
+      { new: true }
+    )
       .populate('customerId', 'name email');
 
     if (!transaction) {

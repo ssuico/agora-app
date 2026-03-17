@@ -20,6 +20,7 @@ const currentPath = Astro.url.pathname;
 
 let storeName: string | undefined;
 let storeLocation: string | undefined;
+let assignedStores: { _id: string; name: string; locationName?: string }[] = [];
 
 if (storeId) {
   try {
@@ -33,8 +34,21 @@ if (storeId) {
     if (store.locationId && typeof store.locationId === 'object') {
       storeLocation = store.locationId.name;
     }
+
+    // For store managers with multiple stores, fetch assigned stores for the switcher
+    const storeIds = payload?.storeIds ?? [];
+    if (storeIds.length > 1) {
+      const allStores = await api.get<{ _id: string; name: string; locationId?: { _id: string; name: string } | string }[]>('/api/stores');
+      assignedStores = allStores
+        .filter((s) => storeIds.includes(s._id))
+        .map((s) => ({
+          _id: s._id,
+          name: s.name,
+          locationName: s.locationId && typeof s.locationId === 'object' ? s.locationId.name : undefined,
+        }));
+    }
   } catch {
-    // Store may not be found; sidebar will still render without the name
+    // Store may not be found; sidebar will still render without the name.
   }
 }
 ---
@@ -44,22 +58,23 @@ if (storeId) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>{title} — Agora POS</title>
+    <title>{title} - Agora POS</title>
   </head>
   <body class="bg-background text-foreground antialiased">
     <Toaster client:load />
-    <div class="flex h-screen overflow-hidden">
+    <div class="app-shell-bg flex h-screen overflow-hidden p-3 sm:p-4">
       <Sidebar
         role={userRole}
         currentPath={currentPath}
         storeId={storeId}
         storeName={storeName}
         storeLocation={storeLocation}
+        assignedStores={assignedStores}
         client:load
       />
-      <div class="flex flex-1 flex-col overflow-hidden">
+      <div class="app-surface ml-3 flex flex-1 flex-col overflow-hidden rounded-2xl">
         <Topbar name={userName} role={userRole} client:load />
-        <main class="flex-1 overflow-y-auto p-6">
+        <main class="flex-1 overflow-y-auto p-4 sm:p-6">
           <slot />
         </main>
       </div>

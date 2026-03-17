@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import url("https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap");
 
 @custom-variant dark (&:is(.dark *));
 
@@ -86,6 +87,9 @@
     --sidebar-accent-foreground: oklch(0.28 0.05 140);
     --sidebar-border: oklch(0.78 0.07 127);
     --sidebar-ring: oklch(0.67 0.095 132);
+    --app-grad-start: oklch(0.95 0.05 114);
+    --app-grad-mid: oklch(0.92 0.06 122);
+    --app-grad-end: oklch(0.89 0.07 132);
 }
 
 .dark {
@@ -130,13 +134,14 @@
   overflow-x: auto;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
-  background: var(--card);
+  background: color-mix(in oklch, var(--card) 78%, white 22%);
+  box-shadow: 0 20px 50px -36px color-mix(in oklch, var(--primary) 55%, black 45%);
 }
 .data-table-scroll-wrapper .data-table thead th {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--muted);
+  background: color-mix(in oklch, var(--muted) 85%, white 15%);
   box-shadow: 0 1px 0 0 var(--border);
 }
 
@@ -168,10 +173,10 @@
   transition: background-color 0.15s ease;
 }
 .data-table tbody tr:nth-child(odd) {
-  background: var(--background);
+  background: color-mix(in oklch, var(--background) 88%, white 12%);
 }
 .data-table tbody tr:nth-child(even) {
-  background: var(--card);
+  background: color-mix(in oklch, var(--card) 90%, white 10%);
 }
 .data-table tbody tr:hover {
   background: color-mix(in oklch, var(--accent) 25%, var(--background));
@@ -209,6 +214,44 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: "Sora", "Segoe UI", "Helvetica Neue", sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+    background-image:
+      radial-gradient(circle at 15% 15%, color-mix(in oklch, var(--accent) 28%, transparent), transparent 34%),
+      radial-gradient(circle at 85% 80%, color-mix(in oklch, var(--primary) 20%, transparent), transparent 36%),
+      linear-gradient(130deg, var(--app-grad-start) 0%, var(--app-grad-mid) 55%, var(--app-grad-end) 100%);
+    background-attachment: fixed;
   }
+}
+
+.app-shell-bg {
+  background-image:
+    radial-gradient(circle at 12% 14%, color-mix(in oklch, var(--accent) 24%, transparent), transparent 36%),
+    radial-gradient(circle at 88% 82%, color-mix(in oklch, var(--primary) 18%, transparent), transparent 34%);
+}
+
+.app-surface {
+  border: 1px solid color-mix(in oklch, var(--border) 70%, white 30%);
+  background: color-mix(in oklch, var(--card) 74%, white 26%);
+  box-shadow: 0 22px 55px -44px color-mix(in oklch, var(--primary) 58%, black 42%);
+  backdrop-filter: blur(9px);
+}
+
+@keyframes auth-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -12px, 0) scale(1.03);
+  }
+}
+
+.auth-orb {
+  animation: auth-float 10s ease-in-out infinite;
+}
+
+.auth-orb-alt {
+  animation-duration: 14s;
+  animation-direction: reverse;
 }

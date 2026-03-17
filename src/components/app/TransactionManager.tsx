@@ -19,14 +19,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Download, FileSpreadsheet, History, ImageIcon, Loader2, Package, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Download, FileSpreadsheet, History, ImageIcon, Loader2, NotepadText, Package, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
 
 type ClaimStatus = 'unclaimed' | 'claimed';
-type PaymentStatus = 'unpaid' | 'paid';
+type PaymentStatus = 'unpaid' | 'paid' | 'partial';
 type OrderStatus = 'active' | 'cancelled';
 
 interface Transaction {
@@ -39,7 +39,10 @@ interface Transaction {
   grossProfit: number;
   claimStatus: ClaimStatus;
   paymentStatus: PaymentStatus;
+  amountPaid?: number;
   orderStatus: OrderStatus;
+  notes?: string | null;
+  customerNotes?: string | null;
   createdAt: string;
 }
 
@@ -86,12 +89,21 @@ function ClaimBadge({ status }: { status: ClaimStatus }) {
   );
 }
 
-function PaymentBadge({ status }: { status: PaymentStatus }) {
-  return status === 'paid' ? (
-    <Badge variant="default" className="text-xs border-0">Paid</Badge>
-  ) : (
-    <Badge variant="destructive" className="text-xs border-0">Unpaid</Badge>
-  );
+function PaymentBadge({ status, totalAmount, amountPaid }: { status: PaymentStatus; totalAmount?: number; amountPaid?: number }) {
+  if (status === 'paid') {
+    return <Badge variant="default" className="text-xs border-0">Paid</Badge>;
+  }
+  if (status === 'partial' && totalAmount != null && amountPaid != null && amountPaid > 0) {
+    return (
+      <Badge variant="secondary" className="text-xs border-0">
+        Partial ({fmt(amountPaid)} / {fmt(totalAmount)})
+      </Badge>
+    );
+  }
+  if (status === 'partial') {
+    return <Badge variant="secondary" className="text-xs border-0">Partial</Badge>;
+  }
+  return <Badge variant="destructive" className="text-xs border-0">Unpaid</Badge>;
 }
 
 function OrderBadge({ status }: { status: OrderStatus }) {
@@ -303,6 +315,9 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     value: string;
   } | null>(null);
   const [executingStatusAction, setExecutingStatusAction] = useState(false);
+  const [partialPaymentTarget, setPartialPaymentTarget] = useState<Transaction | null>(null);
+  const [partialPaymentAmount, setPartialPaymentAmount] = useState('');
+  const [partialPaymentSubmitting, setPartialPaymentSubmitting] = useState(false);
 
   const [filterClaim, setFilterClaim] = useState('all');
   const [filterPayment, setFilterPayment] = useState('all');
@@ -324,10 +339,12 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/products?storeId=${storeId}`);
+        const today = todayInEST();
+        const params = new URLSearchParams({ storeId, date: today });
+        const res = await fetch(`/api/inventory/daily?${params}`);
         if (cancelled || !res.ok) return;
-        const list = await res.json();
-        setFilterProducts(list.map((p: { _id: string; name: string }) => ({ _id: p._id, name: p.name })));
+        const rows: Array<{ productId: string; productName: string }> = await res.json();
+        setFilterProducts(rows.map((r) => ({ _id: r.productId, name: r.productName })));
       } catch { /* ignore */ }
     })();
     return () => { cancelled = true; };
@@ -348,8 +365,13 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [newTxWalkInName, setNewTxWalkInName] = useState('');
   const [newTxClaimStatus, setNewTxClaimStatus] = useState<ClaimStatus>('unclaimed');
   const [newTxPaymentStatus, setNewTxPaymentStatus] = useState<PaymentStatus>('unpaid');
+  const [newTxAmountPaid, setNewTxAmountPaid] = useState('');
+  const [newTxNotes, setNewTxNotes] = useState('');
   const [newTxSubmitting, setNewTxSubmitting] = useState(false);
   const [newTxShowValidationWarning, setNewTxShowValidationWarning] = useState(false);
+  const [notesModalTx, setNotesModalTx] = useState<Transaction | null>(null);
+  const [notesEdit, setNotesEdit] = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
 
   useEffect(() => {
     if (!newTxOpen) return;
@@ -432,12 +454,19 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         walkInCustomerName?: string;
         claimStatus: ClaimStatus;
         paymentStatus: PaymentStatus;
+        amountPaid?: number;
+        notes?: string;
       } = {
         storeId,
         items,
         claimStatus: newTxClaimStatus,
         paymentStatus: newTxPaymentStatus,
       };
+      if (newTxPaymentStatus === 'partial') {
+        const amount = parseFloat(newTxAmountPaid);
+        if (Number.isFinite(amount) && amount > 0) body.amountPaid = amount;
+      }
+      if (newTxNotes.trim()) body.notes = newTxNotes.trim();
       if (newTxCustomerId) {
         body.customerId = newTxCustomerId;
       } else if (newTxWalkInName.trim()) {
@@ -457,6 +486,8 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         setNewTxWalkInName('');
         setNewTxClaimStatus('unclaimed');
         setNewTxPaymentStatus('unpaid');
+        setNewTxAmountPaid('');
+        setNewTxNotes('');
         fetchTransactions();
       } else {
         const data = (await res.json()) as { message?: string };
@@ -540,13 +571,19 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     };
   }, [storeId]);
 
-  const updateStatus = async (txId: string, field: 'claimStatus' | 'paymentStatus', value: string) => {
+  const updateStatus = async (
+    txId: string,
+    field: 'claimStatus' | 'paymentStatus',
+    value: string,
+    extraBody?: Record<string, unknown>
+  ) => {
     setUpdating(txId);
     try {
+      const body = { [field]: value, ...extraBody };
       const res = await fetch(`/api/transactions/${txId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: value }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         const updated: Transaction = await res.json();
@@ -572,6 +609,60 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       setConfirmStatusAction(null);
     } finally {
       setExecutingStatusAction(false);
+    }
+  };
+
+  const openPartialPaymentDialog = (tx: Transaction) => {
+    setPartialPaymentTarget(tx);
+    setPartialPaymentAmount(String(tx.amountPaid ?? 0));
+  };
+
+  const handlePartialPaymentSubmit = async () => {
+    if (!partialPaymentTarget) return;
+    const amount = parseFloat(partialPaymentAmount);
+    if (!Number.isFinite(amount) || amount < 0 || amount >= partialPaymentTarget.totalAmount) {
+      toast.error('Enter an amount paid greater than 0 and less than the order total.');
+      return;
+    }
+    setPartialPaymentSubmitting(true);
+    try {
+      await updateStatus(partialPaymentTarget._id, 'paymentStatus', 'partial', { amountPaid: amount });
+      setPartialPaymentTarget(null);
+      setPartialPaymentAmount('');
+    } finally {
+      setPartialPaymentSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (notesModalTx) setNotesEdit(notesModalTx.notes ?? '');
+    else setNotesEdit('');
+  }, [notesModalTx]);
+
+  const handleSaveNotes = async () => {
+    if (!notesModalTx) return;
+    setNotesSaving(true);
+    try {
+      const res = await fetch(`/api/transactions/${notesModalTx._id}/notes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: notesEdit.trim() || null }),
+      });
+      if (res.ok) {
+        const updated: Transaction = await res.json();
+        setTransactions((prev) =>
+          prev.map((tx) => (tx._id === updated._id ? { ...tx, ...updated } : tx))
+        );
+        setNotesModalTx((prev) => (prev ? { ...prev, notes: updated.notes ?? null } : null));
+        toast.success('Notes saved');
+      } else {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to save notes');
+      }
+    } catch {
+      toast.error('Failed to save notes');
+    } finally {
+      setNotesSaving(false);
     }
   };
 
@@ -694,6 +785,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
                   <SelectItem value="unpaid">Unpaid</SelectItem>
+                  <SelectItem value="partial">Partial</SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
                 </SelectContent>
               </Select>
@@ -770,6 +862,9 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 const active = transactions.filter((tx) => tx.orderStatus !== 'cancelled');
                 const totalPaid = active.filter((tx) => tx.paymentStatus === 'paid').reduce((s, tx) => s + tx.totalAmount, 0);
                 const totalUnpaid = active.filter((tx) => tx.paymentStatus === 'unpaid').reduce((s, tx) => s + tx.totalAmount, 0);
+                const partialTxs = active.filter((tx) => tx.paymentStatus === 'partial');
+                const partialPaid = partialTxs.reduce((s, tx) => s + (tx.amountPaid ?? 0), 0);
+                const partialRemaining = partialTxs.reduce((s, tx) => s + (tx.totalAmount - (tx.amountPaid ?? 0)), 0);
                 return (
                   <>
                     <span className="text-xs text-muted-foreground">
@@ -778,6 +873,11 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                     <span className="text-xs text-muted-foreground">
                       Unpaid: <span className="font-medium text-amber-600">{fmt(totalUnpaid)}</span>
                     </span>
+                    {partialTxs.length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        Partial: <span className="font-medium text-blue-600">{fmt(partialPaid)}</span> paid, <span className="font-medium text-slate-600">{fmt(partialRemaining)}</span> remaining
+                      </span>
+                    )}
                     <span className="text-xs text-muted-foreground">
                       {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
                     </span>
@@ -856,6 +956,8 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                         isLoadingItems={isLoadingItems}
                         onToggleExpand={() => toggleExpand(tx._id)}
                         onRequestStatusChange={(tx, field, value) => setConfirmStatusAction({ tx, field, value })}
+                        onRequestPartialPayment={openPartialPaymentDialog}
+                        onViewNotes={() => setNotesModalTx(tx)}
                         onCancelClick={() => setCancelTarget(tx)}
                         onDeleteClick={() => setDeleteTarget(tx)}
                       />
@@ -1030,6 +1132,17 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                       </button>
                       <button
                         type="button"
+                        onClick={() => setNewTxPaymentStatus('partial')}
+                        className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
+                          newTxPaymentStatus === 'partial'
+                            ? 'bg-background text-foreground shadow'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Partial
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setNewTxPaymentStatus('paid')}
                         className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
                           newTxPaymentStatus === 'paid'
@@ -1040,8 +1153,34 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                         Paid
                       </button>
                     </div>
+                    {newTxPaymentStatus === 'partial' && (
+                      <div className="space-y-1">
+                        <Label htmlFor="new-tx-amount-paid" className="text-xs">Amount paid (PHP)</Label>
+                        <Input
+                          id="new-tx-amount-paid"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={newTxAmountPaid}
+                          onChange={(e) => setNewTxAmountPaid(e.target.value)}
+                          placeholder="0"
+                          className="h-8"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-tx-notes" className="text-sm font-medium">Notes (optional)</Label>
+                <textarea
+                  id="new-tx-notes"
+                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Add any notes for this transaction..."
+                  value={newTxNotes}
+                  onChange={(e) => setNewTxNotes(e.target.value)}
+                  rows={3}
+                />
               </div>
             </div>
           </div>
@@ -1121,6 +1260,52 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Transaction notes modal */}
+      <Dialog open={!!notesModalTx} onOpenChange={(open) => { if (!open) setNotesModalTx(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transaction notes</DialogTitle>
+            <DialogDescription>
+              View and edit store notes. Customer reservation notes are from the customer when they placed the order.
+            </DialogDescription>
+          </DialogHeader>
+          {notesModalTx && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+                <p><span className="text-muted-foreground">Order ID:</span> <span className="font-mono">{notesModalTx._id.slice(-8)}</span></p>
+                <p><span className="text-muted-foreground">Customer:</span> {notesModalTx.customerId && typeof notesModalTx.customerId === 'object' ? notesModalTx.customerId.name : (notesModalTx.walkInCustomerName || 'Walk-in')}</p>
+                <p><span className="text-muted-foreground">Amount:</span> <span className="font-medium">{fmt(notesModalTx.totalAmount)}</span></p>
+                <p><span className="text-muted-foreground">Date:</span> {fmtDate(new Date(notesModalTx.createdAt))}</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Customer reservation notes</Label>
+                <div className="rounded-md border bg-muted/30 px-3 py-3 text-sm min-h-[60px] whitespace-pre-wrap">
+                  {notesModalTx.customerNotes?.trim() || <span className="text-muted-foreground italic">No notes from customer.</span>}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="notes-edit" className="text-sm text-muted-foreground">Store notes (editable)</Label>
+                <textarea
+                  id="notes-edit"
+                  className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Add or edit notes for this transaction..."
+                  value={notesEdit}
+                  onChange={(e) => setNotesEdit(e.target.value)}
+                  rows={4}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNotesModalTx(null)}>Close</Button>
+            <Button onClick={handleSaveNotes} disabled={notesSaving || !notesModalTx}>
+              {notesSaving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {notesSaving ? 'Saving...' : 'Save notes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Status action confirmation (Claim / Unclaim / Pay / Unpay) */}
       <Dialog open={!!confirmStatusAction} onOpenChange={(open) => { if (!open) setConfirmStatusAction(null); }}>
         <DialogContent>
@@ -1130,7 +1315,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               {confirmStatusAction && (() => {
                 const { field, value } = confirmStatusAction;
                 if (field === 'claimStatus') return value === 'claimed' ? 'Are you sure you want to mark this order as claimed?' : 'Are you sure you want to revert this order to unclaimed?';
-                if (field === 'paymentStatus') return value === 'paid' ? 'Are you sure you want to mark this order as paid?' : 'Are you sure you want to revert this order to unpaid?';
+                if (field === 'paymentStatus') return value === 'paid' ? 'Are you sure you want to mark this order as paid?' : value === 'unpaid' ? 'Are you sure you want to revert this order to unpaid?' : '';
                 return 'Are you sure you want to perform this action?';
               })()}
             </DialogDescription>
@@ -1146,6 +1331,45 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
             <Button onClick={handleConfirmStatusAction} disabled={executingStatusAction}>
               {executingStatusAction ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
               {executingStatusAction ? 'Updating...' : 'Confirm'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Partial payment dialog */}
+      <Dialog open={!!partialPaymentTarget} onOpenChange={(open) => { if (!open) { setPartialPaymentTarget(null); setPartialPaymentAmount(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set partial payment</DialogTitle>
+            <DialogDescription>
+              Enter the amount already paid for this order. The remaining balance will stay as unpaid.
+            </DialogDescription>
+          </DialogHeader>
+          {partialPaymentTarget && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+                <p><span className="text-muted-foreground">Order total:</span> <span className="font-medium">{fmt(partialPaymentTarget.totalAmount)}</span></p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="partial-amount">Amount paid (PHP)</Label>
+                <Input
+                  id="partial-amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  max={partialPaymentTarget.totalAmount - 0.01}
+                  value={partialPaymentAmount}
+                  onChange={(e) => setPartialPaymentAmount(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setPartialPaymentTarget(null); setPartialPaymentAmount(''); }} disabled={partialPaymentSubmitting}>Cancel</Button>
+            <Button onClick={handlePartialPaymentSubmit} disabled={partialPaymentSubmitting || !partialPaymentAmount.trim()}>
+              {partialPaymentSubmitting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {partialPaymentSubmitting ? 'Saving...' : 'Save partial payment'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1168,6 +1392,8 @@ function TransactionRow({
   isLoadingItems,
   onToggleExpand,
   onRequestStatusChange,
+  onRequestPartialPayment,
+  onViewNotes,
   onCancelClick,
   onDeleteClick,
 }: {
@@ -1180,6 +1406,8 @@ function TransactionRow({
   isLoadingItems: boolean;
   onToggleExpand: () => void;
   onRequestStatusChange: (tx: Transaction, field: 'claimStatus' | 'paymentStatus', value: string) => void;
+  onRequestPartialPayment?: (tx: Transaction) => void;
+  onViewNotes?: (tx: Transaction) => void;
   onCancelClick: () => void;
   onDeleteClick: () => void;
 }) {
@@ -1235,18 +1463,28 @@ function TransactionRow({
         <td className={`px-4 py-3 font-medium ${isCancelled ? 'line-through text-muted-foreground' : 'text-primary'}`}>{fmt(tx.grossProfit)}</td>
         <td className="px-4 py-3"><OrderBadge status={tx.orderStatus ?? 'active'} /></td>
         <td className="px-4 py-3">{isCancelled ? <span className="text-xs text-muted-foreground">—</span> : <ClaimBadge status={tx.claimStatus} />}</td>
-        <td className="px-4 py-3">{isCancelled ? <span className="text-xs text-muted-foreground">—</span> : <PaymentBadge status={tx.paymentStatus} />}</td>
+        <td className="px-4 py-3">{isCancelled ? <span className="text-xs text-muted-foreground">—</span> : <PaymentBadge status={tx.paymentStatus} totalAmount={tx.totalAmount} amountPaid={tx.amountPaid} />}</td>
         <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{fmtDate(new Date(tx.createdAt))}</td>
         <td className="px-4 py-3 text-right">
           {isCancelled ? (
             <div className="flex items-center justify-end gap-1">
               <span className="text-xs text-muted-foreground italic mr-1">Cancelled</span>
+              {onViewNotes && (
+                <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onViewNotes(tx)} title="View notes">
+                  <NotepadText className="h-3.5 w-3.5" />
+                </Button>
+              )}
               <Button variant="ghost" size="sm" disabled={isUpdating} onClick={onDeleteClick} title="Delete transaction" className="text-destructive hover:text-destructive">
                 <Trash2 className="mr-1 h-3.5 w-3.5" />Delete
               </Button>
             </div>
           ) : (
             <div className="flex items-center justify-end gap-1">
+              {onViewNotes && (
+                <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onViewNotes(tx)} title="View notes">
+                  <NotepadText className="h-3.5 w-3.5" />
+                </Button>
+              )}
               {tx.claimStatus === 'unclaimed' ? (
                 <Button variant="outline" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'claimStatus', 'claimed')} title="Mark as claimed">
                   <Package className="mr-1 h-3.5 w-3.5" />Claim
@@ -1257,9 +1495,30 @@ function TransactionRow({
                 </Button>
               )}
               {tx.paymentStatus === 'unpaid' ? (
-                <Button variant="default" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'paid')} title="Mark as paid">
-                  <Check className="mr-1 h-3.5 w-3.5" />Pay
-                </Button>
+                <>
+                  <Button variant="default" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'paid')} title="Mark as paid">
+                    <Check className="mr-1 h-3.5 w-3.5" />Pay
+                  </Button>
+                  {onRequestPartialPayment && (
+                    <Button variant="outline" size="sm" disabled={isUpdating} onClick={() => onRequestPartialPayment(tx)} title="Set partial payment">
+                      Partial
+                    </Button>
+                  )}
+                </>
+              ) : tx.paymentStatus === 'partial' ? (
+                <>
+                  <Button variant="default" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'paid')} title="Mark as fully paid">
+                    <Check className="mr-1 h-3.5 w-3.5" />Mark paid
+                  </Button>
+                  {onRequestPartialPayment && (
+                    <Button variant="outline" size="sm" disabled={isUpdating} onClick={() => onRequestPartialPayment(tx)} title="Edit partial amount">
+                      Edit partial
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'unpaid')} title="Revert to unpaid" className="text-muted-foreground">
+                    Unpay
+                  </Button>
+                </>
               ) : (
                 <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'unpaid')} title="Revert to unpaid" className="text-muted-foreground">
                   <Check className="mr-1 h-3.5 w-3.5" />Unpay

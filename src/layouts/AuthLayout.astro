@@ -16,7 +16,10 @@ const { title = 'Agora POS' } = Astro.props;
   </head>
   <body class="bg-background text-foreground antialiased">
     <Toaster client:load />
-    <div class="flex min-h-screen items-center justify-center p-4">
+    <div class="relative isolate flex min-h-screen items-center justify-center overflow-hidden px-4 py-8 sm:px-6">
+      <div class="auth-orb pointer-events-none absolute -top-32 right-[-12rem] h-80 w-80 rounded-full bg-emerald-300/35 blur-3xl sm:h-96 sm:w-96"></div>
+      <div class="auth-orb auth-orb-alt pointer-events-none absolute -bottom-36 left-[-10rem] h-72 w-72 rounded-full bg-lime-200/55 blur-3xl sm:h-96 sm:w-96"></div>
+      <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(228,248,173,0.3),transparent_38%),radial-gradient(circle_at_80%_80%,rgba(129,193,120,0.18),transparent_40%)]"></div>
       <slot />
     </div>
   </body>

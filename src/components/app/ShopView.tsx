@@ -258,6 +258,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
+  const [reservationNotes, setReservationNotes] = useState('');
   const [error, setError] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [cardQuantities, setCardQuantities] = useState<Record<string, number>>({});
@@ -445,6 +446,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
         body: JSON.stringify({
           storeId,
           items: validItems.map((c) => ({ productId: c.product._id, quantity: c.quantity })),
+          ...(reservationNotes.trim() && { customerNotes: reservationNotes.trim() }),
         }),
       });
 
@@ -461,6 +463,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
       setCartOpen(false);
       setSuccessOpen(true);
       setCardQuantities({});
+      setReservationNotes('');
       await fetchProducts();
     } catch {
       setError('Network error');
@@ -862,6 +865,18 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
               <span className="text-lg font-bold">{fmt(hasUnavailable ? validCartTotal : cartTotal)}</span>
             </div>
           )}
+
+          <div className="space-y-2">
+              <label htmlFor="reservation-notes" className="text-sm font-medium">Notes for your reservation (optional)</label>
+              <textarea
+                id="reservation-notes"
+                className="flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                placeholder="e.g. Preferred pickup time, special requests..."
+                value={reservationNotes}
+                onChange={(e) => setReservationNotes(e.target.value)}
+                rows={3}
+              />
+            </div>
 
           {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
 
