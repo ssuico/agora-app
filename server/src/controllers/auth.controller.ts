@@ -104,3 +104,59 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ message: 'Server error', error: err });
   }
 };
+
+export const updateProfile = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, avatar } = req.body as { name?: string; avatar?: string };
+    const updates: { name?: string; avatar?: string } = {};
+    if (typeof name === 'string' && name.trim()) updates.name = name.trim();
+    if (typeof avatar === 'string') updates.avatar = avatar.trim();
+    const user = await User.findByIdAndUpdate(
+      req.user!.userId,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).select('-password');
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    let storeIds: string[] | undefined;
+    if (user.role === UserRole.STORE_MANAGER) {
+      const assignments = await StoreManagerAssignment.find({ userId: user._id });
+      storeIds = assignments.map((a) => a.storeId.toString());
+    }
+    res.json({ ...user.toObject(), storeIds });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { oldPassword, newPassword } = req.body as { oldPassword: string; newPassword: string };
+    if (!oldPassword || !newPassword) {
+      res.status(400).json({ message: 'Old password and new password are required' });
+      return;
+    }
+    if (newPassword.length < 6) {
+      res.status(400).json({ message: 'New password must be at least 6 characters' });
+      return;
+    }
+    const user = await User.findById(req.user!.userId);
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    const valid = await bcrypt.compare(oldPassword, user.password);
+    if (!valid) {
+      res.status(401).json({ message: 'Current password is incorrect' });
+      return;
+    }
+    const hashed = await bcrypt.hash(newPassword, 12);
+    user.password = hashed;
+    await user.save();
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};

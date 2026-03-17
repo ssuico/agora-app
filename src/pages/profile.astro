@@ -1,0 +1,8 @@
+---
+import CustomerLayout from '../layouts/CustomerLayout.astro';
+import { Profile as ProfilePage } from '../components/app/Profile';
+---
+
+<CustomerLayout title="Profile">
+  <ProfilePage client:load />
+</CustomerLayout>

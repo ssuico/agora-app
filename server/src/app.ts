@@ -2,7 +2,6 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
 import { authRoutes } from './routes/auth.routes.js';
 import { expenseRoutes } from './routes/expense.routes.js';
 import { inventoryReportRoutes } from './routes/inventoryReport.routes.js';
@@ -29,15 +28,9 @@ app.use(
 app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: 'Too many login attempts. Please try again later.' },
-});
-
-app.use('/api/auth', authLimiter, authRoutes);
+// Strict limit only for sensitive auth actions (login, register, reset-password).
+// GET /me and PATCH /me are not limited here so normal app usage (layout + profile) doesn't hit 429.
+app.use('/api/auth', authRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/products', productRoutes);

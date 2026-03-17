@@ -2,6 +2,7 @@
 import { Topbar } from '../components/app/Topbar';
 import { Toaster } from '../components/app/Toaster';
 import { decodeJWT } from '../lib/jwt';
+import { createApiClient } from '../lib/api';
 import '../styles/global.css';
 
 interface Props {
@@ -11,8 +12,18 @@ const { title = 'Agora POS' } = Astro.props;
 
 const token = Astro.cookies.get('agora_token')?.value ?? '';
 const payload = decodeJWT(token);
-const userName = payload?.name ?? 'User';
-const userRole = payload?.role ?? 'customer';
+let userName = payload?.name ?? 'User';
+let userRole = payload?.role ?? 'customer';
+let userAvatar: string | undefined;
+try {
+  const api = createApiClient(token);
+  const me = await api.get<{ name?: string; role?: string; avatar?: string }>('/api/auth/me');
+  if (me?.name) userName = me.name;
+  if (me?.role) userRole = me.role;
+  if (me?.avatar != null) userAvatar = typeof me.avatar === 'string' ? me.avatar : undefined;
+} catch {
+  // Use JWT payload only
+}
 ---
 
 <html lang="en">
@@ -25,7 +36,7 @@ const userRole = payload?.role ?? 'customer';
   <body class="bg-background text-foreground antialiased">
     <Toaster client:load />
     <div class="flex min-h-screen flex-col">
-      <Topbar name={userName} role={userRole} client:load />
+      <Topbar name={userName} role={userRole} avatar={userAvatar} client:load />
       <main class="flex-1 p-6">
         <slot />
       </main>

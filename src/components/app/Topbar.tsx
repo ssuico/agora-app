@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -9,11 +9,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown, Clock, LogOut } from 'lucide-react';
+import { ChevronDown, Clock, LogOut, User } from 'lucide-react';
 
 interface TopbarProps {
   name: string;
   role: string;
+  avatar?: string;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -64,7 +65,34 @@ function useEstClock() {
   return { time, date };
 }
 
-export function Topbar({ name, role }: TopbarProps) {
+const PROFILE_UPDATED_EVENT = 'profile-updated';
+
+export function Topbar({ name, role, avatar: initialAvatar }: TopbarProps) {
+  const [avatar, setAvatar] = useState(initialAvatar ?? '');
+  const [avatarError, setAvatarError] = useState(false);
+
+  useEffect(() => {
+    setAvatar(initialAvatar ?? '');
+    setAvatarError(false);
+  }, [initialAvatar]);
+
+  useEffect(() => {
+    const onProfileUpdated = async () => {
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'include' });
+        if (res.ok) {
+          const me = (await res.json()) as { name?: string; role?: string; avatar?: string };
+          if (me.avatar != null) setAvatar(typeof me.avatar === 'string' ? me.avatar : '');
+          setAvatarError(false);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener(PROFILE_UPDATED_EVENT, onProfileUpdated);
+    return () => window.removeEventListener(PROFILE_UPDATED_EVENT, onProfileUpdated);
+  }, []);
+
   const initials = name
     .split(' ')
     .map((n) => n[0])
@@ -73,6 +101,7 @@ export function Topbar({ name, role }: TopbarProps) {
     .slice(0, 2);
 
   const { time, date } = useEstClock();
+  const showAvatarImage = avatar?.trim() && !avatarError;
 
   const handleLogout = async () => {
     try {
@@ -107,6 +136,13 @@ export function Topbar({ name, role }: TopbarProps) {
         <DropdownMenu>
         <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-emerald-900/10 bg-white/75 px-2 py-1.5 outline-none transition hover:bg-emerald-900/5">
           <Avatar className="h-8 w-8 ring-2 ring-emerald-800/15">
+            {showAvatarImage && (
+              <AvatarImage
+                src={avatar}
+                alt=""
+                onError={() => setAvatarError(true)}
+              />
+            )}
             <AvatarFallback className="bg-emerald-100 text-xs text-emerald-900">{initials}</AvatarFallback>
           </Avatar>
           <div className="hidden text-left sm:block">
@@ -121,6 +157,12 @@ export function Topbar({ name, role }: TopbarProps) {
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52 border-emerald-900/10 bg-white/90 backdrop-blur-sm">
+          <DropdownMenuItem asChild>
+            <a href="/profile" className="cursor-pointer">
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </a>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive">
             <LogOut className="mr-2 h-4 w-4" />

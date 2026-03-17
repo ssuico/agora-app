@@ -6,6 +6,7 @@ export interface IUser extends Document {
   email: string;
   password: string;
   role: UserRole;
+  avatar?: string;
 }
 
 const userSchema = new Schema<IUser>(
@@ -14,6 +15,7 @@ const userSchema = new Schema<IUser>(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },
     role: { type: String, enum: Object.values(UserRole), required: true },
+    avatar: { type: String, default: '', trim: true },
   },
   { timestamps: true }
 );

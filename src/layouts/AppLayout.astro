@@ -14,8 +14,18 @@ const { title = 'Agora POS', storeId } = Astro.props;
 
 const token = Astro.cookies.get('agora_token')?.value ?? '';
 const payload = decodeJWT(token);
-const userName = payload?.name ?? 'User';
-const userRole = payload?.role ?? 'customer';
+let userName = payload?.name ?? 'User';
+let userRole = payload?.role ?? 'customer';
+let userAvatar: string | undefined;
+try {
+  const api = createApiClient(token);
+  const me = await api.get<{ name?: string; role?: string; avatar?: string }>('/api/auth/me');
+  if (me?.name) userName = me.name;
+  if (me?.role) userRole = me.role;
+  if (me?.avatar != null) userAvatar = typeof me.avatar === 'string' ? me.avatar : undefined;
+} catch {
+  // Use JWT payload only
+}
 const currentPath = Astro.url.pathname;
 
 let storeName: string | undefined;
@@ -73,7 +83,7 @@ if (storeId) {
         client:load
       />
       <div class="app-surface ml-3 flex flex-1 flex-col overflow-hidden rounded-2xl">
-        <Topbar name={userName} role={userRole} client:load />
+        <Topbar name={userName} role={userRole} avatar={userAvatar} client:load />
         <main class="flex-1 overflow-y-auto p-4 sm:p-6">
           <slot />
         </main>

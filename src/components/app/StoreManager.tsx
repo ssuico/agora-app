@@ -19,7 +19,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
-import { Pencil, Plus, Trash2, UserPlus, UserMinus, WrenchIcon } from 'lucide-react';
+import { Pencil, Plus, Trash2, UserPlus, UserMinus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 

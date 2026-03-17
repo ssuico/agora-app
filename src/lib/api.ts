@@ -48,6 +48,19 @@ export function createApiClient(token: string) {
       return res.json() as Promise<T>;
     },
 
+    async patch<T = unknown>(path: string, body: unknown): Promise<T> {
+      const res = await fetch(`${BASE_URL}${path}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error((err as { message: string }).message ?? `API error ${res.status}`);
+      }
+      return res.json() as Promise<T>;
+    },
+
     async del(path: string): Promise<void> {
       const res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE', headers });
       if (!res.ok) {
