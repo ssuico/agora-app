@@ -89,6 +89,7 @@ interface SidebarProps {
   storeLocation?: string;
   /** For store managers with multiple stores: list of stores they can switch to */
   assignedStores?: AssignedStore[];
+  
 }
 
 export function Sidebar({ role, currentPath, storeId, storeName, storeLocation, assignedStores }: SidebarProps) {

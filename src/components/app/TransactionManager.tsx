@@ -857,6 +857,28 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               Clear filters
             </Button>
 
+            <Button
+                variant="default"
+                size="sm"
+                onClick={() => setNewTxOpen(true)}
+              >
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                New Transaction
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGenerateReport}
+                disabled={generating}
+              >
+                {generating ? (
+                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="mr-1 h-3.5 w-3.5" />
+                )}
+                {generating ? 'Generating...' : 'Generate Report'}
+              </Button>
+
             <div className="ml-auto flex items-center gap-4">
               {(() => {
                 const active = transactions.filter((tx) => tx.orderStatus !== 'cancelled');
@@ -884,27 +906,6 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                   </>
                 );
               })()}
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => setNewTxOpen(true)}
-              >
-                <Plus className="mr-1 h-3.5 w-3.5" />
-                New Transaction
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGenerateReport}
-                disabled={generating}
-              >
-                {generating ? (
-                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <FileSpreadsheet className="mr-1 h-3.5 w-3.5" />
-                )}
-                {generating ? 'Generating...' : 'Generate Report'}
-              </Button>
             </div>
           </div>
 
@@ -1419,7 +1420,9 @@ function TransactionRow({
         {/* Complete order indicator (claimed & paid) */}
         <td className="px-2 py-3 text-center">
           {isComplete ? (
-            <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mx-auto" title="Order complete (claimed & paid)" />
+            <span title="Order complete (claimed & paid)" className="inline-flex">
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mx-auto" />
+            </span>
           ) : (
             <span className="text-muted-foreground/40">—</span>
           )}
@@ -1566,7 +1569,7 @@ function TransactionRow({
                           </span>
                         </td>
                         <td className="py-1.5 px-4 text-right text-muted-foreground">
-                          {item.productId ? fmt(item.productId.sellingPrice) : '—'}
+                          {item.quantity > 0 ? fmt(item.subtotal / item.quantity) : '—'}
                         </td>
                         <td className="py-1.5 px-4 text-right font-medium">{fmt(item.subtotal)}</td>
                       </tr>

@@ -1108,7 +1108,8 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     try {
       const sellingPrice = parseFloat(form.sellingPrice) || 0;
       const hasDiscount = form.discountPrice.trim().length > 0;
-      const parsedDiscountPrice = hasDiscount ? parseFloat(form.discountPrice) : null;
+      const rawDiscountPrice = hasDiscount ? parseFloat(form.discountPrice) : null;
+      const parsedDiscountPrice = rawDiscountPrice === 0 ? null : rawDiscountPrice;
 
       if (hasDiscount && (!Number.isFinite(parsedDiscountPrice) || (parsedDiscountPrice ?? 0) < 0)) {
         const msg = 'Discount price must be a valid non-negative number';
@@ -1874,17 +1875,31 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="product-discount">Discount Price (PHP)</Label>
-              <Input
-                id="product-discount"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Optional"
-                value={form.discountPrice}
-                onChange={(e) => updateField('discountPrice', e.target.value)}
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="product-discount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Optional"
+                  value={form.discountPrice}
+                  onChange={(e) => updateField('discountPrice', e.target.value)}
+                  className="flex-1"
+                />
+                {form.discountPrice.trim() !== '' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => updateField('discountPrice', '')}
+                    className="shrink-0"
+                  >
+                    Remove discount
+                  </Button>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
-                Leave blank for no discount. Must be less than or equal to selling price.
+                Leave blank for no discount (product uses original price). Must be less than or equal to selling price.
               </p>
             </div>
 

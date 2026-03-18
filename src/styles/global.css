@@ -159,6 +159,24 @@
 .data-table.stores-table thead th:nth-child(6) {
   @apply text-right;
 }
+/* Purchases table: cleaner, less noisy row treatment */
+.data-table.purchases-table tbody tr:nth-child(odd),
+.data-table.purchases-table tbody tr:nth-child(even) {
+  background: color-mix(in oklch, var(--background) 94%, white 6%);
+}
+.data-table.purchases-table tbody tr:hover {
+  background: color-mix(in oklch, var(--accent) 14%, var(--background));
+}
+.data-table.purchases-table tbody td {
+  @apply py-2.5;
+}
+.data-table-scroll-wrapper.purchases-table-scroll {
+  background: var(--card);
+  box-shadow: none;
+}
+.data-table-scroll-wrapper .data-table.purchases-table thead th {
+  background: color-mix(in oklch, var(--muted) 78%, white 22%);
+}
 .data-table tbody tr {
   border-bottom: 1px solid var(--border);
   transition: background-color 0.15s ease;
@@ -197,6 +215,43 @@
 }
 .data-table tbody tr.row-total:hover {
   background: var(--muted) !important;
+}
+
+/* Purchases table final overrides (declared after generic table styles) */
+.data-table.purchases-table tbody tr:nth-child(odd),
+.data-table.purchases-table tbody tr:nth-child(even) {
+  background: color-mix(in oklch, var(--background) 95%, white 5%) !important;
+}
+.data-table.purchases-table tbody tr:hover {
+  background: color-mix(in oklch, var(--accent) 12%, var(--background)) !important;
+}
+.data-table.purchases-table tbody tr.purchases-row-active {
+  background: color-mix(in oklch, var(--accent) 18%, var(--background)) !important;
+}
+.data-table.purchases-table tbody tr.purchases-row-expanded,
+.data-table.purchases-table tbody tr.purchases-row-expanded:hover {
+  background: color-mix(in oklch, var(--muted) 52%, var(--background)) !important;
+}
+.data-table.purchases-table tbody tr.purchases-row-expanded td {
+  white-space: normal;
+}
+.data-table.purchases-table tbody td {
+  @apply py-2.5;
+}
+.data-table-scroll-wrapper.purchases-table-scroll {
+  background: var(--card);
+  box-shadow: none;
+}
+.data-table-scroll-wrapper .data-table.purchases-table thead th {
+  background: color-mix(in oklch, var(--muted) 80%, white 20%);
+}
+.purchases-items-table thead tr,
+.purchases-items-table thead tr:hover {
+  background: color-mix(in oklch, var(--muted) 78%, white 22%) !important;
+}
+.purchases-items-table tbody tr,
+.purchases-items-table tbody tr:hover {
+  background: color-mix(in oklch, var(--card) 94%, white 6%) !important;
 }
 
 @layer base {

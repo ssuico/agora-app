@@ -30,14 +30,36 @@ try {
 ---
 
 <CustomerLayout title="My Purchases">
-  <div class="mx-auto max-w-3xl space-y-6">
-    <div class="flex items-center justify-between">
+  <div class="mx-auto max-w-4xl space-y-8">
+    <header class="space-y-4">
+      <a
+        href="#"
+        id="purchases-return-btn"
+        class="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 w-fit"
+        aria-label="Return to previous page"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        Back
+      </a>
       <div>
-        <h1 class="text-2xl font-bold tracking-tight">My Purchases</h1>
-        <p class="text-sm text-muted-foreground">Your purchase history</p>
+        <h1 class="text-3xl font-bold tracking-tight">My Purchases</h1>
+        <p class="mt-1 text-muted-foreground">View your order history and details</p>
       </div>
-    </div>
+    </header>
 
-    <PurchasesTable client:load purchases={purchases} />
+    <section class="space-y-2" aria-label="Purchase history">
+      <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Purchase history</h2>
+      <PurchasesTable client:load purchases={purchases} />
+    </section>
   </div>
+  <script>
+    document.getElementById('purchases-return-btn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.href = '/select-location';
+      }
+    });
+  </script>
 </CustomerLayout>
