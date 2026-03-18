@@ -70,25 +70,25 @@ export function LoginForm() {
   };
 
   return (
-    <Card className="w-full border-white/45 bg-white/75 shadow-[0_25px_80px_-40px_rgba(15,54,21,0.75)] backdrop-blur-md">
+    <Card className="w-full border-border/70 bg-background/80 shadow-[0_25px_80px_-40px_rgba(38,42,86,0.58)] backdrop-blur-md">
       <CardHeader className="space-y-2 pb-5 text-center">
-        <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-emerald-800/15 bg-emerald-700/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-emerald-900">
+        <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-accent">
           <ShieldCheck className="size-3.5" />
           Secure Access
         </div>
-        <CardTitle className="text-3xl font-bold tracking-tight text-emerald-950">Agora POS</CardTitle>
-        <CardDescription className="text-emerald-800/80">
+        <CardTitle className="text-3xl font-bold tracking-tight text-foreground">Agora POS</CardTitle>
+        <CardDescription className="text-foreground/75">
           Sign in to continue to your dashboard
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-emerald-900">
+            <Label htmlFor="email" className="text-foreground">
               Email
             </Label>
             <div className="relative">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-emerald-900/50" />
+              <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/50" />
               <Input
                 id="email"
                 type="email"
@@ -97,16 +97,16 @@ export function LoginForm() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
-                className="h-11 border-emerald-900/15 bg-white/80 pl-9 text-emerald-950 placeholder:text-emerald-900/45 focus-visible:border-emerald-700 focus-visible:ring-emerald-600/30"
+                className="h-11 border-input bg-background/85 pl-9 text-foreground placeholder:text-foreground/45 focus-visible:border-primary focus-visible:ring-primary/30"
               />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password" className="text-emerald-900">
+            <Label htmlFor="password" className="text-foreground">
               Password
             </Label>
             <div className="relative">
-              <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-emerald-900/50" />
+              <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/50" />
               <Input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
@@ -115,11 +115,11 @@ export function LoginForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                className="h-11 border-emerald-900/15 bg-white/80 pl-9 pr-11 text-emerald-950 placeholder:text-emerald-900/45 focus-visible:border-emerald-700 focus-visible:ring-emerald-600/30"
+                className="h-11 border-input bg-background/85 pl-9 pr-11 text-foreground placeholder:text-foreground/45 focus-visible:border-primary focus-visible:ring-primary/30"
               />
               <button
                 type="button"
-                className="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-emerald-900/65 transition hover:bg-emerald-900/10 hover:text-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700/40"
+                className="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-foreground/65 transition hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 onClick={() => setShowPassword((prev) => !prev)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
@@ -130,7 +130,7 @@ export function LoginForm() {
           {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
           <Button
             type="submit"
-            className="h-11 w-full bg-emerald-800 text-white shadow-[0_14px_35px_-15px_rgba(16,78,36,0.9)] transition hover:bg-emerald-700"
+            className="h-11 w-full bg-primary text-primary-foreground shadow-[0_14px_35px_-15px_rgba(38,42,86,0.9)] transition hover:bg-primary/90"
             disabled={loading}
           >
             {loading ? (
@@ -142,7 +142,7 @@ export function LoginForm() {
               </span>
             )}
           </Button>
-          <p className="text-center text-xs text-emerald-900/60">Protected by role-based account access.</p>
+          <p className="text-center text-xs text-foreground/60">Protected by role-based account access.</p>
         </form>
       </CardContent>
     </Card>

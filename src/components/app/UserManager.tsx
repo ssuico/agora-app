@@ -46,9 +46,9 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const ROLE_COLORS: Record<string, string> = {
-  admin: 'bg-red-100 text-red-700',
-  store_manager: 'bg-blue-100 text-blue-700',
-  customer: 'bg-green-100 text-green-700',
+  admin: 'border border-primary/35 bg-primary/10 text-primary',
+  store_manager: 'border border-accent/40 bg-accent/10 text-accent',
+  customer: 'border border-secondary/60 bg-secondary/35 text-foreground',
 };
 
 export function UserManager() {

@@ -28,14 +28,14 @@ function AvatarImageWithFallback({ src, name, className }: { src?: string; name:
   if (!src?.trim() || failed) {
     return (
       <Avatar className={className}>
-        <AvatarFallback className="bg-emerald-100 text-emerald-900">{initials}</AvatarFallback>
+        <AvatarFallback className="bg-secondary/55 text-foreground">{initials}</AvatarFallback>
       </Avatar>
     );
   }
   return (
     <Avatar className={className}>
       <AvatarImage src={src} alt="" onError={() => setFailed(true)} />
-      <AvatarFallback className="bg-emerald-100 text-emerald-900">{initials}</AvatarFallback>
+      <AvatarFallback className="bg-secondary/55 text-foreground">{initials}</AvatarFallback>
     </Avatar>
   );
 }
@@ -194,7 +194,7 @@ export function Profile() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 pb-6">
-      <div className="rounded-2xl border bg-gradient-to-r from-emerald-50/70 via-card to-card p-5 shadow-sm">
+      <div className="rounded-2xl border bg-gradient-to-r from-secondary/45 via-card to-card p-5 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
@@ -335,7 +335,7 @@ export function Profile() {
                     className={`rounded-lg border-2 px-3 py-2.5 text-sm font-medium md:col-span-2 ${
                       passwordFeedback.type === 'error'
                         ? 'border-red-300 bg-red-50 text-red-800'
-                        : 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                        : 'border-accent/45 bg-accent/10 text-accent'
                     }`}
                   >
                     <div className="flex items-start gap-2">

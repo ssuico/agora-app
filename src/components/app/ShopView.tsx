@@ -601,7 +601,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
         <Skeleton className="h-10 w-full max-w-sm rounded-xl" />
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-border/40 bg-card/80 overflow-hidden flex flex-col">
+            <div key={i} className="product-card-surface rounded-xl overflow-hidden flex flex-col">
               <Skeleton className="h-48 w-full rounded-none" />
               <div className="p-4 flex flex-col gap-3">
                 <Skeleton className="h-5 w-3/4" />
@@ -712,7 +712,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
             const discountPercent = getDiscountPercent(product);
 
             return (
-              <div key={product._id} className={`group rounded-xl border border-border/40 bg-card/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col overflow-hidden ${isOOS ? 'opacity-65 hover:opacity-80' : ''}`}>
+              <div key={product._id} className={`product-card-surface group rounded-xl hover:-translate-y-0.5 transition-all duration-200 flex flex-col overflow-hidden ${isOOS ? 'opacity-65 hover:opacity-80' : ''}`}>
                 <div className="relative overflow-hidden">
                   <ImageCarousel images={product.images ?? []} className="h-48 w-full cursor-pointer" onClick={() => setSelectedProduct(product)} />
                   {isOOS && (

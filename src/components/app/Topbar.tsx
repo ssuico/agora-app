@@ -24,9 +24,9 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const ROLE_COLORS: Record<string, string> = {
-  admin: 'border-rose-300/60 bg-rose-100/85 text-rose-800',
-  store_manager: 'border-sky-300/60 bg-sky-100/85 text-sky-800',
-  customer: 'border-emerald-300/60 bg-emerald-100/85 text-emerald-800',
+  admin: 'border-primary/35 bg-primary/10 text-primary',
+  store_manager: 'border-accent/40 bg-accent/10 text-accent',
+  customer: 'border-secondary/65 bg-secondary/35 text-foreground',
 };
 
 const EST_TIMEZONE = 'America/New_York';
@@ -115,27 +115,27 @@ export function Topbar({ name, role, avatar: initialAvatar }: TopbarProps) {
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-emerald-900/10 bg-white/55 px-4 backdrop-blur-sm sm:px-6">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border/70 bg-background/55 px-4 backdrop-blur-sm sm:px-6">
       <div className="flex items-center gap-2.5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-800 shadow-[0_12px_28px_-16px_rgba(18,99,50,0.95)]">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-[0_12px_28px_-16px_rgba(38,42,86,0.95)]">
           <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] text-primary-foreground" fill="currentColor">
             <path d="M12 2L3 9h18zM3 9h18v2H3zM5 11h2v8H5zM11 11h2v8h-2zM17 11h2v8h-2zM3 19h18v2H3z" />
           </svg>
         </div>
-        <span className="text-lg font-bold tracking-tight text-emerald-950">Agora</span>
+        <span className="text-lg font-bold tracking-tight text-foreground">Agora</span>
       </div>
       <div className="flex items-center gap-3 sm:gap-4">
-        <div className="hidden items-center gap-2 rounded-xl border border-emerald-900/10 bg-white/75 px-3 py-1.5 text-emerald-900/72 sm:flex">
+        <div className="hidden items-center gap-2 rounded-xl border border-border/70 bg-card/70 px-3 py-1.5 text-foreground/75 sm:flex">
           <Clock className="h-4 w-4" />
           <div className="text-sm leading-tight text-right">
             <p className="font-medium tabular-nums">{time}</p>
-            <p className="text-xs text-emerald-900/60">{date}</p>
+            <p className="text-xs text-foreground/60">{date}</p>
           </div>
         </div>
-        <div className="hidden h-8 w-px bg-emerald-900/10 sm:block" />
+        <div className="hidden h-8 w-px bg-border/80 sm:block" />
         <DropdownMenu>
-        <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-emerald-900/10 bg-white/75 px-2 py-1.5 outline-none transition hover:bg-emerald-900/5">
-          <Avatar className="h-8 w-8 ring-2 ring-emerald-800/15">
+        <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-border/70 bg-card/70 px-2 py-1.5 outline-none transition hover:bg-primary/8">
+          <Avatar className="h-8 w-8 ring-2 ring-primary/20">
             {showAvatarImage && (
               <AvatarImage
                 src={avatar}
@@ -143,7 +143,7 @@ export function Topbar({ name, role, avatar: initialAvatar }: TopbarProps) {
                 onError={() => setAvatarError(true)}
               />
             )}
-            <AvatarFallback className="bg-emerald-100 text-xs text-emerald-900">{initials}</AvatarFallback>
+            <AvatarFallback className="bg-secondary/50 text-xs text-foreground">{initials}</AvatarFallback>
           </Avatar>
           <div className="hidden text-left sm:block">
             <p className="text-sm font-medium leading-none">{name}</p>
@@ -156,7 +156,7 @@ export function Topbar({ name, role, avatar: initialAvatar }: TopbarProps) {
           </div>
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52 border-emerald-900/10 bg-white/90 backdrop-blur-sm">
+        <DropdownMenuContent align="end" className="w-52 border-border/70 bg-background/90 backdrop-blur-sm">
           <DropdownMenuItem asChild>
             <a href="/profile" className="cursor-pointer">
               <User className="mr-2 h-4 w-4" />
