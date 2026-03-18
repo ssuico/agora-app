@@ -64,7 +64,7 @@ export function localDayRangeFromDateString(dateStr: string): { dayStart: Date; 
   }
   const noonUtc = Date.UTC(y, m - 1, d, 12, 0, 0, 0);
   const offsetMs = getTzOffsetMinutes(new Date(noonUtc), APP_TIMEZONE) * 60 * 1000;
-  const dayStart = new Date(noonUtc - 12 * 60 * 60 * 1000 - offsetMs);
+  const dayStart = new Date(noonUtc - 12 * 60 * 60 * 1000 + offsetMs);
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
   return { dayStart, dayEnd };
 }
