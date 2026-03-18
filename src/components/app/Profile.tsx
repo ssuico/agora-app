@@ -193,188 +193,209 @@ export function Profile() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
-          <p className="text-sm text-muted-foreground">Manage your account and password</p>
+    <div className="mx-auto w-full max-w-5xl space-y-6 pb-6">
+      <div className="rounded-2xl border bg-gradient-to-r from-emerald-50/70 via-card to-card p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
+            <p className="text-sm text-muted-foreground">Manage your account and password</p>
+          </div>
+          <Button variant="outline" onClick={handleBack} className="w-fit shrink-0">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
         </div>
-        <Button variant="outline" onClick={handleBack} className="w-fit shrink-0">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
-        </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-          <CardDescription>Update your name and avatar (image URL only)</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-            <div className="flex flex-col items-center gap-2">
-              <AvatarImageWithFallback
-                src={profileForm.avatar || user.avatar}
-                name={profileForm.name || user.name}
-                className="h-24 w-24"
-              />
-              <span className="text-xs text-muted-foreground">Avatar preview</span>
-            </div>
-            <div className="flex-1 space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="profile-name">Name</Label>
-                <Input
-                  id="profile-name"
-                  value={profileForm.name}
-                  onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))}
-                  placeholder="Your name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Avatar image URL</Label>
-                {profileForm.avatar ? (
-                  <div className="flex items-center gap-2">
-                    <Input value={profileForm.avatar} readOnly className="bg-muted" />
-                    <Button type="button" variant="outline" size="icon" onClick={handleClearAvatar} title="Remove avatar">
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
+      <div className="grid gap-6 xl:grid-cols-[1.65fr_1fr]">
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Profile</CardTitle>
+              <CardDescription>Update your name and avatar (image URL only)</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+                <div className="flex min-w-32 flex-col items-center gap-2">
+                  <AvatarImageWithFallback
+                    src={profileForm.avatar || user.avatar}
+                    name={profileForm.name || user.name}
+                    className="h-24 w-24"
+                  />
+                  <span className="text-xs text-muted-foreground">Avatar preview</span>
+                </div>
+                <div className="flex-1 space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="profile-name">Name</Label>
                     <Input
-                      placeholder="Paste image URL..."
-                      value={newAvatarUrl}
-                      onChange={(e) => setNewAvatarUrl(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddAvatarUrl();
-                        }
-                      }}
+                      id="profile-name"
+                      value={profileForm.name}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))}
+                      placeholder="Your name"
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={handleAddAvatarUrl}
-                      disabled={!newAvatarUrl.trim()}
-                      title="Add avatar URL"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
                   </div>
-                )}
-                <p className="text-xs text-muted-foreground">Add an image URL for your avatar. Same as product images.</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={handleSaveProfile} disabled={profileSaving}>
-              {profileSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save profile'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Reset password</CardTitle>
-          <CardDescription>Change your password using your current password</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleResetPassword} className="space-y-4 max-w-sm">
-            <div className="space-y-2">
-              <Label htmlFor="old-password">Current password</Label>
-              <Input
-                id="old-password"
-                type={showPassword ? 'text' : 'password'}
-                value={passwordForm.oldPassword}
-                onChange={(e) => {
-                  setPasswordForm((p) => ({ ...p, oldPassword: e.target.value }));
-                  setPasswordFeedback(null);
-                }}
-                placeholder="Enter current password"
-                autoComplete="current-password"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-password">New password</Label>
-              <Input
-                id="new-password"
-                type={showPassword ? 'text' : 'password'}
-                value={passwordForm.newPassword}
-                onChange={(e) => {
-                  setPasswordForm((p) => ({ ...p, newPassword: e.target.value }));
-                  setPasswordFeedback(null);
-                }}
-                placeholder="At least 6 characters"
-                autoComplete="new-password"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirm-password">Confirm new password</Label>
-              <Input
-                id="confirm-password"
-                type={showPassword ? 'text' : 'password'}
-                value={passwordForm.confirmPassword}
-                onChange={(e) => {
-                  setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }));
-                  setPasswordFeedback(null);
-                }}
-                placeholder="Confirm new password"
-                autoComplete="new-password"
-              />
-            </div>
-            {passwordFeedback && (
-              <div
-                role={passwordFeedback.type === 'error' ? 'alert' : 'status'}
-                className={`rounded-lg border-2 px-3 py-2.5 text-sm font-medium ${
-                  passwordFeedback.type === 'error'
-                    ? 'border-red-300 bg-red-50 text-red-800'
-                    : 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                }`}
-              >
-                <div className="flex items-start gap-2">
-                  {passwordFeedback.type === 'error' ? (
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  ) : (
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                  )}
-                  <span>{passwordFeedback.message}</span>
+                  <div className="space-y-2">
+                    <Label>Avatar image URL</Label>
+                    {profileForm.avatar ? (
+                      <div className="flex items-center gap-2">
+                        <Input value={profileForm.avatar} readOnly className="bg-muted" />
+                        <Button type="button" variant="outline" size="icon" onClick={handleClearAvatar} title="Remove avatar">
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Paste image URL..."
+                          value={newAvatarUrl}
+                          onChange={(e) => setNewAvatarUrl(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddAvatarUrl();
+                            }
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={handleAddAvatarUrl}
+                          disabled={!newAvatarUrl.trim()}
+                          title="Add avatar URL"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">Add an image URL for your avatar.</p>
+                  </div>
                 </div>
               </div>
-            )}
-            <div className="flex items-center gap-2">
-              <Button type="submit" disabled={passwordSaving}>
-                {passwordSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Update password'}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowPassword((s) => !s)}
-              >
-                {showPassword ? 'Hide' : 'Show'} passwords
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+              <div className="flex gap-2">
+                <Button onClick={handleSaveProfile} disabled={profileSaving}>
+                  {profileSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save profile'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Account info</CardTitle>
-          <CardDescription>Read-only details</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <p>
-            <span className="text-muted-foreground">Email:</span> {user.email}
-          </p>
-          <p>
-            <span className="text-muted-foreground">Role:</span> {user.role}
-          </p>
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Reset password</CardTitle>
+              <CardDescription>Change your password using your current password</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleResetPassword} className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="old-password">Current password</Label>
+                  <Input
+                    id="old-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={passwordForm.oldPassword}
+                    onChange={(e) => {
+                      setPasswordForm((p) => ({ ...p, oldPassword: e.target.value }));
+                      setPasswordFeedback(null);
+                    }}
+                    placeholder="Enter current password"
+                    autoComplete="current-password"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">New password</Label>
+                  <Input
+                    id="new-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={passwordForm.newPassword}
+                    onChange={(e) => {
+                      setPasswordForm((p) => ({ ...p, newPassword: e.target.value }));
+                      setPasswordFeedback(null);
+                    }}
+                    placeholder="At least 6 characters"
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-password">Confirm new password</Label>
+                  <Input
+                    id="confirm-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => {
+                      setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }));
+                      setPasswordFeedback(null);
+                    }}
+                    placeholder="Confirm new password"
+                    autoComplete="new-password"
+                  />
+                </div>
+                {passwordFeedback && (
+                  <div
+                    role={passwordFeedback.type === 'error' ? 'alert' : 'status'}
+                    className={`rounded-lg border-2 px-3 py-2.5 text-sm font-medium md:col-span-2 ${
+                      passwordFeedback.type === 'error'
+                        ? 'border-red-300 bg-red-50 text-red-800'
+                        : 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      {passwordFeedback.type === 'error' ? (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                      )}
+                      <span>{passwordFeedback.message}</span>
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 md:col-span-2">
+                  <Button type="submit" disabled={passwordSaving}>
+                    {passwordSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Update password'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowPassword((s) => !s)}
+                  >
+                    {showPassword ? 'Hide' : 'Show'} passwords
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Account info</CardTitle>
+              <CardDescription>Read-only details</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              <div className="flex items-center gap-3 rounded-md border bg-muted/40 p-3">
+                <AvatarImageWithFallback
+                  src={profileForm.avatar || user.avatar}
+                  name={profileForm.name || user.name}
+                  className="h-12 w-12"
+                />
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{profileForm.name || user.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                </div>
+              </div>
+              <div className="space-y-2 rounded-md border bg-card p-3">
+                <p>
+                  <span className="text-muted-foreground">Role:</span> {user.role}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Email:</span> {user.email}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
