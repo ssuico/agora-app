@@ -22,7 +22,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Activity, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Lock, LockOpen, Minus, NotepadText, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { Activity, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Lock, LockOpen, NotepadText, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -537,13 +537,7 @@ function RealtimeStocksImage({ src, className }: { src?: string; className?: str
   );
 }
 
-function RealtimeStocks({
-  storeId,
-  onReduceStock,
-}: {
-  storeId: string;
-  onReduceStock?: (product: RtProduct) => void;
-}) {
+function RealtimeStocks({ storeId }: { storeId: string }) {
   const [products, setProducts] = useState<RtProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [cols, setCols] = useState<GridCols>(6);
@@ -747,32 +741,9 @@ function RealtimeStocks({
                 <div className="p-3 flex flex-col gap-1 flex-1">
                   <p className="text-sm font-semibold leading-tight line-clamp-2">{product.name}</p>
                   <p className="text-sm font-bold text-primary">{fmt(product.sellingPrice)}</p>
-                  <div className="mt-auto pt-1.5 flex items-center justify-between gap-2">
+                  <div className="mt-auto pt-1.5 flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">Stock</span>
-                    <div className="flex items-center gap-1">
-                      {onReduceStock && product.stockQuantity > 0 && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onReduceStock(product);
-                                }}
-                                aria-label="Reduce stock"
-                              >
-                                <Minus className="h-3.5 w-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top">Reduce or remove stock</TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                      <span
+                    <span
                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
                           isOOS
                             ? 'bg-destructive/15 text-destructive'
@@ -786,7 +757,6 @@ function RealtimeStocks({
                     </div>
                   </div>
                 </div>
-              </div>
             );
           })}
         </div>
@@ -931,6 +901,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   }, [filterStoreId]);
 
   useEffect(() => {
+    setDailyRows([]);
     fetchDailyInventory(selectedDate);
     fetchClosingStatus(selectedDate);
   }, [selectedDate]);
@@ -1299,6 +1270,8 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       const nextDt = new Date(Date.UTC(cy, cm - 1, cd + 1));
       const nextDayStr = `${nextDt.getUTCFullYear()}-${String(nextDt.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDt.getUTCDate()).padStart(2, '0')}`;
       setSelectedDate(nextDayStr);
+      setDailyRows([]);
+      setLoading(true);
       await refreshData(filterStoreId, nextDayStr);
     } catch {
       toast.error('Network error. Please try again.');
@@ -1453,13 +1426,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
 
       {mainTab === 'realtime-stocks' ? (
         effectiveStoreId ? (
-          <RealtimeStocks
-            storeId={effectiveStoreId}
-            onReduceStock={(p) => {
-              setReduceDialogProduct(p);
-              setReduceDialogQty('');
-            }}
-          />
+          <RealtimeStocks storeId={effectiveStoreId} />
         ) : (
           <p className="rounded-lg border bg-muted/50 px-4 py-8 text-center text-sm text-muted-foreground">
             Select a store above to view realtime stocks.
@@ -1926,13 +1893,24 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                     id="product-reduce"
                     type="number"
                     min="0"
+                    max={editingProduct?.stockQuantity ?? 0}
                     step="1"
                     placeholder="0"
                     value={reduceQty}
-                    onChange={(e) => setReduceQty(e.target.value)}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        setReduceQty('');
+                        return;
+                      }
+                      const num = parseInt(raw, 10);
+                      if (Number.isNaN(num)) return;
+                      const max = editingProduct?.stockQuantity ?? 0;
+                      setReduceQty(String(Math.min(Math.max(0, num), max)));
+                    }}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Use when items are withdrawn, lost, damaged, or expired. Quantity is capped at current stock.
+                    Use when items are withdrawn, lost, damaged, or expired. Max {editingProduct?.stockQuantity ?? 0} (current stock).
                   </p>
                 </div>
               </div>
@@ -2014,7 +1992,17 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 step="1"
                 placeholder="0"
                 value={reduceDialogQty}
-                onChange={(e) => setReduceDialogQty(e.target.value)}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    setReduceDialogQty('');
+                    return;
+                  }
+                  const num = parseInt(raw, 10);
+                  if (Number.isNaN(num)) return;
+                  const max = reduceDialogProduct?.stockQuantity ?? 0;
+                  setReduceDialogQty(String(Math.min(Math.max(1, num), max)));
+                }}
               />
             </div>
           </div>

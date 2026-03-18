@@ -306,21 +306,24 @@ export const closeStore = async (req: Request, res: Response): Promise<void> => 
     const recordMap = new Map(records.map((r) => [String(r.productId), r]));
     const selectionMap = new Map(selections.map((s) => [s.productId, s.carryOver]));
 
-    // Build carry-over selections with current stock snapshots
-    const carryOverSelections = products.map((product) => {
-      const pid = String(product._id);
-      const rec = recordMap.get(pid);
-      const sold = soldMap.get(pid) ?? 0;
-      const currentStock = rec
-        ? Math.max(0, rec.initialStock + rec.restock - sold)
-        : Math.max(0, product.stockQuantity);
+    // Build carry-over selections — only for products that have an inventory
+    // record for the closing date. Products without a record were never part
+    // of this day's inventory and must not be carried forward.
+    const carryOverSelections = products
+      .filter((product) => recordMap.has(String(product._id)))
+      .map((product) => {
+        const pid = String(product._id);
+        const rec = recordMap.get(pid)!;
+        const sold = soldMap.get(pid) ?? 0;
+        const reduction = (rec as { reduction?: number }).reduction ?? 0;
+        const currentStock = Math.max(0, rec.initialStock + rec.restock - reduction - sold);
 
-      return {
-        productId: product._id,
-        carryOver: selectionMap.get(pid) ?? !product.isPerishable,
-        currentStock,
-      };
-    });
+        return {
+          productId: product._id,
+          carryOver: selectionMap.get(pid) ?? !product.isPerishable,
+          currentStock,
+        };
+      });
 
     // Upsert the StoreClosing record
     const closing = await StoreClosing.findOneAndUpdate(
@@ -341,6 +344,19 @@ export const closeStore = async (req: Request, res: Response): Promise<void> => 
     const carried = carryOverSelections.filter(
       (sel) => sel.carryOver && sel.currentStock > 0
     );
+    const notCarried = carryOverSelections.filter(
+      (sel) => !sel.carryOver || sel.currentStock <= 0
+    );
+
+    // Remove next-day records for unchecked / zero-stock items (only if they
+    // haven't been modified with restocks — same guard as reopen).
+    if (notCarried.length > 0) {
+      await InventoryRecord.deleteMany({
+        productId: { $in: notCarried.map((s) => s.productId) },
+        date: nextDay,
+        restock: 0,
+      });
+    }
 
     const bulkOps = carried.map((sel) => ({
       updateOne: {

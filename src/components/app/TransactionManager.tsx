@@ -552,7 +552,10 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     socket.emit('join:store', storeId);
 
     const handleCreated = (tx: Transaction) => {
-      setTransactions((prev) => [tx, ...prev]);
+      setTransactions((prev) => {
+        if (prev.some((t) => t._id === tx._id)) return prev;
+        return [tx, ...prev];
+      });
     };
 
     const handleUpdated = (tx: Transaction) => {
