@@ -222,6 +222,7 @@ export const getInventoryReport = async (req: Request, res: Response): Promise<v
         isPerishable: product?.isPerishable ?? false,
         costPrice: product?.costPrice ?? 0,
         sellingPrice: product?.sellingPrice ?? 0,
+        discountPrice: product?.discountPrice ?? null,
         sellerName: product?.sellerName ?? '',
         notes: product?.notes ?? '',
         initialStock: rec.initialStock,

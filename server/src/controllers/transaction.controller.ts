@@ -72,7 +72,11 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         );
       }
 
-      const subtotal = product.sellingPrice * item.quantity;
+      const effectivePrice =
+        typeof product.discountPrice === 'number' && product.discountPrice >= 0
+          ? Math.min(product.discountPrice, product.sellingPrice)
+          : product.sellingPrice;
+      const subtotal = effectivePrice * item.quantity;
       const costSubtotal = product.costPrice * item.quantity;
 
       totalAmount += subtotal;

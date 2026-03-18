@@ -19,6 +19,7 @@ interface Product {
   name: string;
   images: string[];
   sellingPrice: number;
+  discountPrice?: number | null;
   stockQuantity: number;
 }
 
@@ -41,6 +42,17 @@ interface ShopViewProps {
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
+
+const getEffectivePrice = (product: Product) => {
+  if (typeof product.discountPrice !== 'number') return product.sellingPrice;
+  return Math.min(product.discountPrice, product.sellingPrice);
+};
+
+const getDiscountPercent = (product: Product) => {
+  const effectivePrice = getEffectivePrice(product);
+  if (product.sellingPrice <= 0 || effectivePrice >= product.sellingPrice) return 0;
+  return Math.round(((product.sellingPrice - effectivePrice) / product.sellingPrice) * 100);
+};
 
 let alertCounter = 0;
 
@@ -167,6 +179,8 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
   const cartQty = inCart?.quantity ?? 0;
   const available = product.stockQuantity - cartQty;
   const isOOS = product.stockQuantity === 0;
+  const effectivePrice = getEffectivePrice(product);
+  const discountPercent = getDiscountPercent(product);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -204,7 +218,17 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
           <div className="md:w-1/2 p-6 flex flex-col">
             <button onClick={() => onOpenChange(false)} className="absolute top-3 right-3 rounded-full p-1 hover:bg-muted transition-colors"><X className="h-4 w-4" /></button>
             <h2 className="text-xl font-bold pr-8">{product.name}</h2>
-            <p className="mt-2 text-2xl font-bold text-primary">{fmt(product.sellingPrice)}</p>
+            <div className="mt-2">
+              <p className="text-2xl font-bold text-primary">{fmt(effectivePrice)}</p>
+              {discountPercent > 0 && (
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground line-through">{fmt(product.sellingPrice)}</span>
+                  <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                    {discountPercent}% OFF
+                  </span>
+                </div>
+              )}
+            </div>
             <div className="mt-3 flex items-center gap-2">
               <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${isOOS ? 'bg-red-100 text-red-700' : product.stockQuantity < 10 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
                 {isOOS ? 'All Reserved' : `${product.stockQuantity} in stock`}
@@ -226,7 +250,7 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
                     <QuantityPicker value={qty} max={available} onChange={setQty} size="md" />
                   </div>
                   <p className="text-right text-sm text-muted-foreground">
-                    Subtotal: <span className="font-medium text-foreground">{fmt(product.sellingPrice * qty)}</span>
+                    Subtotal: <span className="font-medium text-foreground">{fmt(effectivePrice * qty)}</span>
                   </p>
                   <Button className="w-full" onClick={() => { onAddToCart(product, qty); setQty(1); }} disabled={isCooldown}>
                     {isCooldown ? (
@@ -413,13 +437,13 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
     setCart((prev) => prev.filter((c) => c.product.stockQuantity > 0));
   };
 
-  const cartTotal = cart.reduce((sum, c) => sum + c.product.sellingPrice * c.quantity, 0);
+  const cartTotal = cart.reduce((sum, c) => sum + getEffectivePrice(c.product) * c.quantity, 0);
   const cartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
   const unavailableItems = cart.filter((c) => c.product.stockQuantity === 0);
   const hasUnavailable = unavailableItems.length > 0;
   const validCartTotal = cart
     .filter((c) => c.product.stockQuantity > 0)
-    .reduce((sum, c) => sum + c.product.sellingPrice * c.quantity, 0);
+    .reduce((sum, c) => sum + getEffectivePrice(c.product) * c.quantity, 0);
 
   const getCartItem = (productId: string) => cart.find((c) => c.product._id === productId);
   const getCardQty = (productId: string) => cardQuantities[productId] ?? 1;
@@ -684,6 +708,8 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
             const cardQty = getCardQty(product._id);
             const inCart = getCartItem(product._id);
             const isOOS = product.stockQuantity === 0;
+            const effectivePrice = getEffectivePrice(product);
+            const discountPercent = getDiscountPercent(product);
 
             return (
               <div key={product._id} className={`group rounded-xl border border-border/40 bg-card/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col overflow-hidden ${isOOS ? 'opacity-65 hover:opacity-80' : ''}`}>
@@ -700,7 +726,14 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
                     <h3 className={`font-semibold line-clamp-2 transition-colors ${isOOS ? 'text-muted-foreground' : 'group-hover:text-primary'}`}>{product.name}</h3>
                   </button>
                   <div className="mt-2 flex items-baseline justify-between gap-2">
-                    <p className={`text-xl font-bold ${isOOS ? 'text-muted-foreground' : 'text-primary'}`}>{fmt(product.sellingPrice)}</p>
+                    <div>
+                      <p className={`text-xl font-bold ${isOOS ? 'text-muted-foreground' : 'text-primary'}`}>{fmt(effectivePrice)}</p>
+                      {discountPercent > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          <span className="line-through">{fmt(product.sellingPrice)}</span> • {discountPercent}% OFF
+                        </p>
+                      )}
+                    </div>
                     {isOOS ? (
                       <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
                         <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
@@ -806,6 +839,8 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
               {cart.map((item) => {
                 const itemOOS = item.product.stockQuantity === 0;
                 const overQuantity = item.quantity > item.product.stockQuantity && item.product.stockQuantity > 0;
+                const effectivePrice = getEffectivePrice(item.product);
+                const discountPercent = getDiscountPercent(item.product);
                 return (
                   <div
                     key={item.product._id}
@@ -832,9 +867,14 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
                       ) : overQuantity ? (
                         <p className="text-xs font-medium text-orange-600">Only {item.product.stockQuantity} left — quantity will be adjusted</p>
                       ) : (
-                        <p className="text-xs text-muted-foreground">
-                          {fmt(item.product.sellingPrice)} x {item.quantity} = {fmt(item.product.sellingPrice * item.quantity)}
-                        </p>
+                        <div className="text-xs text-muted-foreground">
+                          <p>{fmt(effectivePrice)} x {item.quantity} = {fmt(effectivePrice * item.quantity)}</p>
+                          {discountPercent > 0 && (
+                            <p>
+                              <span className="line-through">{fmt(item.product.sellingPrice)}</span> • {discountPercent}% OFF
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center gap-1">

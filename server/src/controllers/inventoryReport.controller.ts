@@ -13,6 +13,7 @@ type ReportProduct = {
   isPerishable: boolean;
   costPrice: number;
   sellingPrice: number;
+  discountPrice: number | null;
   sellerName: string;
   notes: string;
   initialStock: number;
@@ -73,6 +74,7 @@ async function buildReportData(storeId: string, dateStr: string): Promise<Report
       isPerishable: product?.isPerishable ?? false,
       costPrice: product?.costPrice ?? 0,
       sellingPrice: product?.sellingPrice ?? 0,
+      discountPrice: product?.discountPrice ?? null,
       sellerName: product?.sellerName ?? '',
       notes: product?.notes ?? '',
       initialStock: rec.initialStock,
@@ -98,6 +100,7 @@ async function buildExcelBuffer(dateStr: string, products: ReportProduct[]): Pro
     { header: 'Type', key: 'type', width: 14 },
     { header: 'Cost', key: 'costPrice', width: 12 },
     { header: 'Selling', key: 'sellingPrice', width: 12 },
+    { header: 'Discount', key: 'discountPrice', width: 12 },
     { header: 'Initial', key: 'displayInitialStock', width: 10 },
     { header: 'Restock', key: 'restock', width: 10 },
     { header: 'Sold', key: 'sold', width: 10 },
@@ -121,6 +124,7 @@ async function buildExcelBuffer(dateStr: string, products: ReportProduct[]): Pro
       type: p.isPerishable ? 'Perishable' : 'Non-perishable',
       costPrice: p.costPrice,
       sellingPrice: p.sellingPrice,
+      discountPrice: p.discountPrice,
       displayInitialStock: p.displayInitialStock,
       restock: p.restock,
       sold: p.sold,
@@ -131,6 +135,7 @@ async function buildExcelBuffer(dateStr: string, products: ReportProduct[]): Pro
   const numFmt = '#,##0.00';
   sheet.getColumn('costPrice').numFmt = numFmt;
   sheet.getColumn('sellingPrice').numFmt = numFmt;
+  sheet.getColumn('discountPrice').numFmt = numFmt;
 
   if (products.length > 0) {
     const totalRow = sheet.addRow({
@@ -140,6 +145,7 @@ async function buildExcelBuffer(dateStr: string, products: ReportProduct[]): Pro
       type: '',
       costPrice: 0,
       sellingPrice: 0,
+      discountPrice: 0,
       displayInitialStock: products.reduce((s, x) => s + x.displayInitialStock, 0),
       restock: products.reduce((s, x) => s + x.restock, 0),
       sold: products.reduce((s, x) => s + x.sold, 0),

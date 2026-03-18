@@ -39,6 +39,7 @@ interface Product {
   images: string[];
   costPrice: number;
   sellingPrice: number;
+  discountPrice?: number | null;
   stockQuantity: number;
   isPerishable: boolean;
   sellerName: string;
@@ -83,6 +84,7 @@ interface ProductFormData {
   images: string[];
   costPrice: string;
   sellingPrice: string;
+  discountPrice: string;
   stockQuantity: string;
   isPerishable: boolean;
   sellerName: string;
@@ -95,6 +97,7 @@ interface InvReportProduct {
   isPerishable: boolean;
   costPrice: number;
   sellingPrice: number;
+  discountPrice?: number | null;
   sellerName: string;
   notes: string;
   initialStock: number;
@@ -419,6 +422,7 @@ function ProductManagerInventoryReport({
                       <th>Type</th>
                       <th>Cost</th>
                       <th>Selling</th>
+                      <th>Discount</th>
                       <th className="text-right">Initial</th>
                       <th className="text-right">Restock</th>
                       <th className="text-right">Sold</th>
@@ -457,6 +461,9 @@ function ProductManagerInventoryReport({
                     </td>
                     <td className="px-4 py-2.5">{fmt(p.costPrice)}</td>
                     <td className="px-4 py-2.5">{fmt(p.sellingPrice)}</td>
+                    <td className="px-4 py-2.5">
+                      {typeof p.discountPrice === 'number' ? fmt(p.discountPrice) : '-'}
+                    </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{p.displayInitialStock}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">
                       {p.restock > 0 ? <span className="text-primary font-medium">+{p.restock}</span> : <span className="text-muted-foreground">0</span>}
@@ -802,6 +809,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     images: [],
     costPrice: '',
     sellingPrice: '',
+    discountPrice: '',
     stockQuantity: '',
     isPerishable: false,
     sellerName: '',
@@ -1059,6 +1067,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       images: product.images ?? [],
       costPrice: String(product.costPrice),
       sellingPrice: String(product.sellingPrice),
+      discountPrice: product.discountPrice == null ? '' : String(product.discountPrice),
       stockQuantity: String(product.stockQuantity),
       isPerishable: product.isPerishable ?? false,
       sellerName: product.sellerName ?? '',
@@ -1097,13 +1106,31 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     setError('');
 
     try {
+      const sellingPrice = parseFloat(form.sellingPrice) || 0;
+      const hasDiscount = form.discountPrice.trim().length > 0;
+      const parsedDiscountPrice = hasDiscount ? parseFloat(form.discountPrice) : null;
+
+      if (hasDiscount && (!Number.isFinite(parsedDiscountPrice) || (parsedDiscountPrice ?? 0) < 0)) {
+        const msg = 'Discount price must be a valid non-negative number';
+        setError(msg);
+        toast.error(msg);
+        return;
+      }
+      if (parsedDiscountPrice != null && parsedDiscountPrice > sellingPrice) {
+        const msg = 'Discount price cannot be greater than selling price';
+        setError(msg);
+        toast.error(msg);
+        return;
+      }
+
       if (editingProduct) {
         const productPayload = {
           storeId: form.storeId,
           name: form.name.trim(),
           images: form.images,
           costPrice: parseFloat(form.costPrice) || 0,
-          sellingPrice: parseFloat(form.sellingPrice) || 0,
+          sellingPrice,
+          discountPrice: parsedDiscountPrice,
           isPerishable: form.isPerishable,
           sellerName: form.sellerName.trim(),
           notes: form.notes.trim(),
@@ -1164,7 +1191,8 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           name: form.name.trim(),
           images: form.images,
           costPrice: parseFloat(form.costPrice) || 0,
-          sellingPrice: parseFloat(form.sellingPrice) || 0,
+          sellingPrice,
+          discountPrice: parsedDiscountPrice,
           stockQuantity: parseInt(form.stockQuantity, 10) || 0,
           isPerishable: form.isPerishable,
           sellerName: form.sellerName.trim(),
@@ -1577,6 +1605,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 )}
                 <th className="text-center">Cost</th>
                 <th className="text-center">Selling</th>
+                <th className="text-center">Discount</th>
                 <th className="text-center">Initial</th>
                 <th className="text-center">Restock</th>
                 <th className="text-center">Sold</th>
@@ -1590,7 +1619,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               {filteredAndSortedRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={isScoped ? (isEditable ? 12 : 11) : (isEditable ? 13 : 12)}
+                    colSpan={isScoped ? (isEditable ? 13 : 12) : (isEditable ? 14 : 13)}
                     className="px-4 py-8 text-center text-muted-foreground"
                   >
                     {displayRows.length > 0
@@ -1636,6 +1665,9 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                   )}
                   <td className="px-4 py-3">{fmt(product.costPrice)}</td>
                   <td className="px-4 py-3">{fmt(product.sellingPrice)}</td>
+                  <td className="px-4 py-3">
+                    {typeof product.discountPrice === 'number' ? fmt(product.discountPrice) : '-'}
+                  </td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     <div className="flex items-center justify-end gap-1">
                       <span>{displayInitialStock}</span>
@@ -1839,6 +1871,21 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                   required
                 />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="product-discount">Discount Price (PHP)</Label>
+              <Input
+                id="product-discount"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Optional"
+                value={form.discountPrice}
+                onChange={(e) => updateField('discountPrice', e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave blank for no discount. Must be less than or equal to selling price.
+              </p>
             </div>
 
             {editingProduct ? (
