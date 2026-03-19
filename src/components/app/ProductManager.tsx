@@ -1225,13 +1225,17 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const openCloseStore = () => {
     const dailyProductIds = new Set(dailyRows.map((r) => r.productId));
     const defaults = new Map<string, boolean>();
+
+    // Seed from any previously saved closing — all persisted selections are
+    // respected unconditionally so previously checked perishable items remain
+    // checked when revisiting or editing.
     if (closingStatus) {
       for (const sel of closingStatus.carryOverSelections) {
-        if (dailyProductIds.has(sel.productId)) {
-          defaults.set(sel.productId, sel.carryOver);
-        }
+        defaults.set(sel.productId, sel.carryOver);
       }
     }
+
+    // Fill in defaults only for products that have no saved entry yet.
     for (const product of products) {
       if (dailyProductIds.has(product._id) && !defaults.has(product._id)) {
         defaults.set(product._id, !product.isPerishable);
@@ -2023,7 +2027,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           <DialogHeader>
             <DialogTitle>{closingStatus ? 'Edit Store Closing' : 'Close Store'}</DialogTitle>
             <DialogDescription>
-              Select which products should carry over their remaining stock to tomorrow. Perishable products are unchecked by default.
+              Select which products should carry over their stock to tomorrow. Non-perishable items are checked by default; perishable items are unchecked by default. Previously saved selections are preserved.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1">

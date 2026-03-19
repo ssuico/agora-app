@@ -338,18 +338,15 @@ export const closeStore = async (req: Request, res: Response): Promise<void> => 
       { upsert: true, new: true }
     );
 
-    // Create / update next-day InventoryRecords only for products with stock
+    // Create / update next-day InventoryRecords based solely on the manager's
+    // carry-over selection — quantity (including 0) does not affect eligibility.
     const nextDay = new Date(date.getTime() + 24 * 60 * 60 * 1000);
 
-    const carried = carryOverSelections.filter(
-      (sel) => sel.carryOver && sel.currentStock > 0
-    );
-    const notCarried = carryOverSelections.filter(
-      (sel) => !sel.carryOver || sel.currentStock <= 0
-    );
+    const carried = carryOverSelections.filter((sel) => sel.carryOver);
+    const notCarried = carryOverSelections.filter((sel) => !sel.carryOver);
 
-    // Remove next-day records for unchecked / zero-stock items (only if they
-    // haven't been modified with restocks — same guard as reopen).
+    // Remove next-day records for unchecked items (only if they haven't been
+    // modified with restocks — same guard as reopen).
     if (notCarried.length > 0) {
       await InventoryRecord.deleteMany({
         productId: { $in: notCarried.map((s) => s.productId) },
