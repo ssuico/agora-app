@@ -85,6 +85,51 @@ export const updateStore = async (req: Request, res: Response): Promise<void> =>
   }
 };
 
+export const updateStoreStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const body = req.body as { isOpen?: boolean; isMaintenance?: boolean };
+    const allowed: { isOpen?: boolean; isMaintenance?: boolean } = {};
+    if (typeof body.isOpen === 'boolean') allowed.isOpen = body.isOpen;
+    if (typeof body.isMaintenance === 'boolean') allowed.isMaintenance = body.isMaintenance;
+
+    if (Object.keys(allowed).length === 0) {
+      res.status(400).json({ message: 'Provide isOpen or isMaintenance to update' });
+      return;
+    }
+
+    const store = await Store.findByIdAndUpdate(req.params.id, allowed, {
+      new: true,
+      runValidators: true,
+    });
+    if (!store) {
+      res.status(404).json({ message: 'Store not found' });
+      return;
+    }
+
+    try {
+      const io = getIO();
+      if (typeof allowed.isOpen === 'boolean') {
+        io.to(`store:${store._id}`).emit('store:status-changed', {
+          storeId: String(store._id),
+          isOpen: store.isOpen,
+        });
+      }
+      if (typeof allowed.isMaintenance === 'boolean') {
+        io.to(`store:${store._id}`).emit('store:maintenance-changed', {
+          storeId: String(store._id),
+          isMaintenance: store.isMaintenance,
+        });
+      }
+    } catch {
+      /* socket not required */
+    }
+
+    res.json(store);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
 export const deleteStore = async (req: Request, res: Response): Promise<void> => {
   try {
     await StoreManagerAssignment.deleteMany({ storeId: req.params.id });
