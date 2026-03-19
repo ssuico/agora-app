@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, ChevronLeft, ChevronRight, Clock, HelpCircle, ImageIcon, Lightbulb, Loader2, MessageSquare, Minus, Package, Plus, Search, ShoppingCart, Star, Store, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Clock, Eye, Grid3x3, HelpCircle, ImageIcon, LayoutGrid, Lightbulb, Loader2, MessageSquare, Minus, Package, Plus, Search, ShoppingCart, Star, Store, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -228,8 +228,8 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
         <div className="flex flex-col md:flex-row">
-          <div className="md:w-1/2 bg-muted/30 flex flex-col">
-            <div className="relative aspect-square">
+          <div className="md:w-1/2 flex flex-col">
+            <div className="relative aspect-square bg-muted/30">
               {!hasImages || failedSet.has(selectedIndex) ? (
                 <ImagePlaceholder className="h-full w-full" iconSize="h-12 w-12" />
               ) : (
@@ -382,6 +382,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
   const [addToCartCooldowns, setAddToCartCooldowns] = useState<Set<string>>(new Set());
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [gridCols, setGridCols] = useState<3 | 6 | 9>(3);
   const [isStoreOpen, setIsStoreOpen] = useState(initialIsOpen);
   const [isMaintenance, setIsMaintenance] = useState(initialIsMaintenance);
 
@@ -859,16 +860,42 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
         {/* Product section */}
         <div className="min-w-0 flex-1 space-y-6">
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
-        <input
-          type="text"
-          placeholder="Search products..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full rounded-xl border border-border/60 bg-card/50 py-2.5 pl-10 pr-4 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/30 transition-all"
-        />
+      {/* Search + Grid Controls */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
+          <input
+            type="text"
+            placeholder="Search products..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-xl border border-border/60 bg-card/50 py-2.5 pl-10 pr-4 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/30 transition-all"
+          />
+        </div>
+
+        {/* Grid column toggle */}
+        <div className="flex items-center rounded-xl border border-border/60 bg-card/50 p-1 gap-0.5 shrink-0">
+          {([
+            { cols: 3 as const, icon: <LayoutGrid className="h-4 w-4" />, label: '3' },
+            { cols: 6 as const, icon: <Grid3x3 className="h-4 w-4" />, label: '6' },
+            { cols: 9 as const, icon: <Grid3x3 className="h-4 w-4"/>, label: '9' },
+          ]).map(({ cols, icon, label }) => (
+            <button
+              key={cols}
+              onClick={() => setGridCols(cols)}
+              title={`${cols} columns`}
+              aria-label={`${cols} columns`}
+              className={`flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
+                gridCols === cols
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              {icon}
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Product grid */}
@@ -888,7 +915,13 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
           )}
         </div>
       ) : (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          className={`grid transition-all ${
+            gridCols === 3 ? 'gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' :
+            gridCols === 6 ? 'gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6' :
+                             'gap-2 grid-cols-3 sm:grid-cols-5 lg:grid-cols-9'
+          }`}
+        >
           {filteredProducts.map((product) => {
             const available = getAvailable(product);
             const cardQty = getCardQty(product._id);
@@ -896,22 +929,51 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
             const isOOS = product.stockQuantity === 0;
             const effectivePrice = getEffectivePrice(product);
             const discountPercent = getDiscountPercent(product);
+            const isCompact = gridCols === 6;
+            const isMini = gridCols === 9;
+            const hasRated = myRatedProductIds.has(product._id);
 
             return (
               <div key={product._id} className={`product-card-surface group rounded-xl hover:-translate-y-0.5 transition-all duration-200 flex flex-col overflow-hidden ${isOOS ? 'opacity-65 hover:opacity-80' : ''}`}>
-                <div className="relative overflow-hidden">
-                  <ImageCarousel images={product.images ?? []} className="h-48 w-full cursor-pointer" onClick={() => setSelectedProduct(product)} />
+                <div className="relative overflow-hidden group/img">
+                  <ImageCarousel
+                    images={product.images ?? []}
+                    className={`w-full cursor-pointer ${isMini ? 'h-20' : isCompact ? 'h-32' : 'h-48'}`}
+                    onClick={() => setSelectedProduct(product)}
+                  />
+                  {/* Hover overlay */}
+                  {!isOOS && (
+                    <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-2.5 opacity-0 group-hover/img:opacity-100 transition-opacity duration-200">
+                      {isMini ? (
+                        <span className="flex items-center justify-center rounded-full bg-black/60 p-1 backdrop-blur-sm">
+                          <Eye className="h-2.5 w-2.5 text-white" />
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
+                          <Eye className={`${isCompact ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
+                          {isCompact ? 'View reviews' : 'Click to view reviews'}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {isOOS && (
                     <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
-                      <span className="bg-red-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-sm">All Reserved</span>
+                      <span className={`bg-red-600 text-white font-semibold rounded-full shadow-sm ${isMini ? 'text-[9px] px-1.5 py-0.5' : 'text-xs px-3 py-1.5'}`}>
+                        {isMini ? 'OOS' : 'All Reserved'}
+                      </span>
                     </div>
                   )}
                 </div>
-                <div className="p-4 flex flex-col flex-1">
+
+                <div className={`flex flex-col flex-1 ${isMini ? 'p-1.5' : isCompact ? 'p-2.5' : 'p-4'}`}>
                   <button className="text-left" onClick={() => setSelectedProduct(product)}>
-                    <h3 className={`font-semibold line-clamp-2 transition-colors ${isOOS ? 'text-muted-foreground' : 'group-hover:text-primary'}`}>{product.name}</h3>
+                    <h3 className={`font-semibold transition-colors ${isOOS ? 'text-muted-foreground' : 'group-hover:text-primary'} ${isMini ? 'text-[10px] line-clamp-1' : isCompact ? 'text-xs line-clamp-1' : 'line-clamp-2'}`}>
+                      {product.name}
+                    </h3>
                   </button>
-                  {(() => {
+
+                  {/* Stars — hidden in mini mode */}
+                  {!isMini && (() => {
                     const r = productRatings.get(product._id);
                     return r && r.totalCount > 0 ? (
                       <div className="mt-1">
@@ -919,71 +981,163 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
                       </div>
                     ) : null;
                   })()}
-                  <div className="mt-2 flex items-baseline justify-between gap-2">
+
+                  <div className={`flex items-baseline justify-between gap-1 ${isMini ? 'mt-0.5' : 'mt-2'}`}>
                     <div>
-                      <p className={`text-xl font-bold ${isOOS ? 'text-muted-foreground' : 'text-primary'}`}>{fmt(effectivePrice)}</p>
-                      {discountPercent > 0 && (
+                      <p className={`font-bold ${isOOS ? 'text-muted-foreground' : 'text-primary'} ${isMini ? 'text-[10px]' : isCompact ? 'text-sm' : 'text-xl'}`}>
+                        {fmt(effectivePrice)}
+                      </p>
+                      {!isMini && discountPercent > 0 && (
                         <p className="text-xs text-muted-foreground">
-                          <span className="line-through">{fmt(product.sellingPrice)}</span> • {discountPercent}% OFF
+                          <span className="line-through">{fmt(product.sellingPrice)}</span>{!isCompact && ` • ${discountPercent}% OFF`}
                         </p>
                       )}
                     </div>
-                    {isOOS ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
-                        <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                        Reserved
-                      </span>
-                    ) : (
-                      <span className={`inline-flex items-center gap-1 text-xs ${product.stockQuantity < 10 ? 'text-amber-700 font-medium' : 'text-muted-foreground'}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${product.stockQuantity < 10 ? 'bg-amber-500' : 'bg-green-500'}`} />
-                        {product.stockQuantity} left
-                      </span>
+                    {/* Stock indicator dot — always visible */}
+                    {!isMini && (
+                      isOOS ? (
+                        <span className="h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" title="Out of stock" />
+                      ) : (
+                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${product.stockQuantity < 10 ? 'bg-amber-500' : 'bg-green-500'}`} title={`${product.stockQuantity} left`} />
+                      )
                     )}
                   </div>
-                  {inCart && (
-                    <p className={`mt-1.5 text-xs font-medium ${isOOS ? 'text-red-600' : 'text-primary/80'}`}>
-                      {inCart.quantity} in cart{isOOS ? ' (unavailable)' : ''}
-                    </p>
+
+                  {/* Stock label + in-cart note — normal mode only */}
+                  {!isCompact && !isMini && (
+                    <>
+                      <div className="mt-1">
+                        {isOOS ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
+                            <span className="h-1.5 w-1.5 rounded-full bg-red-500" />Reserved
+                          </span>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 text-xs ${product.stockQuantity < 10 ? 'text-amber-700 font-medium' : 'text-muted-foreground'}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${product.stockQuantity < 10 ? 'bg-amber-500' : 'bg-green-500'}`} />
+                            {product.stockQuantity} left
+                          </span>
+                        )}
+                      </div>
+                      {inCart && (
+                        <p className={`mt-1.5 text-xs font-medium ${isOOS ? 'text-red-600' : 'text-primary/80'}`}>
+                          {inCart.quantity} in cart{isOOS ? ' (unavailable)' : ''}
+                        </p>
+                      )}
+                    </>
                   )}
 
-                  <div className="mt-auto pt-3 space-y-2">
-                    {isOOS ? (
-                      inCart ? (
-                        <div className="rounded-lg bg-red-50 border border-red-200 px-2 py-1.5 text-center">
-                          <p className="text-xs text-red-700">No longer available</p>
-                        </div>
-                      ) : (
-                        <p className="text-center text-xs text-muted-foreground py-1">Currently unavailable</p>
-                      )
-                    ) : available > 0 ? (
+                  <div className={`mt-auto space-y-1.5 ${isMini ? 'pt-1' : 'pt-3'}`}>
+                    {isMini ? (
+                      /* Mini mode: opens product modal so user has full controls */
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setSelectedProduct(product)}
+                          className={`flex-1 flex items-center justify-center rounded-lg py-1 transition-colors ${
+                            isOOS || available === 0
+                              ? 'bg-muted text-muted-foreground'
+                              : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                          }`}
+                          title="View product details"
+                        >
+                          <ShoppingCart className="h-3 w-3" />
+                        </button>
+                        <a
+                          href={`/products/${product._id}/rate`}
+                          title="Rate product"
+                          className={`flex items-center justify-center rounded-lg px-1.5 py-1 border transition-colors ${
+                            hasRated
+                              ? 'border-amber-300 bg-amber-50 text-amber-700'
+                              : 'border-border text-muted-foreground hover:bg-muted'
+                          }`}
+                        >
+                          <Star className={`h-3 w-3 ${hasRated ? 'fill-amber-400 text-amber-400' : ''}`} />
+                        </a>
+                      </div>
+                    ) : isCompact ? (
+                      /* Compact mode: small qty picker + add button */
                       <>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">Qty</span>
-                          <QuantityPicker value={Math.min(cardQty, available)} max={available} onChange={(q) => setCardQty(product._id, q)} />
-                        </div>
-                        <Button className="w-full rounded-lg" size="sm" onClick={() => addToCartWithQty(product, Math.min(cardQty, available))} disabled={addToCartCooldowns.has(product._id)}>
-                          {addToCartCooldowns.has(product._id) ? (
-                            <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Added!</>
+                        {isOOS ? (
+                          inCart ? (
+                            <div className="rounded-md bg-red-50 border border-red-200 px-2 py-1 text-center">
+                              <p className="text-[10px] text-red-700">Unavailable</p>
+                            </div>
                           ) : (
-                            <><ShoppingCart className="mr-1.5 h-3.5 w-3.5" />Add to Cart</>
-                          )}
-                        </Button>
+                            <p className="text-center text-[10px] text-muted-foreground py-0.5">Unavailable</p>
+                          )
+                        ) : available > 0 ? (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] text-muted-foreground">Qty</span>
+                              <QuantityPicker value={Math.min(cardQty, available)} max={available} onChange={(q) => setCardQty(product._id, q)} />
+                            </div>
+                            <Button
+                              className="w-full rounded-lg h-7 text-xs"
+                              size="sm"
+                              onClick={() => addToCartWithQty(product, Math.min(cardQty, available))}
+                              disabled={addToCartCooldowns.has(product._id)}
+                            >
+                              {addToCartCooldowns.has(product._id)
+                                ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Added!</>
+                                : <><ShoppingCart className="mr-1 h-3 w-3" />Add</>
+                              }
+                            </Button>
+                          </>
+                        ) : (
+                          <p className="text-center text-[10px] text-muted-foreground py-0.5">In cart</p>
+                        )}
+                        <a
+                          href={`/products/${product._id}/rate`}
+                          className={`flex w-full items-center justify-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors ${
+                            hasRated
+                              ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                              : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          <Star className={`h-2.5 w-2.5 ${hasRated ? 'fill-amber-400 text-amber-400' : ''}`} />
+                          Rate
+                        </a>
                       </>
                     ) : (
-                      <p className="text-center text-xs text-muted-foreground py-1">All stock in cart</p>
+                      /* Normal mode: full controls */
+                      <>
+                        {isOOS ? (
+                          inCart ? (
+                            <div className="rounded-lg bg-red-50 border border-red-200 px-2 py-1.5 text-center">
+                              <p className="text-xs text-red-700">No longer available</p>
+                            </div>
+                          ) : (
+                            <p className="text-center text-xs text-muted-foreground py-1">Currently unavailable</p>
+                          )
+                        ) : available > 0 ? (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Qty</span>
+                              <QuantityPicker value={Math.min(cardQty, available)} max={available} onChange={(q) => setCardQty(product._id, q)} />
+                            </div>
+                            <Button className="w-full rounded-lg" size="sm" onClick={() => addToCartWithQty(product, Math.min(cardQty, available))} disabled={addToCartCooldowns.has(product._id)}>
+                              {addToCartCooldowns.has(product._id) ? (
+                                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Added!</>
+                              ) : (
+                                <><ShoppingCart className="mr-1.5 h-3.5 w-3.5" />Add to Cart</>
+                              )}
+                            </Button>
+                          </>
+                        ) : (
+                          <p className="text-center text-xs text-muted-foreground py-1">All stock in cart</p>
+                        )}
+                        <a
+                          href={`/products/${product._id}/rate`}
+                          className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                            hasRated
+                              ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+                              : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          <Star className={`h-3 w-3 ${hasRated ? 'fill-amber-400 text-amber-400' : ''}`} />
+                          Rate Product
+                        </a>
+                      </>
                     )}
-                    {/* Rate Product */}
-                    <a
-                      href={`/products/${product._id}/rate`}
-                      className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                        myRatedProductIds.has(product._id)
-                          ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
-                          : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
-                      }`}
-                    >
-                      <Star className={`h-3 w-3 ${myRatedProductIds.has(product._id) ? 'fill-amber-400 text-amber-400' : ''}`} />
-                      Rate Product
-                    </a>
                   </div>
                 </div>
               </div>

@@ -142,7 +142,7 @@ export function ActivityFeed({ storeId }: ActivityFeedProps) {
     <div className="rounded-xl border bg-card">
       <div className="flex items-center gap-2 border-b px-4 py-3">
         <Activity className="h-4 w-4 text-primary" />
-        <h3 className="text-sm font-semibold">Live Activity</h3>
+        <h3 className="text-sm font-semibold">Recent Activity</h3>
         {entries.length > 0 && (
           <span className="ml-auto rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
             {entries.length}

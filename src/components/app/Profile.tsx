@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, Plus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -24,19 +23,21 @@ function AvatarImageWithFallback({ src, name, className }: { src?: string; name:
     .join('')
     .toUpperCase()
     .slice(0, 2);
+  const showImg = !!src?.trim() && !failed;
 
-  if (!src?.trim() || failed) {
-    return (
-      <Avatar className={className}>
-        <AvatarFallback className="bg-secondary/55 text-foreground">{initials}</AvatarFallback>
-      </Avatar>
-    );
-  }
   return (
-    <Avatar className={className}>
-      <AvatarImage src={src} alt="" onError={() => setFailed(true)} />
-      <AvatarFallback className="bg-secondary/55 text-foreground">{initials}</AvatarFallback>
-    </Avatar>
+    <div className={`shrink-0 rounded-full overflow-hidden flex items-center justify-center bg-secondary/55 font-semibold text-foreground ${className ?? ''}`}>
+      {showImg ? (
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        initials
+      )}
+    </div>
   );
 }
 

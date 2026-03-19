@@ -291,10 +291,10 @@ export const getRatingAggregates = async (req: Request, res: Response): Promise<
       { $sort: { averageStars: -1 } },
     ]);
 
-    // Recent product comments
-    const recentProductFeedback = await Rating.find({ storeId, type: 'product', comment: { $ne: null } })
+    // All product ratings (with or without comments) so every reviewer appears in the modal
+    const recentProductFeedback = await Rating.find({ storeId, type: 'product' })
       .sort({ createdAt: -1 })
-      .limit(20)
+      .limit(200)
       .populate('customerId', 'name')
       .populate('productId', 'name')
       .lean();

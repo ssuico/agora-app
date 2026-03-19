@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -135,16 +134,18 @@ export function Topbar({ name, role, avatar: initialAvatar }: TopbarProps) {
         <div className="hidden h-8 w-px bg-border/80 sm:block" />
         <DropdownMenu>
         <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-border/70 bg-card/70 px-2 py-1.5 outline-none transition hover:bg-primary/8">
-          <Avatar className="h-8 w-8 ring-2 ring-primary/20">
-            {showAvatarImage && (
-              <AvatarImage
+          <div className="h-8 w-8 shrink-0 rounded-full ring-2 ring-primary/20 overflow-hidden flex items-center justify-center bg-secondary/50 text-xs font-semibold text-foreground">
+            {showAvatarImage ? (
+              <img
                 src={avatar}
                 alt=""
+                className="h-full w-full object-cover"
                 onError={() => setAvatarError(true)}
               />
+            ) : (
+              initials
             )}
-            <AvatarFallback className="bg-secondary/50 text-xs text-foreground">{initials}</AvatarFallback>
-          </Avatar>
+          </div>
           <div className="hidden text-left sm:block">
             <p className="text-sm font-medium leading-none">{name}</p>
             <Badge
