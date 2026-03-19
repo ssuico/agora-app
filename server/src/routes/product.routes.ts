@@ -16,7 +16,7 @@ export const productRoutes: IRouter = Router();
 
 productRoutes.use(authenticate);
 
-productRoutes.get('/sold-stats', authorize(UserRole.ADMIN, UserRole.STORE_MANAGER), getProductsSoldStats);
+productRoutes.get('/sold-stats', getProductsSoldStats);
 productRoutes.get('/', getProducts);
 productRoutes.get('/:id', getProduct);
 productRoutes.post('/', authorize(UserRole.ADMIN, UserRole.STORE_MANAGER), enforceStoreAccess, createProduct);

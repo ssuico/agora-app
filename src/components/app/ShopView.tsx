@@ -9,10 +9,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, ChevronLeft, ChevronRight, Clock, ImageIcon, Loader2, Minus, Package, Plus, Search, ShoppingCart, Store, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Clock, HelpCircle, ImageIcon, Lightbulb, Loader2, MessageSquare, Minus, Package, Plus, Search, ShoppingCart, Star, Store, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
+import { ActivityFeed } from './ActivityFeed';
+import { TopProducts } from './TopProducts';
 
 interface Product {
   _id: string;
@@ -31,6 +33,21 @@ interface CartItem {
 interface StockAlert {
   id: number;
   names: string[];
+}
+
+interface ProductRatingStat {
+  averageStars: number;
+  totalCount: number;
+}
+
+interface FeedbackEntry {
+  _id: string;
+  stars: number;
+  comment?: string | null;
+  createdAt: string;
+  customerId?: { name: string } | null;
+  productId?: { name: string; _id: string } | null;
+  type: 'product' | 'store';
 }
 
 interface ShopViewProps {
@@ -159,8 +176,33 @@ function QuantityPicker({ value, max, onChange, size = 'sm' }: { value: number; 
 // Product detail dialog
 // ---------------------------------------------------------------------------
 
-function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart, isCooldown }: {
-  product: Product | null; open: boolean; onOpenChange: (open: boolean) => void; inCart?: CartItem; onAddToCart: (p: Product, qty: number) => void; isCooldown?: boolean;
+function MiniStars({ value, count }: { value: number; count: number }) {
+  return (
+    <span className="flex items-center gap-1">
+      <span className="flex items-center gap-0.5">
+        {[1, 2, 3, 4, 5].map((s) => (
+          <Star
+            key={s}
+            className={`h-3 w-3 ${s <= Math.round(value) ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30'}`}
+          />
+        ))}
+      </span>
+      <span className="text-xs text-muted-foreground">
+        {value.toFixed(1)} ({count})
+      </span>
+    </span>
+  );
+}
+
+function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart, isCooldown, rating, reviews }: {
+  product: Product | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  inCart?: CartItem;
+  onAddToCart: (p: Product, qty: number) => void;
+  isCooldown?: boolean;
+  rating?: ProductRatingStat;
+  reviews?: FeedbackEntry[];
 }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [failedSet, setFailedSet] = useState<Set<number>>(new Set());
@@ -235,6 +277,22 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
               </span>
               {cartQty > 0 && <span className="text-xs text-muted-foreground">({cartQty} in cart)</span>}
             </div>
+            {rating && rating.totalCount > 0 && (
+              <div className="mt-2">
+                <MiniStars value={rating.averageStars} count={rating.totalCount} />
+              </div>
+            )}
+            {product && (
+              <div className="mt-2">
+                <a
+                  href={`/products/${product._id}/rate`}
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Star className="h-3 w-3" />
+                  Rate this product
+                </a>
+              </div>
+            )}
             {hasImages && images.length > 1 && <p className="mt-2 text-xs text-muted-foreground">{images.length} photos available</p>}
 
             <div className="mt-auto pt-6 space-y-3">
@@ -264,6 +322,41 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
                 <p className="text-center text-sm text-muted-foreground py-2">All available stock is in your cart</p>
               )}
             </div>
+
+            {/* Reviews section */}
+            {reviews && reviews.length > 0 && (
+              <div className="mt-6 border-t pt-4">
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                  <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                  Customer Reviews
+                </h4>
+                <ul className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                  {reviews.map((r) => (
+                    <li key={r._id} className="rounded-lg bg-muted/40 px-3 py-2.5">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Star key={s} className={`h-3 w-3 ${s <= r.stars ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30'}`} />
+                          ))}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {new Date(r.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      {r.comment && <p className="text-xs text-foreground">{r.comment}</p>}
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        — {r.customerId?.name ?? 'Anonymous'}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {reviews && reviews.length === 0 && rating && (
+              <div className="mt-6 border-t pt-4">
+                <p className="text-xs text-muted-foreground text-center py-2">No reviews yet for this product.</p>
+              </div>
+            )}
           </div>
         </div>
       </DialogContent>
@@ -292,6 +385,26 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
   const [isStoreOpen, setIsStoreOpen] = useState(initialIsOpen);
   const [isMaintenance, setIsMaintenance] = useState(initialIsMaintenance);
 
+  // Rating aggregates (community-wide) + this user's own rated products
+  const [productRatings, setProductRatings] = useState<Map<string, ProductRatingStat>>(new Map());
+  const [productReviews, setProductReviews] = useState<Map<string, FeedbackEntry[]>>(new Map());
+  const [myRatedProductIds, setMyRatedProductIds] = useState<Set<string>>(new Set());
+
+  // Store rating
+  const [storeRatingOpen, setStoreRatingOpen] = useState(false);
+  const [storeRatingStars, setStoreRatingStars] = useState(5);
+  const [storeRatingComment, setStoreRatingComment] = useState('');
+  const [storeRatingSubmitting, setStoreRatingSubmitting] = useState(false);
+  const [hasRatedStore, setHasRatedStore] = useState(false);
+  const [existingStoreStars, setExistingStoreStars] = useState<number | null>(null);
+
+  // Interaction (Q&A / recommendations)
+  const [interactionOpen, setInteractionOpen] = useState(false);
+  const [interactionType, setInteractionType] = useState<'question' | 'recommendation'>('question');
+  const [interactionContent, setInteractionContent] = useState('');
+  const [interactionSubmitting, setInteractionSubmitting] = useState(false);
+  const [interactionDone, setInteractionDone] = useState(false);
+
   const dismissAlert = (id: number) => {
     setStockAlerts((prev) => prev.filter((a) => a.id !== id));
   };
@@ -313,7 +426,57 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
     }
   };
 
-  useEffect(() => { fetchProducts(); }, []);
+  const fetchRatingAggregates = async () => {
+    try {
+      const res = await fetch(`/api/ratings/aggregates?storeId=${storeId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const productSection = data.product ?? {};
+      const ratingsMap = new Map<string, ProductRatingStat>();
+      const reviewsMap = new Map<string, FeedbackEntry[]>();
+      if (Array.isArray(productSection.perProduct)) {
+        for (const p of productSection.perProduct) {
+          ratingsMap.set(String(p.productId), { averageStars: p.averageStars, totalCount: p.totalCount });
+        }
+      }
+      if (Array.isArray(productSection.recentFeedback)) {
+        for (const entry of productSection.recentFeedback as FeedbackEntry[]) {
+          if (entry.productId?._id) {
+            const pid = String(entry.productId._id);
+            const arr = reviewsMap.get(pid) ?? [];
+            arr.push(entry);
+            reviewsMap.set(pid, arr);
+          }
+        }
+      }
+      setProductRatings(ratingsMap);
+      setProductReviews(reviewsMap);
+    } catch { /* ignore */ }
+  };
+
+  const fetchMyStoreRating = async () => {
+    try {
+      const res = await fetch(`/api/ratings/my-store-rating?storeId=${storeId}`);
+      if (!res.ok) return;
+      const data = await res.json() as { rating: { stars: number } | null };
+      if (data.rating) {
+        setHasRatedStore(true);
+        setExistingStoreStars(data.rating.stars);
+        setStoreRatingStars(data.rating.stars);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const fetchMyProductRatings = async () => {
+    try {
+      const res = await fetch('/api/ratings/my-product-ratings');
+      if (!res.ok) return;
+      const data = await res.json() as Array<{ productId: string }>;
+      if (Array.isArray(data)) setMyRatedProductIds(new Set(data.map((r) => r.productId)));
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => { fetchProducts(); fetchRatingAggregates(); fetchMyStoreRating(); fetchMyProductRatings(); }, []);
 
   // --- Socket: real-time stock updates ---
 
@@ -599,7 +762,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
           </div>
         </div>
         <Skeleton className="h-10 w-full max-w-sm rounded-xl" />
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="product-card-surface rounded-xl overflow-hidden flex flex-col">
               <Skeleton className="h-48 w-full rounded-none" />
@@ -654,6 +817,24 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
             <Package className="h-3.5 w-3.5" />
             My Purchases
           </a>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { setInteractionOpen(true); setInteractionDone(false); }}
+            className="gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            Ask / Suggest
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setStoreRatingOpen(true)}
+            className="gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            <Star className={`h-3.5 w-3.5 ${hasRatedStore ? 'fill-amber-400 text-amber-400' : ''}`} />
+            {hasRatedStore ? `Rated (${existingStoreStars}★)` : 'Rate Store'}
+          </Button>
           <div className="h-6 w-px bg-border/60 mx-1" />
           <Button variant="outline" onClick={() => setCartOpen(true)} className="relative gap-2 rounded-lg">
             <ShoppingCart className="h-4 w-4" />
@@ -672,6 +853,11 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
           </Button>
         </div>
       </div>
+
+      {/* Main layout: product section + right sidebar */}
+      <div className="flex gap-6 items-start">
+        {/* Product section */}
+        <div className="min-w-0 flex-1 space-y-6">
 
       {/* Search */}
       <div className="relative max-w-sm">
@@ -702,7 +888,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
           )}
         </div>
       ) : (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {filteredProducts.map((product) => {
             const available = getAvailable(product);
             const cardQty = getCardQty(product._id);
@@ -725,6 +911,14 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
                   <button className="text-left" onClick={() => setSelectedProduct(product)}>
                     <h3 className={`font-semibold line-clamp-2 transition-colors ${isOOS ? 'text-muted-foreground' : 'group-hover:text-primary'}`}>{product.name}</h3>
                   </button>
+                  {(() => {
+                    const r = productRatings.get(product._id);
+                    return r && r.totalCount > 0 ? (
+                      <div className="mt-1">
+                        <MiniStars value={r.averageStars} count={r.totalCount} />
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="mt-2 flex items-baseline justify-between gap-2">
                     <div>
                       <p className={`text-xl font-bold ${isOOS ? 'text-muted-foreground' : 'text-primary'}`}>{fmt(effectivePrice)}</p>
@@ -778,6 +972,18 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
                     ) : (
                       <p className="text-center text-xs text-muted-foreground py-1">All stock in cart</p>
                     )}
+                    {/* Rate Product */}
+                    <a
+                      href={`/products/${product._id}/rate`}
+                      className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                        myRatedProductIds.has(product._id)
+                          ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+                          : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <Star className={`h-3 w-3 ${myRatedProductIds.has(product._id) ? 'fill-amber-400 text-amber-400' : ''}`} />
+                      Rate Product
+                    </a>
                   </div>
                 </div>
               </div>
@@ -785,6 +991,15 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
           })}
         </div>
       )}
+
+        </div>{/* end product section */}
+
+        {/* Right sidebar: Activity Feed + Trending */}
+        <div className="hidden xl:flex w-72 shrink-0 flex-col gap-4">
+          <ActivityFeed storeId={storeId} />
+          <TopProducts storeId={storeId} hideRevenue defaultLimit={5} />
+        </div>
+      </div>{/* end main layout */}
 
       {/* Product Detail Dialog */}
       <ProductDetailDialog
@@ -794,6 +1009,8 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
         inCart={selectedProduct ? getCartItem(selectedProduct._id) : undefined}
         onAddToCart={addToCartWithQty}
         isCooldown={selectedProduct ? addToCartCooldowns.has(selectedProduct._id) : false}
+        rating={selectedProduct ? productRatings.get(selectedProduct._id) : undefined}
+        reviews={selectedProduct ? (productReviews.get(selectedProduct._id) ?? []) : undefined}
       />
 
       {/* Cart Dialog */}
@@ -931,6 +1148,184 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
                     : `Reserve Items (${fmt(hasUnavailable ? validCartTotal : cartTotal)})`}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Ask / Recommend Dialog */}
+      <Dialog open={interactionOpen} onOpenChange={(v) => { if (!v) { setInteractionOpen(false); setInteractionContent(''); setInteractionDone(false); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ask a Question or Suggest a Product</DialogTitle>
+            <DialogDescription>
+              Your message will be reviewed by the store team.
+            </DialogDescription>
+          </DialogHeader>
+
+          {interactionDone ? (
+            <div className="flex flex-col items-center gap-3 py-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                <MessageSquare className="h-6 w-6 text-green-600 dark:text-green-400" />
+              </div>
+              <p className="text-base font-semibold">Message sent!</p>
+              <p className="text-sm text-muted-foreground">The store team will review your message.</p>
+              <Button onClick={() => { setInteractionOpen(false); setInteractionContent(''); setInteractionDone(false); }}>Close</Button>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-4 py-1">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setInteractionType('question')}
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-medium transition-colors ${interactionType === 'question' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:bg-muted'}`}
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                    Question
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInteractionType('recommendation')}
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-medium transition-colors ${interactionType === 'recommendation' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:bg-muted'}`}
+                  >
+                    <Lightbulb className="h-4 w-4" />
+                    Recommendation
+                  </button>
+                </div>
+                <textarea
+                  value={interactionContent}
+                  onChange={(e) => setInteractionContent(e.target.value)}
+                  placeholder={interactionType === 'question' ? 'Ask about a product, availability, or anything else...' : 'Suggest a product you\'d like to see in this store...'}
+                  maxLength={1000}
+                  rows={4}
+                  className="w-full resize-none rounded-xl border bg-muted/20 px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+                <p className="text-right text-xs text-muted-foreground">{interactionContent.length}/1000</p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setInteractionOpen(false); setInteractionContent(''); }}>Cancel</Button>
+                <Button
+                  disabled={interactionSubmitting || !interactionContent.trim()}
+                  onClick={async () => {
+                    if (!interactionContent.trim()) return;
+                    setInteractionSubmitting(true);
+                    try {
+                      const res = await fetch('/api/interactions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ storeId, type: interactionType, content: interactionContent.trim() }),
+                      });
+                      if (!res.ok) {
+                        const data = await res.json() as { message?: string };
+                        toast.error(data.message ?? 'Failed to send message');
+                      } else {
+                        setInteractionDone(true);
+                        setInteractionContent('');
+                      }
+                    } catch {
+                      toast.error('Failed to send message');
+                    } finally {
+                      setInteractionSubmitting(false);
+                    }
+                  }}
+                  className="gap-2"
+                >
+                  {interactionSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Send
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Rate Store Dialog */}
+      <Dialog
+        open={storeRatingOpen}
+        onOpenChange={(v) => {
+          if (!v) {
+            setStoreRatingOpen(false);
+            setStoreRatingComment('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rate {storeName}</DialogTitle>
+            <DialogDescription>
+              {hasRatedStore ? 'Update your store rating.' : 'Share your overall experience with this store.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <div className="flex flex-col items-center gap-2">
+              <p className="text-sm text-muted-foreground">Your rating</p>
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setStoreRatingStars(s)}
+                    className="rounded p-0.5 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <Star className={`h-8 w-8 transition-colors ${s <= storeRatingStars ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30'}`} />
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {['', 'Terrible', 'Poor', 'Average', 'Good', 'Excellent'][storeRatingStars]}
+              </p>
+            </div>
+            <textarea
+              value={storeRatingComment}
+              onChange={(e) => setStoreRatingComment(e.target.value)}
+              placeholder="Add a comment (optional)"
+              maxLength={500}
+              rows={3}
+              className="w-full resize-none rounded-xl border bg-muted/20 px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setStoreRatingOpen(false); setStoreRatingComment(''); }}
+              disabled={storeRatingSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={storeRatingSubmitting}
+              className="gap-2"
+              onClick={async () => {
+                setStoreRatingSubmitting(true);
+                try {
+                  const res = await fetch('/api/ratings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      storeId,
+                      ratings: [{ type: 'store', stars: storeRatingStars, comment: storeRatingComment.trim() || undefined }],
+                    }),
+                  });
+                  if (!res.ok) {
+                    const d = await res.json() as { message?: string };
+                    toast.error(d.message ?? 'Failed to submit rating');
+                    return;
+                  }
+                  setHasRatedStore(true);
+                  setExistingStoreStars(storeRatingStars);
+                  setStoreRatingOpen(false);
+                  setStoreRatingComment('');
+                  toast.success('Thank you for rating the store!');
+                } catch {
+                  toast.error('Failed to submit rating');
+                } finally {
+                  setStoreRatingSubmitting(false);
+                }
+              }}
+            >
+              {storeRatingSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {hasRatedStore ? 'Update Rating' : 'Submit Rating'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

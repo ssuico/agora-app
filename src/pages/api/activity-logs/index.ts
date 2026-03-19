@@ -11,7 +11,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   if (storeId) params.set('storeId', storeId);
   if (limit) params.set('limit', limit);
   const query = params.toString() ? `?${params}` : '';
-  const res = await fetch(`${API_URL}/api/products/sold-stats${query}`, {
+  const res = await fetch(`${API_URL}/api/activity-logs${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json();

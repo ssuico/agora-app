@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Loader2, Store, WrenchIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { CustomerFeedback } from './CustomerFeedback';
+import { CustomerInteractions } from './CustomerInteractions';
+import { TopProducts } from './TopProducts';
 
 interface SummaryData {
   totalSales: number;
@@ -126,18 +130,16 @@ export function StoreReports({ storeId }: StoreReportsProps) {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header with store controls */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Financial Reports</h1>
-          <p className="text-sm text-muted-foreground">Summary of store performance</p>
+          <h1 className="text-2xl font-bold tracking-tight">Store Dashboard</h1>
+          <p className="text-sm text-muted-foreground">Overview, feedback, and activity insights</p>
         </div>
 
-        {/* Store state controls */}
         {!storeStateLoading && (
           <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 shadow-sm">
-            {/* Status pill */}
             <span
               className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
                 storeState.isMaintenance
@@ -147,19 +149,20 @@ export function StoreReports({ storeId }: StoreReportsProps) {
                   : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
               }`}
             >
-              <span className={`h-1.5 w-1.5 rounded-full ${
-                storeState.isMaintenance
-                  ? 'bg-amber-500'
-                  : storeState.isOpen
-                  ? 'bg-green-500'
-                  : 'bg-red-500'
-              }`} />
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  storeState.isMaintenance
+                    ? 'bg-amber-500'
+                    : storeState.isOpen
+                    ? 'bg-green-500'
+                    : 'bg-red-500'
+                }`}
+              />
               {storeState.isMaintenance ? 'Maintenance' : storeState.isOpen ? 'Open' : 'Closed'}
             </span>
 
             <div className="h-4 w-px bg-border" />
 
-            {/* Open / Close toggle */}
             <Button
               variant={storeState.isOpen ? 'destructive' : 'default'}
               size="sm"
@@ -175,7 +178,6 @@ export function StoreReports({ storeId }: StoreReportsProps) {
               {storeState.isOpen ? 'Close Store' : 'Open Store'}
             </Button>
 
-            {/* Maintenance toggle */}
             <Button
               variant={storeState.isMaintenance ? 'default' : 'outline'}
               size="sm"
@@ -194,43 +196,72 @@ export function StoreReports({ storeId }: StoreReportsProps) {
         )}
       </div>
 
-      {/* Summary section */}
-      {summaryLoading ? (
-        <div className="py-12 text-center text-muted-foreground">Loading summary...</div>
-      ) : summaryError ? (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          {summaryError}
-        </div>
-      ) : summary ? (
-        <div className="space-y-6">
-          <h2 className="text-lg font-semibold">Summary</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Total Sales" value={fmt(summary.totalSales)} />
-            <StatCard label="COGS" value={fmt(summary.totalCOGS)} className="text-muted-foreground" />
-            <StatCard label="Gross Profit" value={fmt(summary.grossProfit)} className="text-green-600" />
-            <StatCard label="Transactions" value={String(summary.transactionCount)} />
-          </div>
-          <div className="rounded-lg border bg-card p-6">
-            <h3 className="mb-4 text-base font-semibold">Profit Breakdown</h3>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total Sales</span>
-                <span className="font-medium">{fmt(summary.totalSales)}</span>
+      {/* Main content: full-width tabs */}
+      <Tabs defaultValue="overview">
+        <TabsList className="mb-6">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="feedback">Customer Feedback</TabsTrigger>
+          <TabsTrigger value="interactions">Interactions</TabsTrigger>
+          <TabsTrigger value="top-products">Top Products</TabsTrigger>
+        </TabsList>
+
+        {/* Overview Tab */}
+        <TabsContent value="overview">
+          {summaryLoading ? (
+            <div className="py-12 text-center text-muted-foreground">Loading summary...</div>
+          ) : summaryError ? (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+              {summaryError}
+            </div>
+          ) : summary ? (
+            <div className="space-y-6">
+              <h2 className="text-lg font-semibold">Financial Summary</h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard label="Total Sales" value={fmt(summary.totalSales)} />
+                <StatCard label="COGS" value={fmt(summary.totalCOGS)} className="text-muted-foreground" />
+                <StatCard label="Gross Profit" value={fmt(summary.grossProfit)} className="text-green-600" />
+                <StatCard label="Transactions" value={String(summary.transactionCount)} />
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Cost of Goods Sold</span>
-                <span className="font-medium text-destructive">- {fmt(summary.totalCOGS)}</span>
-              </div>
-              <div className="flex justify-between border-t pt-3">
-                <span className="font-semibold">Gross Profit</span>
-                <span className={`font-bold ${summary.grossProfit >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                  {fmt(summary.grossProfit)}
-                </span>
+              <div className="rounded-lg border bg-card p-6">
+                <h3 className="mb-4 text-base font-semibold">Profit Breakdown</h3>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total Sales</span>
+                    <span className="font-medium">{fmt(summary.totalSales)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Cost of Goods Sold</span>
+                    <span className="font-medium text-destructive">- {fmt(summary.totalCOGS)}</span>
+                  </div>
+                  <div className="flex justify-between border-t pt-3">
+                    <span className="font-semibold">Gross Profit</span>
+                    <span
+                      className={`font-bold ${summary.grossProfit >= 0 ? 'text-green-600' : 'text-destructive'}`}
+                    >
+                      {fmt(summary.grossProfit)}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      ) : null}
+          ) : null}
+        </TabsContent>
+
+        {/* Customer Feedback Tab */}
+        <TabsContent value="feedback">
+          <CustomerFeedback storeId={storeId} />
+        </TabsContent>
+
+        {/* Customer Interactions Tab */}
+        <TabsContent value="interactions">
+          <CustomerInteractions storeId={storeId} />
+        </TabsContent>
+
+        {/* Top Products Tab */}
+        <TabsContent value="top-products">
+          <TopProducts storeId={storeId} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

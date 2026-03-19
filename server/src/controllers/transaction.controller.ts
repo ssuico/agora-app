@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
+import { ActivityLog } from '../models/ActivityLog.js';
 import { Product } from '../models/Product.js';
 import { Store } from '../models/Store.js';
 import { Transaction, type ClaimStatus, type PaymentStatus } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
+import { User } from '../models/User.js';
 import { getIO } from '../socket.js';
 import { localDayRangeFromDateString } from '../config/timezone.js';
 import { UserRole } from '../types/index.js';
@@ -162,6 +164,31 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         .populate('customerId', 'name email')
         .lean();
       io.to(`store:${storeId}`).emit('transaction:created', populatedTx);
+
+      // Activity feed: log reservation created
+      const actorName =
+        req.user?.role === UserRole.CUSTOMER
+          ? (req.user.name ?? 'A customer')
+          : walkInCustomerName
+          ? walkInCustomerName
+          : 'Walk-in customer';
+
+      // Fetch fresh avatar from DB so it's always up-to-date regardless of JWT age
+      let actorAvatar: string | null = null;
+      if (req.user?.userId) {
+        const userDoc = await User.findById(req.user.userId).select('avatar').lean();
+        actorAvatar = userDoc?.avatar || null;
+      }
+
+      const activityDoc = await ActivityLog.create({
+        storeId,
+        type: 'reservation_created',
+        actorName,
+        actorAvatar,
+        message: `${actorName} placed a reservation`,
+        metadata: { transactionId: String(transaction._id), totalAmount },
+      });
+      io.to(`store:${storeId}`).emit('activity:new', activityDoc);
     } catch { /* socket broadcast is non-critical */ }
 
     res.status(201).json({ transaction, items: txItems });
@@ -444,12 +471,13 @@ export const getMyPurchases = async (req: Request, res: Response): Promise<void>
       .populate('productId', 'name sellingPrice')
       .lean();
 
-    const itemsByTx = new Map<string, Array<{ productName: string; quantity: number; subtotal: number; sellingPrice: number }>>();
+    const itemsByTx = new Map<string, Array<{ productId: string; productName: string; quantity: number; subtotal: number; sellingPrice: number }>>();
     for (const item of items) {
       const txId = String(item.transactionId);
-      const product = item.productId as unknown as { name: string; sellingPrice: number } | null;
+      const product = item.productId as unknown as { _id: unknown; name: string; sellingPrice: number } | null;
       const list = itemsByTx.get(txId) ?? [];
       list.push({
+        productId: String(product?._id ?? item.productId),
         productName: product?.name ?? 'Unknown',
         quantity: item.quantity,
         subtotal: item.subtotal,

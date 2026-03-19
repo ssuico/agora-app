@@ -191,26 +191,48 @@ export const deleteProduct = async (req: Request, res: Response): Promise<void> 
 
 export const getProductsSoldStats = async (req: Request, res: Response): Promise<void> => {
   try {
-    const storeId = req.query.storeId as string | undefined;
+    const { storeId, limit: limitParam = '10' } = req.query as Record<string, string>;
     if (!storeId) {
       res.status(400).json({ message: 'storeId is required' });
       return;
     }
+
+    const lim = Math.min(parseInt(limitParam, 10) || 10, 50);
 
     const products = await Product.find({ storeId }).select('_id').lean();
     const productIds = products.map((p) => p._id);
 
     const stats = await TransactionItem.aggregate([
       { $match: { productId: { $in: productIds } } },
-      { $group: { _id: '$productId', totalSold: { $sum: '$quantity' } } },
+      {
+        $group: {
+          _id: '$productId',
+          totalSold: { $sum: '$quantity' },
+          totalRevenue: { $sum: '$subtotal' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'products',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'product',
+        },
+      },
+      { $unwind: { path: '$product', preserveNullAndEmptyArrays: false } },
+      {
+        $project: {
+          productId: '$_id',
+          name: '$product.name',
+          totalSold: 1,
+          totalRevenue: 1,
+        },
+      },
+      { $sort: { totalSold: -1 } },
+      { $limit: lim },
     ]);
 
-    const soldMap: Record<string, number> = {};
-    for (const s of stats) {
-      soldMap[String(s._id)] = s.totalSold;
-    }
-
-    res.json(soldMap);
+    res.json(stats);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
   }

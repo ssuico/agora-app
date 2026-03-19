@@ -5,13 +5,9 @@ const API_URL = getApiBase();
 
 export const GET: APIRoute = async ({ url, cookies }) => {
   const token = cookies.get('agora_token')?.value ?? '';
-  const params = new URLSearchParams();
-  const storeId = url.searchParams.get('storeId');
-  const limit = url.searchParams.get('limit');
-  if (storeId) params.set('storeId', storeId);
-  if (limit) params.set('limit', limit);
-  const query = params.toString() ? `?${params}` : '';
-  const res = await fetch(`${API_URL}/api/products/sold-stats${query}`, {
+  const productId = url.searchParams.get('productId');
+  const query = productId ? `?productId=${productId}` : '';
+  const res = await fetch(`${API_URL}/api/ratings/product-rating-info${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json();

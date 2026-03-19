@@ -9,6 +9,7 @@ export interface JwtPayload {
   name: string;
   role: UserRole;
   storeIds?: string[];
+  avatar?: string;
 }
 
 declare global {

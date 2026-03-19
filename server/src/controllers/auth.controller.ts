@@ -61,6 +61,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         name: user.name,
         role: user.role,
         storeIds,
+        avatar: user.avatar ?? '',
       },
       process.env.JWT_SECRET!,
       jwtOptions

@@ -1,0 +1,37 @@
+---
+import AppLayout from '@/layouts/AppLayout.astro';
+import { ProductRatingPage } from '@/components/app/ProductRatingPage';
+import { getApiBase } from '@/lib/api-base';
+
+const { productId } = Astro.params;
+const token = Astro.cookies.get('agora_token')?.value ?? '';
+
+if (!token) {
+  return Astro.redirect('/login');
+}
+
+if (!productId) {
+  return Astro.redirect('/purchases');
+}
+
+const API_URL = getApiBase();
+const res = await fetch(`${API_URL}/api/ratings/product-rating-info?productId=${productId}`, {
+  headers: { Authorization: `Bearer ${token}` },
+});
+
+if (!res.ok) {
+  return Astro.redirect('/purchases');
+}
+
+const data = await res.json();
+---
+
+<AppLayout title={`Rate · ${data.product?.name ?? 'Product'}`}>
+  <ProductRatingPage
+    client:load
+    productId={productId}
+    product={data.product}
+    isEligible={data.isEligible}
+    existingRating={data.existingRating}
+  />
+</AppLayout>
