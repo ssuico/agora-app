@@ -223,147 +223,226 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
   const isOOS = product.stockQuantity === 0;
   const effectivePrice = getEffectivePrice(product);
   const discountPercent = getDiscountPercent(product);
+  const sortedReviews = reviews
+    ? [...reviews].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    : [];
+  const reviewCount = rating?.totalCount ?? sortedReviews.length;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
-        <div className="flex flex-col md:flex-row">
-          <div className="md:w-1/2 flex flex-col">
+      <DialogContent className="max-h-[90vh] max-w-4xl overflow-hidden p-0">
+        <div className="grid max-h-[90vh] grid-cols-1 md:grid-cols-[1.02fr_1fr]">
+          <div className="flex flex-col border-b md:border-b-0 md:border-r">
             <div className="relative aspect-square bg-muted/30">
               {!hasImages || failedSet.has(selectedIndex) ? (
                 <ImagePlaceholder className="h-full w-full" iconSize="h-12 w-12" />
               ) : (
-                <SafeImage src={images[selectedIndex]} alt={product.name} className="h-full w-full" onError={() => setFailedSet((prev) => new Set(prev).add(selectedIndex))} />
+                <SafeImage
+                  src={images[selectedIndex]}
+                  alt={product.name}
+                  className="h-full w-full"
+                  onError={() => setFailedSet((prev) => new Set(prev).add(selectedIndex))}
+                />
               )}
               {isOOS && (
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                  <span className="bg-red-600 text-white text-sm font-semibold px-3 py-1 rounded-full">All Reserved</span>
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                  <span className="rounded-full bg-red-600 px-3 py-1 text-sm font-semibold text-white">All Reserved</span>
                 </div>
               )}
               {images.length > 1 && (
                 <>
-                  <button onClick={() => setSelectedIndex((i) => (i - 1 + images.length) % images.length)} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5"><ChevronLeft className="h-5 w-5" /></button>
-                  <button onClick={() => setSelectedIndex((i) => (i + 1) % images.length)} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5"><ChevronRight className="h-5 w-5" /></button>
+                  <button
+                    onClick={() => setSelectedIndex((i) => (i - 1 + images.length) % images.length)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => setSelectedIndex((i) => (i + 1) % images.length)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
                 </>
               )}
             </div>
+
             {images.length > 1 && (
-              <div className="flex gap-2 p-3 overflow-x-auto">
+              <div className="flex gap-2 overflow-x-auto p-3">
                 {images.map((url, i) => (
-                  <button key={i} onClick={() => setSelectedIndex(i)} className={`shrink-0 h-14 w-14 rounded-md overflow-hidden border-2 transition-colors ${i === selectedIndex ? 'border-primary' : 'border-transparent hover:border-muted-foreground/30'}`}>
-                    {failedSet.has(i) ? <ImagePlaceholder className="h-full w-full" iconSize="h-4 w-4" /> : <SafeImage src={url} alt="" className="h-full w-full" onError={() => setFailedSet((prev) => new Set(prev).add(i))} />}
+                  <button
+                    key={i}
+                    onClick={() => setSelectedIndex(i)}
+                    className={`h-14 w-14 shrink-0 overflow-hidden rounded-md border-2 transition-colors ${i === selectedIndex ? 'border-primary' : 'border-transparent hover:border-muted-foreground/30'}`}
+                  >
+                    {failedSet.has(i) ? (
+                      <ImagePlaceholder className="h-full w-full" iconSize="h-4 w-4" />
+                    ) : (
+                      <SafeImage
+                        src={url}
+                        alt=""
+                        className="h-full w-full"
+                        onError={() => setFailedSet((prev) => new Set(prev).add(i))}
+                      />
+                    )}
                   </button>
                 ))}
               </div>
             )}
           </div>
-          <div className="md:w-1/2 p-6 flex flex-col">
-            <button onClick={() => onOpenChange(false)} className="absolute top-3 right-3 rounded-full p-1 hover:bg-muted transition-colors"><X className="h-4 w-4" /></button>
-            <h2 className="text-xl font-bold pr-8">{product.name}</h2>
-            <div className="mt-2">
-              <p className="text-2xl font-bold text-primary">{fmt(effectivePrice)}</p>
-              {discountPercent > 0 && (
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground line-through">{fmt(product.sellingPrice)}</span>
-                  <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                    {discountPercent}% OFF
-                  </span>
+
+          <div className="relative flex min-h-0 flex-col p-5 sm:p-6">
+            <button
+              onClick={() => onOpenChange(false)}
+              className="absolute right-3 top-3 rounded-full p-1 transition-colors hover:bg-muted"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="pr-8">
+              <h2 className="text-xl font-bold">{product.name}</h2>
+              <div className="mt-2">
+                <p className="text-2xl font-bold text-primary">{fmt(effectivePrice)}</p>
+                {discountPercent > 0 && (
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground line-through">{fmt(product.sellingPrice)}</span>
+                    <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                      {discountPercent}% OFF
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span
+                  className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    isOOS
+                      ? 'bg-red-100 text-red-700'
+                      : product.stockQuantity < 10
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : 'bg-green-100 text-green-700'
+                  }`}
+                >
+                  {isOOS ? 'All Reserved' : `${product.stockQuantity} in stock`}
+                </span>
+                {cartQty > 0 && <span className="text-xs text-muted-foreground">({cartQty} in cart)</span>}
+                {hasImages && images.length > 1 && (
+                  <span className="text-xs text-muted-foreground">{images.length} photos available</span>
+                )}
+              </div>
+
+              {rating && rating.totalCount > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <MiniStars value={rating.averageStars} count={rating.totalCount} />
+                  <span className="text-xs text-muted-foreground">{rating.totalCount} total ratings</span>
                 </div>
               )}
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${isOOS ? 'bg-red-100 text-red-700' : product.stockQuantity < 10 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
-                {isOOS ? 'All Reserved' : `${product.stockQuantity} in stock`}
-              </span>
-              {cartQty > 0 && <span className="text-xs text-muted-foreground">({cartQty} in cart)</span>}
-            </div>
-            {rating && rating.totalCount > 0 && (
-              <div className="mt-2">
-                <MiniStars value={rating.averageStars} count={rating.totalCount} />
-              </div>
-            )}
-            {product && (
+
               <div className="mt-2">
                 <a
                   href={`/products/${product._id}/rate`}
-                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  <Star className="h-3 w-3" />
+                  <Star className="h-3.5 w-3.5" />
                   Rate this product
                 </a>
               </div>
-            )}
-            {hasImages && images.length > 1 && <p className="mt-2 text-xs text-muted-foreground">{images.length} photos available</p>}
+            </div>
 
-            <div className="mt-auto pt-6 space-y-3">
+            <div className="mt-4 rounded-xl border bg-muted/20 p-4">
               {isOOS ? (
-                <div className="rounded-md bg-red-50 border border-red-200 p-3 text-center">
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-center">
                   <p className="text-sm font-medium text-red-700">This item has been fully reserved by other customers.</p>
-                  <p className="text-xs text-red-600 mt-1">Check back later for availability.</p>
+                  <p className="mt-1 text-xs text-red-600">Check back later for availability.</p>
                 </div>
               ) : available > 0 ? (
                 <>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-3">
                     <span className="text-sm text-muted-foreground">Quantity</span>
                     <QuantityPicker value={qty} max={available} onChange={setQty} size="md" />
                   </div>
-                  <p className="text-right text-sm text-muted-foreground">
+                  <p className="mt-2 text-right text-sm text-muted-foreground">
                     Subtotal: <span className="font-medium text-foreground">{fmt(effectivePrice * qty)}</span>
                   </p>
-                  <Button className="w-full" onClick={() => { onAddToCart(product, qty); setQty(1); }} disabled={isCooldown}>
+                  <Button
+                    className="mt-3 w-full"
+                    onClick={() => {
+                      onAddToCart(product, qty);
+                      setQty(1);
+                    }}
+                    disabled={isCooldown}
+                  >
                     {isCooldown ? (
-                      <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Added to Cart</>
+                      <>
+                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        Added to Cart
+                      </>
                     ) : (
-                      <><ShoppingCart className="mr-1.5 h-4 w-4" />Add {qty} to Cart</>
+                      <>
+                        <ShoppingCart className="mr-1.5 h-4 w-4" />
+                        Add {qty} to Cart
+                      </>
                     )}
                   </Button>
                 </>
               ) : (
-                <p className="text-center text-sm text-muted-foreground py-2">All available stock is in your cart</p>
+                <p className="py-2 text-center text-sm text-muted-foreground">All available stock is in your cart</p>
               )}
             </div>
 
-            {/* Reviews section */}
-            {reviews && reviews.length > 0 && (
-              <div className="mt-6 border-t pt-4">
-                <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+            <div className="mt-4 min-h-0 rounded-xl border bg-card">
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <h4 className="flex items-center gap-1.5 text-sm font-semibold">
                   <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
                   Customer Reviews
                 </h4>
-                <ul className="space-y-3 max-h-48 overflow-y-auto pr-1">
-                  {reviews.map((r) => (
-                    <li key={r._id} className="rounded-lg bg-muted/40 px-3 py-2.5">
-                      <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-xs text-muted-foreground">
+                  {reviewCount} review{reviewCount === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              {sortedReviews.length > 0 ? (
+                <ul className="max-h-64 overflow-y-auto px-2 py-2 sm:max-h-72">
+                  {sortedReviews.map((r) => (
+                    <li key={r._id} className="rounded-lg px-2 py-2.5 hover:bg-muted/40">
+                      <div className="mb-1 flex items-center justify-between gap-2">
                         <span className="flex items-center gap-0.5">
                           {[1, 2, 3, 4, 5].map((s) => (
-                            <Star key={s} className={`h-3 w-3 ${s <= r.stars ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30'}`} />
+                            <Star
+                              key={s}
+                              className={`h-3 w-3 ${s <= r.stars ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30'}`}
+                            />
                           ))}
                         </span>
-                        <span className="text-[10px] text-muted-foreground shrink-0">
-                          {new Date(r.createdAt).toLocaleDateString()}
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {new Date(r.createdAt).toLocaleDateString('en-PH', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
                         </span>
                       </div>
-                      {r.comment && <p className="text-xs text-foreground">{r.comment}</p>}
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        — {r.customerId?.name ?? 'Anonymous'}
-                      </p>
+
+                      {r.comment ? (
+                        <p className="break-words text-xs leading-relaxed text-foreground">{r.comment}</p>
+                      ) : (
+                        <p className="text-xs italic text-muted-foreground">No comment provided.</p>
+                      )}
+
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">- {r.customerId?.name ?? 'Anonymous'}</p>
                     </li>
                   ))}
                 </ul>
-              </div>
-            )}
-            {reviews && reviews.length === 0 && rating && (
-              <div className="mt-6 border-t pt-4">
-                <p className="text-xs text-muted-foreground text-center py-2">No reviews yet for this product.</p>
-              </div>
-            )}
+              ) : (
+                <p className="px-4 py-5 text-center text-xs text-muted-foreground">No written reviews yet for this product.</p>
+              )}
+            </div>
           </div>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
-
 // ---------------------------------------------------------------------------
 // Main ShopView
 // ---------------------------------------------------------------------------
