@@ -359,7 +359,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
   const [newTxOpen, setNewTxOpen] = useState(false);
   const [newTxProducts, setNewTxProducts] = useState<Array<{ _id: string; name: string; sellingPrice: number; costPrice: number; stockQuantity: number; images?: string[] }>>([]);
-  const [newTxCustomers, setNewTxCustomers] = useState<Array<{ _id: string; name: string; email: string }>>([]);
+  const [newTxCustomers, setNewTxCustomers] = useState<Array<{ _id: string; name: string; email: string; role?: string }>>([]);
   const [newTxQuantities, setNewTxQuantities] = useState<Record<string, number>>({});
   const [newTxCustomerId, setNewTxCustomerId] = useState<string>('');
   const [newTxWalkInName, setNewTxWalkInName] = useState('');
@@ -380,9 +380,10 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       try {
         const today = todayInEST();
         const dailyParams = new URLSearchParams({ storeId, date: today });
-        const [productsRes, customersRes, dailyRes] = await Promise.all([
+        const [productsRes, customersRes, managersRes, dailyRes] = await Promise.all([
           fetch(`/api/products?storeId=${storeId}`),
           fetch('/api/users?role=customer'),
+          fetch('/api/users?role=store_manager'),
           fetch(`/api/inventory/daily?${dailyParams}`),
         ]);
         if (cancelled) return;
@@ -407,10 +408,21 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
             return next;
           });
         }
-        if (customersRes.ok) {
-          const list = await customersRes.json();
+        {
+          const customers: Array<{ _id: string; name: string; email: string; role?: string }> =
+            customersRes.ok ? await customersRes.json() : [];
+          const managers: Array<{ _id: string; name: string; email: string; role?: string }> =
+            managersRes.ok ? await managersRes.json() : [];
+          const seen = new Set<string>();
+          const merged: typeof customers = [];
+          for (const u of [...customers, ...managers]) {
+            if (!seen.has(u._id)) {
+              seen.add(u._id);
+              merged.push(u);
+            }
+          }
           setNewTxCustomers(
-            [...list].sort((a: { name: string }, b: { name: string }) =>
+            merged.sort((a, b) =>
               (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
             )
           );
@@ -1077,7 +1089,10 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                   <SelectContent>
                     <SelectItem value="walk-in">Walk-in (enter name below)</SelectItem>
                     {newTxCustomers.map((c) => (
-                      <SelectItem key={c._id} value={c._id}>{c.name} {c.email ? `(${c.email})` : ''}</SelectItem>
+                      <SelectItem key={c._id} value={c._id}>
+                        {c.name} {c.email ? `(${c.email})` : ''}
+                        {c.role === 'store_manager' && <span className="ml-1 text-muted-foreground text-xs">[Store Manager]</span>}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
