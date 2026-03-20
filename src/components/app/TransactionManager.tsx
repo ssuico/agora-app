@@ -369,24 +369,30 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [newTxNotes, setNewTxNotes] = useState('');
   const [newTxSubmitting, setNewTxSubmitting] = useState(false);
   const [newTxShowValidationWarning, setNewTxShowValidationWarning] = useState(false);
+  const [newTxLoading, setNewTxLoading] = useState(false);
+  const [newTxError, setNewTxError] = useState('');
+  const [newTxLoadKey, setNewTxLoadKey] = useState(0);
   const [notesModalTx, setNotesModalTx] = useState<Transaction | null>(null);
   const [notesEdit, setNotesEdit] = useState('');
   const [notesSaving, setNotesSaving] = useState(false);
 
   useEffect(() => {
     if (!newTxOpen) return;
-    let cancelled = false;
+    const controller = new AbortController();
+    const { signal } = controller;
+    setNewTxLoading(true);
+    setNewTxError('');
     (async () => {
       try {
         const today = todayInEST();
         const dailyParams = new URLSearchParams({ storeId, date: today });
         const [productsRes, customersRes, managersRes, dailyRes] = await Promise.all([
-          fetch(`/api/products?storeId=${storeId}`),
-          fetch('/api/users?role=customer'),
-          fetch('/api/users?role=store_manager'),
-          fetch(`/api/inventory/daily?${dailyParams}`),
+          fetch(`/api/products?storeId=${storeId}`, { signal }),
+          fetch('/api/users?role=customer', { signal }),
+          fetch('/api/users?role=store_manager', { signal }),
+          fetch(`/api/inventory/daily?${dailyParams}`, { signal }),
         ]);
-        if (cancelled) return;
+        if (signal.aborted) return;
 
         let dailyIds: Set<string> | null = null;
         if (dailyRes.ok) {
@@ -407,6 +413,8 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
             }
             return next;
           });
+        } else {
+          setNewTxError('Failed to load products');
         }
         {
           const customers: Array<{ _id: string; name: string; email: string; role?: string }> =
@@ -427,10 +435,16 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
             )
           );
         }
-      } catch { /* ignore */ }
+      } catch (e) {
+        if (!signal.aborted) {
+          setNewTxError(e instanceof Error ? e.message : 'Failed to load modal data');
+        }
+      } finally {
+        if (!signal.aborted) setNewTxLoading(false);
+      }
     })();
-    return () => { cancelled = true; };
-  }, [newTxOpen, storeId]);
+    return () => controller.abort();
+  }, [newTxOpen, storeId, newTxLoadKey]);
 
   const setNewTxQty = (productId: string, delta: number) => {
     setNewTxQuantities((prev) => {
@@ -1001,7 +1015,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
       {/* New Transaction modal */}
       <Dialog open={newTxOpen} onOpenChange={(open) => { setNewTxOpen(open); if (!open) setNewTxShowValidationWarning(false); }}>
-        <DialogContent className="fixed! inset-0! z-50 w-screen! h-screen! max-w-none! max-h-none! translate-x-0! translate-y-0! rounded-none flex flex-col gap-4 p-6">
+        <DialogContent className="flex flex-col gap-4 p-6 w-[80vw]! max-w-[80vw]! h-[80vh]! max-h-[80vh]! overflow-hidden">
           <DialogHeader>
             <DialogTitle>New Transaction</DialogTitle>
             <DialogDescription>
@@ -1013,58 +1027,71 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
             <div className="space-y-2 flex flex-col flex-1 min-h-0">
               <Label className="text-sm font-medium shrink-0">Products</Label>
               <div className="border rounded-md overflow-y-auto flex-1 min-h-[200px] p-2 bg-muted/30">
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-                  {[...newTxProducts]
-                    .sort((a, b) => {
-                      const aInStock = a.stockQuantity > 0 ? 0 : 1;
-                      const bInStock = b.stockQuantity > 0 ? 0 : 1;
-                      if (aInStock !== bInStock) return aInStock - bInStock;
-                      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-                    })
-                    .map((p) => {
-                    const qty = newTxQuantities[p._id] ?? 0;
-                    return (
-                      <Card key={p._id} className="p-2 flex flex-col gap-1.5">
-                        <CardContent className="p-0 flex gap-2">
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <p className="text-xs font-medium leading-tight line-clamp-2">{p.name}</p>
-                            <p className="text-xs text-muted-foreground">{fmt(p.sellingPrice)}</p>
-                            <p className="text-xs text-muted-foreground">Stock: {p.stockQuantity}</p>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7 shrink-0"
-                                onClick={() => setNewTxQty(p._id, -1)}
-                                disabled={qty <= 0}
-                              >
-                                −
-                              </Button>
-                              <span className="text-xs font-medium min-w-6 text-center">{qty}</span>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7 shrink-0"
-                                onClick={() => setNewTxQty(p._id, 1)}
-                                disabled={qty >= p.stockQuantity}
-                              >
-                                +
-                              </Button>
-                            </div>
-                          </div>
-                          <ProductImageThumb
-                            src={p.images?.[0]}
-                            className="h-16 w-16 rounded border border-border shrink-0"
-                          />
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-                {newTxProducts.length === 0 && (
+                {newTxLoading ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <span className="text-sm">Loading products...</span>
+                  </div>
+                ) : newTxError ? (
+                  <div className="flex flex-col items-center justify-center gap-3 py-12">
+                    <p className="text-sm text-destructive">{newTxError}</p>
+                    <Button variant="outline" size="sm" onClick={() => setNewTxLoadKey((k) => k + 1)} className="gap-1.5">
+                      Retry
+                    </Button>
+                  </div>
+                ) : newTxProducts.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-4 text-center">No products in this store.</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+                    {[...newTxProducts]
+                      .sort((a, b) => {
+                        const aInStock = a.stockQuantity > 0 ? 0 : 1;
+                        const bInStock = b.stockQuantity > 0 ? 0 : 1;
+                        if (aInStock !== bInStock) return aInStock - bInStock;
+                        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+                      })
+                      .map((p) => {
+                      const qty = newTxQuantities[p._id] ?? 0;
+                      return (
+                        <Card key={p._id} className="p-2 flex flex-col gap-1.5">
+                          <CardContent className="p-0 flex gap-2">
+                            <div className="flex-1 min-w-0 space-y-1">
+                              <p className="text-xs font-medium leading-tight line-clamp-2">{p.name}</p>
+                              <p className="text-xs text-muted-foreground">{fmt(p.sellingPrice)}</p>
+                              <p className="text-xs text-muted-foreground">Stock: {p.stockQuantity}</p>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-7 w-7 shrink-0"
+                                  onClick={() => setNewTxQty(p._id, -1)}
+                                  disabled={qty <= 0}
+                                >
+                                  −
+                                </Button>
+                                <span className="text-xs font-medium min-w-6 text-center">{qty}</span>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-7 w-7 shrink-0"
+                                  onClick={() => setNewTxQty(p._id, 1)}
+                                  disabled={qty >= p.stockQuantity}
+                                >
+                                  +
+                                </Button>
+                              </div>
+                            </div>
+                            <ProductImageThumb
+                              src={p.images?.[0]}
+                              className="h-16 w-16 rounded border border-border shrink-0"
+                            />
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
               {(() => {
