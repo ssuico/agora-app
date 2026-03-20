@@ -197,12 +197,13 @@ export const getProductsSoldStats = async (req: Request, res: Response): Promise
       return;
     }
 
-    const lim = Math.min(parseInt(limitParam, 10) || 10, 50);
+    const parsedLimit = parseInt(limitParam, 10);
+    const lim = parsedLimit === 0 ? 0 : Math.min(parsedLimit || 10, 50);
 
     const products = await Product.find({ storeId }).select('_id').lean();
     const productIds = products.map((p) => p._id);
 
-    const stats = await TransactionItem.aggregate([
+    const pipeline: mongoose.PipelineStage[] = [
       { $match: { productId: { $in: productIds } } },
       {
         $group: {
@@ -229,8 +230,10 @@ export const getProductsSoldStats = async (req: Request, res: Response): Promise
         },
       },
       { $sort: { totalSold: -1 } },
-      { $limit: lim },
-    ]);
+    ];
+    if (lim > 0) pipeline.push({ $limit: lim });
+
+    const stats = await TransactionItem.aggregate(pipeline);
 
     res.json(stats);
   } catch (err) {
