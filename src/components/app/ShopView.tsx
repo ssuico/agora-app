@@ -1621,7 +1621,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
 
       {/* Payment Options Modal */}
       <Dialog open={paymentOptionsOpen} onOpenChange={setPaymentOptionsOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[min(96vw,50.6rem)] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <QrCode className="h-5 w-5" />
@@ -1728,7 +1728,7 @@ function PaymentQrImage({ url, label }: { url: string; label: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
-      <div className="flex h-56 w-56 items-center justify-center rounded-xl border border-dashed border-border bg-muted">
+      <div className="flex h-[min(78vw,23rem)] w-[min(78vw,23rem)] items-center justify-center rounded-xl border border-dashed border-border bg-muted">
         <div className="flex flex-col items-center gap-2 text-muted-foreground">
           <ImageIcon className="h-10 w-10 text-muted-foreground/40" />
           <p className="text-xs">Image unavailable</p>
@@ -1740,7 +1740,7 @@ function PaymentQrImage({ url, label }: { url: string; label: string }) {
     <img
       src={url}
       alt={label}
-      className="max-h-64 max-w-64 rounded-xl border border-border object-contain bg-white shadow-sm"
+      className="h-[min(78vw,23rem)] w-[min(78vw,23rem)] rounded-xl border border-border object-contain bg-white shadow-sm"
       onError={() => setFailed(true)}
     />
   );
