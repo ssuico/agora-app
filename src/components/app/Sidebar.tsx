@@ -3,6 +3,7 @@ import {
   Home,
   MapPin,
   Package,
+  QrCode,
   Receipt,
   ShoppingCart,
   Store,
@@ -68,6 +69,12 @@ function getNavItems(storeId?: string): NavItem[] {
       label: 'Transactions',
       href: `${storePrefix}/transactions`,
       icon: <ShoppingCart className="h-4 w-4" />,
+      roles: ['store_manager'],
+    },
+    {
+      label: 'Payment Options',
+      href: `${storePrefix}/payment-options`,
+      icon: <QrCode className="h-4 w-4" />,
       roles: ['store_manager'],
     },
   ];

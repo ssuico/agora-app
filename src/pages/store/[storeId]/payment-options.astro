@@ -1,0 +1,10 @@
+---
+import { PaymentOptionManager } from '../../../components/app/PaymentOptionManager';
+import AppLayout from '../../../layouts/AppLayout.astro';
+
+const { storeId } = Astro.params;
+---
+
+<AppLayout title="Payment Options" storeId={storeId}>
+  <PaymentOptionManager storeId={storeId!} client:load />
+</AppLayout>

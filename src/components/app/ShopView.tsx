@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, ChevronLeft, ChevronRight, Clock, Eye, Grid3x3, HelpCircle, ImageIcon, LayoutGrid, Lightbulb, Loader2, MessageSquare, Minus, Package, Plus, Search, ShoppingCart, Star, Store, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Clock, CreditCard, Eye, Grid3x3, HelpCircle, ImageIcon, LayoutGrid, Lightbulb, Loader2, MessageSquare, Minus, Package, Plus, QrCode, Search, ShoppingCart, Star, Store, Trash2, Wallet, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -48,6 +48,16 @@ interface FeedbackEntry {
   customerId?: { name: string } | null;
   productId?: { name: string; _id: string } | null;
   type: 'product' | 'store';
+}
+
+interface PaymentOption {
+  _id: string;
+  type: 'e-wallet' | 'bank';
+  recipientName: string;
+  qrImageUrl: string;
+  label?: string;
+  accountDetails?: string;
+  isActive: boolean;
 }
 
 interface ShopViewProps {
@@ -485,6 +495,12 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
   const [interactionSubmitting, setInteractionSubmitting] = useState(false);
   const [interactionDone, setInteractionDone] = useState(false);
 
+  // Payment options
+  const [paymentOptionsOpen, setPaymentOptionsOpen] = useState(false);
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
+  const [paymentOptionsLoading, setPaymentOptionsLoading] = useState(false);
+  const [selectedPaymentOption, setSelectedPaymentOption] = useState<PaymentOption | null>(null);
+
   const dismissAlert = (id: number) => {
     setStockAlerts((prev) => prev.filter((a) => a.id !== id));
   };
@@ -545,6 +561,23 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
         setStoreRatingStars(data.rating.stars);
       }
     } catch { /* ignore */ }
+  };
+
+  const openPaymentOptions = async () => {
+    setPaymentOptionsOpen(true);
+    setSelectedPaymentOption(null);
+    if (paymentOptions.length > 0) return;
+    setPaymentOptionsLoading(true);
+    try {
+      const res = await fetch(`/api/payment-options/store/${storeId}/active`);
+      if (res.ok) {
+        const data: PaymentOption[] = await res.json();
+        setPaymentOptions(data);
+        if (data.length > 0) setSelectedPaymentOption(data[0]);
+      }
+    } catch { /* ignore */ } finally {
+      setPaymentOptionsLoading(false);
+    }
   };
 
   const fetchMyProductRatings = async () => {
@@ -897,6 +930,15 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
             <Package className="h-3.5 w-3.5" />
             My Purchases
           </a>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={openPaymentOptions}
+            className="gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            Scan to Pay
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -1576,6 +1618,130 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Payment Options Modal */}
+      <Dialog open={paymentOptionsOpen} onOpenChange={setPaymentOptionsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="h-5 w-5" />
+              Payment Options
+            </DialogTitle>
+            <DialogDescription>
+              Scan a QR code or note the account details to pay for your reservation.
+            </DialogDescription>
+          </DialogHeader>
+
+          {paymentOptionsLoading ? (
+            <div className="flex flex-col items-center gap-3 py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Loading payment options…</p>
+            </div>
+          ) : paymentOptions.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <QrCode className="h-10 w-10 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">No payment options available for this store yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Option selector when multiple */}
+              {paymentOptions.length > 1 && (
+                <div className="flex flex-wrap gap-2">
+                  {paymentOptions.map((opt) => (
+                    <button
+                      key={opt._id}
+                      onClick={() => setSelectedPaymentOption(opt)}
+                      className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                        selectedPaymentOption?._id === opt._id
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border bg-card hover:bg-muted/60'
+                      }`}
+                    >
+                      {opt.type === 'e-wallet'
+                        ? <Wallet className="h-3 w-3" />
+                        : <CreditCard className="h-3 w-3" />}
+                      {opt.label || opt.recipientName}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Selected option detail */}
+              {selectedPaymentOption && (
+                <div className="space-y-4">
+                  {/* QR code */}
+                  <div className="flex justify-center">
+                    <PaymentQrImage
+                      url={selectedPaymentOption.qrImageUrl}
+                      label={selectedPaymentOption.label || selectedPaymentOption.recipientName}
+                    />
+                  </div>
+
+                  {/* Info card */}
+                  <div className="rounded-lg border border-border/60 bg-muted/30 p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      {selectedPaymentOption.type === 'e-wallet'
+                        ? <Wallet className="h-4 w-4 text-muted-foreground" />
+                        : <CreditCard className="h-4 w-4 text-muted-foreground" />}
+                      <span className="text-xs text-muted-foreground capitalize">{selectedPaymentOption.type}</span>
+                      {selectedPaymentOption.label && (
+                        <span className="ml-auto text-xs font-semibold">{selectedPaymentOption.label}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Recipient</p>
+                        <p className="text-sm font-semibold">{selectedPaymentOption.recipientName}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedPaymentOption.recipientName);
+                          toast.success('Recipient name copied!');
+                        }}
+                        className="text-xs text-primary hover:underline shrink-0"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    {selectedPaymentOption.accountDetails && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">Account</p>
+                        <p className="text-sm font-medium">{selectedPaymentOption.accountDetails}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaymentOptionsOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function PaymentQrImage({ url, label }: { url: string; label: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="flex h-56 w-56 items-center justify-center rounded-xl border border-dashed border-border bg-muted">
+        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+          <ImageIcon className="h-10 w-10 text-muted-foreground/40" />
+          <p className="text-xs">Image unavailable</p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={url}
+      alt={label}
+      className="max-h-64 max-w-64 rounded-xl border border-border object-contain bg-white shadow-sm"
+      onError={() => setFailed(true)}
+    />
   );
 }

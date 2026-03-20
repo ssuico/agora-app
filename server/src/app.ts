@@ -9,6 +9,7 @@ import { interactionRoutes } from './routes/interaction.routes.js';
 import { inventoryReportRoutes } from './routes/inventoryReport.routes.js';
 import { inventoryRoutes } from './routes/inventory.routes.js';
 import { locationRoutes } from './routes/location.routes.js';
+import { paymentOptionRoutes } from './routes/paymentOption.routes.js';
 import { productRoutes } from './routes/product.routes.js';
 import { ratingRoutes } from './routes/rating.routes.js';
 import { reportRoutes } from './routes/report.routes.js';
@@ -32,7 +33,7 @@ app.use(
   })
 );
 app.use(cookieParser());
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '4mb' }));
 
 // Strict limit only for sensitive auth actions (login, register, reset-password).
 // GET /me and PATCH /me are not limited here so normal app usage (layout + profile) doesn't hit 429.
@@ -48,6 +49,7 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/ratings', ratingRoutes);
+app.use('/api/payment-options', paymentOptionRoutes);
 app.use('/api/interactions', interactionRoutes);
 app.use('/api/activity-logs', activityRoutes);
 
