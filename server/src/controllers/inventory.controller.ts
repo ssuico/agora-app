@@ -460,3 +460,159 @@ export const getStoreClosingStatus = async (req: Request, res: Response): Promis
     res.status(500).json({ message: 'Server error', error: err });
   }
 };
+
+// ---------------------------------------------------------------------------
+// GET /api/inventory/listing-history
+// Returns products that have been listed before but are NOT in today's inventory.
+// ---------------------------------------------------------------------------
+
+export const getListingHistory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const storeId = req.query.storeId as string | undefined;
+    if (!storeId) {
+      res.status(400).json({ message: 'storeId is required' });
+      return;
+    }
+
+    const today = todayInAppTz();
+
+    const products = await Product.find({ storeId }).lean();
+    if (products.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const productIds = products.map((p) => p._id);
+
+    const todayRecords = await InventoryRecord.find({
+      productId: { $in: productIds },
+      date: today,
+    })
+      .select('productId')
+      .lean();
+
+    const activeToday = new Set(todayRecords.map((r) => String(r.productId)));
+
+    const inactiveProducts = products.filter(
+      (p) => !activeToday.has(String(p._id))
+    );
+
+    if (inactiveProducts.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const inactiveIds = inactiveProducts.map((p) => p._id);
+
+    const [lastListedAgg, timesListedAgg] = await Promise.all([
+      InventoryRecord.aggregate([
+        { $match: { productId: { $in: inactiveIds } } },
+        { $group: { _id: '$productId', lastDate: { $max: '$date' } } },
+      ]),
+      InventoryRecord.aggregate([
+        { $match: { productId: { $in: inactiveIds } } },
+        { $group: { _id: '$productId', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const lastListedMap = new Map<string, Date>(
+      lastListedAgg.map((r) => [String(r._id), r.lastDate])
+    );
+    const timesListedMap = new Map<string, number>(
+      timesListedAgg.map((r) => [String(r._id), r.count])
+    );
+
+    const result = inactiveProducts.map((p) => ({
+      _id: String(p._id),
+      name: p.name,
+      images: p.images ?? [],
+      costPrice: p.costPrice,
+      sellingPrice: p.sellingPrice,
+      discountPrice: (p as { discountPrice?: number | null }).discountPrice ?? null,
+      isPerishable: p.isPerishable ?? false,
+      sellerName: (p as { sellerName?: string }).sellerName ?? '',
+      notes: (p as { notes?: string }).notes ?? '',
+      lastListedDate: lastListedMap.get(String(p._id)) ?? null,
+      timesListed: timesListedMap.get(String(p._id)) ?? 0,
+    }));
+
+    result.sort((a, b) => {
+      if (!a.lastListedDate && !b.lastListedDate) return 0;
+      if (!a.lastListedDate) return 1;
+      if (!b.lastListedDate) return -1;
+      return b.lastListedDate.getTime() - a.lastListedDate.getTime();
+    });
+
+    res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Server error';
+    console.error('[getListingHistory]', message);
+    res.status(500).json({ message });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /api/inventory/relist
+// Creates a new daily InventoryRecord for an existing product.
+// ---------------------------------------------------------------------------
+
+export const relistProduct = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { productId, storeId, quantity, sellingPrice, discountPrice } = req.body as {
+      productId: string;
+      storeId: string;
+      quantity: number;
+      sellingPrice?: number;
+      discountPrice?: number | null;
+    };
+
+    if (!productId || !storeId || !quantity || quantity <= 0) {
+      res.status(400).json({ message: 'productId, storeId, and a positive quantity are required' });
+      return;
+    }
+
+    const product = await Product.findOne({ _id: productId, storeId }).lean();
+    if (!product) {
+      res.status(404).json({ message: 'Product not found in this store' });
+      return;
+    }
+
+    const today = todayInAppTz();
+
+    const existing = await InventoryRecord.findOne({ productId, date: today }).lean();
+    if (existing) {
+      res.status(409).json({ message: 'This product already has an active listing for today' });
+      return;
+    }
+
+    const priceUpdate: Record<string, unknown> = { stockQuantity: quantity };
+    if (typeof sellingPrice === 'number' && sellingPrice >= 0) {
+      priceUpdate.sellingPrice = sellingPrice;
+    }
+    if (discountPrice !== undefined) {
+      priceUpdate.discountPrice = discountPrice === null || discountPrice === 0 ? null : discountPrice;
+    }
+    await Product.findByIdAndUpdate(productId, { $set: priceUpdate });
+
+    const record = await InventoryRecord.create({
+      productId: new mongoose.Types.ObjectId(productId),
+      storeId: new mongoose.Types.ObjectId(storeId),
+      date: today,
+      initialStock: quantity,
+      restock: 0,
+      reduction: 0,
+    });
+
+    try {
+      const io = getIO();
+      const updatedProducts = await Product.find({ storeId }).lean();
+      io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+    } catch { /* socket broadcast is non-critical */ }
+
+    res.status(201).json(record);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Server error';
+    console.error('[relistProduct]', message);
+    res.status(500).json({ message });
+  }
+};

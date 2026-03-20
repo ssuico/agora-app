@@ -22,7 +22,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Activity, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Lock, LockOpen, NotepadText, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { Activity, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Loader2, Lock, LockOpen, NotepadText, Package, Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -118,6 +118,20 @@ interface InvReportRecord {
   fileName: string;
   generatedBy: { _id: string; name: string } | null;
   createdAt: string;
+}
+
+interface HistoryProduct {
+  _id: string;
+  name: string;
+  images: string[];
+  costPrice: number;
+  sellingPrice: number;
+  discountPrice?: number | null;
+  isPerishable: boolean;
+  sellerName: string;
+  notes: string;
+  lastListedDate: string | null;
+  timesListed: number;
 }
 
 interface ProductManagerProps {
@@ -766,6 +780,174 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Listing History Panel
+// ---------------------------------------------------------------------------
+
+function ListingHistoryPanel({
+  storeId,
+  historyProducts,
+  historyLoading,
+  historySearch,
+  onSearchChange,
+  historyPage,
+  onPageChange,
+  onRelist,
+}: {
+  storeId: string | undefined;
+  historyProducts: HistoryProduct[];
+  historyLoading: boolean;
+  historySearch: string;
+  onSearchChange: (v: string) => void;
+  historyPage: number;
+  onPageChange: (p: number) => void;
+  onRelist: (p: HistoryProduct) => void;
+}) {
+  if (!storeId) {
+    return (
+      <p className="rounded-lg border bg-muted/50 px-4 py-8 text-center text-sm text-muted-foreground">
+        Select a store above to view listing history.
+      </p>
+    );
+  }
+
+  const search = historySearch.toLowerCase().trim();
+  const filtered = search
+    ? historyProducts.filter(
+        (p) =>
+          p.name.toLowerCase().includes(search) ||
+          p.sellerName.toLowerCase().includes(search)
+      )
+    : historyProducts;
+
+  const paged = filtered.slice(
+    (historyPage - 1) * ITEMS_PER_PAGE,
+    historyPage * ITEMS_PER_PAGE
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Search by name or seller..."
+            value={historySearch}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="pl-8 h-8 w-64 text-sm"
+          />
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {filtered.length} product{filtered.length !== 1 ? 's' : ''} not in today&apos;s inventory
+        </span>
+      </div>
+
+      {historyLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="rounded-lg border bg-muted/50 px-4 py-8 text-center text-sm text-muted-foreground">
+          {historyProducts.length === 0
+            ? 'All products are already listed in today\u2019s inventory.'
+            : 'No products match your search.'}
+        </p>
+      ) : (
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
+          <div className="data-table-scroll-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Seller</th>
+                  <th>Type</th>
+                  <th>Cost</th>
+                  <th>Selling</th>
+                  <th>Discount</th>
+                  <th>Last Listed</th>
+                  <th>Times Listed</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {paged.map((p) => (
+                  <tr key={p._id}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {p.images.length > 0 ? (
+                          <img
+                            src={p.images[0]}
+                            alt=""
+                            className="h-8 w-8 rounded object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-8 w-8 items-center justify-center rounded bg-muted">
+                            <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        )}
+                        <span className="font-medium">{p.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-sm">
+                      {p.sellerName || '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          p.isPerishable
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {p.isPerishable ? 'Perishable' : 'Non-perishable'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm">{fmt(p.costPrice)}</td>
+                    <td className="px-4 py-3 text-sm">{fmt(p.sellingPrice)}</td>
+                    <td className="px-4 py-3 text-sm">
+                      {p.discountPrice != null ? fmt(p.discountPrice) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                      {p.lastListedDate
+                        ? new Date(p.lastListedDate).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        : 'Never'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-center">
+                      {p.timesListed}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => onRelist(p)}
+                      >
+                        <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                        Relist
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {filtered.length > ITEMS_PER_PAGE && (
+            <TablePagination
+              currentPage={historyPage}
+              totalItems={filtered.length}
+              onPageChange={onPageChange}
+              label="products"
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main ProductManager
 // ---------------------------------------------------------------------------
 
@@ -803,7 +985,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const [restockQty, setRestockQty] = useState('');
   const [reduceQty, setReduceQty] = useState('');
 
-  type MainTab = 'products' | 'realtime-stocks' | 'inventory-report';
+  type MainTab = 'products' | 'realtime-stocks' | 'inventory-report' | 'listing-history';
   const [mainTab, setMainTab] = useState<MainTab>('products');
   const [invDate, setInvDate] = useState(todayStr);
   const [invData, setInvData] = useState<InventoryReportData | null>(null);
@@ -825,6 +1007,16 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const [reduceDialogProduct, setReduceDialogProduct] = useState<{ _id: string; name: string; stockQuantity: number } | null>(null);
   const [reduceDialogQty, setReduceDialogQty] = useState('');
   const [reduceSubmitting, setReduceSubmitting] = useState(false);
+
+  const [historyProducts, setHistoryProducts] = useState<HistoryProduct[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [relistTarget, setRelistTarget] = useState<HistoryProduct | null>(null);
+  const [relistQty, setRelistQty] = useState('');
+  const [relistPrice, setRelistPrice] = useState('');
+  const [relistDiscount, setRelistDiscount] = useState('');
+  const [relistSubmitting, setRelistSubmitting] = useState(false);
 
   const isEditable = selectedDate === todayStr;
   const storeMap = new Map(stores.map((s) => [s._id, s.name]));
@@ -891,6 +1083,66 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     setLoading(false);
   };
 
+  const fetchListingHistory = async (sid?: string) => {
+    const eid = sid && sid !== 'all' ? sid : effectiveStoreId;
+    if (!eid) return;
+    setHistoryLoading(true);
+    try {
+      const params = new URLSearchParams({ storeId: eid });
+      const res = await fetch(`/api/inventory/listing-history?${params}`);
+      if (res.ok) setHistoryProducts(await res.json());
+    } catch { /* ignore */ } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleRelist = async () => {
+    if (!relistTarget || !effectiveStoreId) return;
+    const qty = parseInt(relistQty, 10);
+    if (!qty || qty <= 0) {
+      toast.error('Enter a valid quantity');
+      return;
+    }
+    setRelistSubmitting(true);
+    try {
+      const body: Record<string, unknown> = {
+        productId: relistTarget._id,
+        storeId: effectiveStoreId,
+        quantity: qty,
+      };
+      const price = parseFloat(relistPrice);
+      if (Number.isFinite(price) && price >= 0) body.sellingPrice = price;
+      const disc = relistDiscount.trim() === '' ? null : parseFloat(relistDiscount);
+      if (disc !== null && Number.isFinite(disc) && disc >= 0) {
+        body.discountPrice = disc;
+      } else if (disc === null || relistDiscount.trim() === '') {
+        body.discountPrice = null;
+      }
+
+      const res = await fetch('/api/inventory/relist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        toast.success(`${relistTarget.name} relisted successfully`);
+        setRelistTarget(null);
+        setRelistQty('');
+        setRelistPrice('');
+        setRelistDiscount('');
+        fetchListingHistory();
+        refreshData();
+      } else {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to relist product');
+      }
+    } catch {
+      toast.error('Failed to relist product');
+    } finally {
+      setRelistSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     fetchStores();
     refreshData(filterStoreId);
@@ -909,6 +1161,14 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   useEffect(() => {
     setProductsPage(1);
   }, [selectedDate, filterStoreId, inventorySearch, inventoryTypeFilter]);
+
+  useEffect(() => {
+    if (mainTab === 'listing-history') fetchListingHistory();
+  }, [mainTab, filterStoreId]);
+
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [historySearch]);
 
   const shiftDate = (days: number) => {
     const [y, m, d] = selectedDate.split('-').map(Number);
@@ -1426,9 +1686,33 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           <Package className="h-3.5 w-3.5" />
           Inventory Report
         </button>
+        <button
+          type="button"
+          onClick={() => setMainTab('listing-history')}
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${mainTab === 'listing-history' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          <History className="h-3.5 w-3.5" />
+          Listing History
+        </button>
       </div>
 
-      {mainTab === 'realtime-stocks' ? (
+      {mainTab === 'listing-history' ? (
+        <ListingHistoryPanel
+          storeId={effectiveStoreId}
+          historyProducts={historyProducts}
+          historyLoading={historyLoading}
+          historySearch={historySearch}
+          onSearchChange={setHistorySearch}
+          historyPage={historyPage}
+          onPageChange={setHistoryPage}
+          onRelist={(p) => {
+            setRelistTarget(p);
+            setRelistQty('');
+            setRelistPrice(String(p.sellingPrice));
+            setRelistDiscount(p.discountPrice != null ? String(p.discountPrice) : '');
+          }}
+        />
+      ) : mainTab === 'realtime-stocks' ? (
         effectiveStoreId ? (
           <RealtimeStocks storeId={effectiveStoreId} />
         ) : (
@@ -2078,6 +2362,75 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       </Dialog>
         </>
       )}
+
+      {/* Relist Product dialog */}
+      <Dialog open={!!relistTarget} onOpenChange={(open) => { if (!open) setRelistTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Relist Product</DialogTitle>
+            <DialogDescription>
+              Re-add <strong>{relistTarget?.name}</strong> to today&apos;s inventory. Set the quantity and optionally adjust pricing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Quantity <span className="text-destructive">*</span></Label>
+              <Input
+                type="number"
+                min={1}
+                value={relistQty}
+                onChange={(e) => setRelistQty(e.target.value)}
+                placeholder="Enter quantity"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Selling Price (PHP)</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={relistPrice}
+                onChange={(e) => setRelistPrice(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Previous: {relistTarget ? fmt(relistTarget.sellingPrice) : '—'}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Discount Price (PHP, optional)</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={relistDiscount}
+                onChange={(e) => setRelistDiscount(e.target.value)}
+                placeholder="Leave blank for no discount"
+              />
+              {relistTarget?.discountPrice != null && (
+                <p className="text-xs text-muted-foreground">
+                  Previous: {fmt(relistTarget.discountPrice)}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setRelistTarget(null)}>Cancel</Button>
+            <Button onClick={handleRelist} disabled={relistSubmitting || !relistQty.trim()}>
+              {relistSubmitting ? (
+                <>
+                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  Relisting...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                  Relist
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
     </TooltipProvider>
   );

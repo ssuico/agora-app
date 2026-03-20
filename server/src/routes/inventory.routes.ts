@@ -2,8 +2,10 @@ import { Router, type Router as IRouter } from 'express';
 import {
   closeStore,
   getDailyInventory,
+  getListingHistory,
   getStoreClosingStatus,
   reduceStock,
+  relistProduct,
   reopenStore,
   restockProduct,
 } from '../controllers/inventory.controller.js';
@@ -49,4 +51,16 @@ inventoryRoutes.get(
   '/daily/close-status',
   authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
   getStoreClosingStatus
+);
+
+inventoryRoutes.get(
+  '/listing-history',
+  authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  getListingHistory
+);
+
+inventoryRoutes.post(
+  '/relist',
+  authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  relistProduct
 );
