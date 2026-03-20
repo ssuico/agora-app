@@ -71,45 +71,48 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
 
     const productIds = products.map((p) => p._id);
 
-    let records = await InventoryRecord.find({
-      productId: { $in: productIds },
-      date,
-    }).lean();
+    // Fetch today's records and compute sold counts in parallel
+    let [records, soldMap] = await Promise.all([
+      InventoryRecord.find({ productId: { $in: productIds }, date }).lean(),
+      computeSoldMap(storeId, date, productIds),
+    ]);
 
     const existingMap = new Map(records.map((r) => [String(r.productId), r]));
 
-    // Auto-create records only for products that have never had an inventory
-    // record (brand-new products). Subsequent-day records are created by the
-    // Store Closing workflow.
-    const brandNewProducts = [];
-    for (const product of products) {
-      const pid = String(product._id);
-      if (existingMap.has(pid)) continue;
+    // Find products missing from today's records
+    const missingProducts = products.filter((p) => !existingMap.has(String(p._id)));
 
-      const anyPrev = await InventoryRecord.exists({ productId: product._id });
-      if (!anyPrev) {
-        brandNewProducts.push(product);
+    if (missingProducts.length > 0) {
+      // Batch check: find which missing products have ANY prior inventory record.
+      // This replaces the old N+1 loop of individual `.exists()` calls.
+      const missingIds = missingProducts.map((p) => p._id);
+      const withHistory = await InventoryRecord.distinct('productId', {
+        productId: { $in: missingIds },
+      });
+      const hasHistorySet = new Set(withHistory.map(String));
+
+      const brandNewProducts = missingProducts.filter(
+        (p) => !hasHistorySet.has(String(p._id))
+      );
+
+      if (brandNewProducts.length > 0) {
+        const newRecords = brandNewProducts.map((product) => ({
+          productId: product._id,
+          storeId: new mongoose.Types.ObjectId(storeId),
+          date,
+          initialStock: product.stockQuantity,
+          restock: 0,
+        }));
+
+        await InventoryRecord.insertMany(newRecords, { ordered: false }).catch(() => {});
+
+        records = await InventoryRecord.find({
+          productId: { $in: productIds },
+          date,
+        }).lean();
       }
     }
 
-    if (brandNewProducts.length > 0) {
-      const newRecords = brandNewProducts.map((product) => ({
-        productId: product._id,
-        storeId: new mongoose.Types.ObjectId(storeId),
-        date,
-        initialStock: product.stockQuantity,
-        restock: 0,
-      }));
-
-      await InventoryRecord.insertMany(newRecords, { ordered: false }).catch(() => {});
-
-      records = await InventoryRecord.find({
-        productId: { $in: productIds },
-        date,
-      }).lean();
-    }
-
-    const soldMap = await computeSoldMap(storeId, date, productIds);
     const productMap = new Map(products.map((p) => [String(p._id), p]));
 
     const result = records.map((rec) => {
@@ -117,7 +120,6 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
       const sold = soldMap.get(String(rec.productId)) ?? 0;
       const reduction = (rec as { reduction?: number }).reduction ?? 0;
       const displayInitialStock = Math.max(0, rec.initialStock + rec.restock - reduction);
-      const currentStock = displayInitialStock - sold;
 
       return {
         _id: rec._id,

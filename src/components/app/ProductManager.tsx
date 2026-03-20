@@ -26,6 +26,7 @@ import { Activity, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3,
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
+import { Skeleton } from '@/components/ui/skeleton';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
 
 interface Store {
@@ -248,7 +249,17 @@ function InventoryReportHistory({ storeId }: { storeId: string }) {
   };
 
   if (loading) {
-    return <div className="py-12 text-center text-muted-foreground">Loading report history...</div>;
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-4 rounded-lg border bg-card px-4 py-3">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-20 ml-auto" />
+          </div>
+        ))}
+      </div>
+    );
   }
 
   const paginatedReports = reports.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
@@ -664,7 +675,25 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
         : 'grid-cols-3 sm:grid-cols-5 lg:grid-cols-9';
 
   if (loading) {
-    return <div className="py-12 text-center text-muted-foreground">Loading products…</div>;
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Skeleton className="h-9 w-64 rounded-lg" />
+          <Skeleton className="h-9 w-28 rounded-lg" />
+          <Skeleton className="h-9 w-20 ml-auto rounded-lg" />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="rounded-xl border bg-card p-3 space-y-2">
+              <Skeleton className="aspect-square w-full rounded-lg" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-3.5 w-1/2" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -1753,7 +1782,53 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             <p className="text-sm text-muted-foreground">Manage daily inventory and product catalog</p>
           </div>
         </div>
-        <div className="flex items-center justify-center py-12 text-muted-foreground">Loading inventory...</div>
+        {/* Tab skeleton */}
+        <div className="flex gap-1 border-b pb-0">
+          <Skeleton className="h-9 w-28 rounded-t-lg" />
+          <Skeleton className="h-9 w-28 rounded-t-lg" />
+          <Skeleton className="h-9 w-36 rounded-t-lg" />
+        </div>
+        {/* Toolbar skeleton */}
+        <div className="flex flex-wrap items-center gap-3">
+          <Skeleton className="h-9 w-40 rounded-lg" />
+          <Skeleton className="h-9 w-32 rounded-lg" />
+          <Skeleton className="h-9 w-24 ml-auto rounded-lg" />
+        </div>
+        {/* Table skeleton */}
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
+          <table className="data-table w-full">
+            <thead>
+              <tr>
+                {Array.from({ length: 7 }).map((_, i) => (
+                  <th key={i}><Skeleton className="h-3.5 w-16" /></th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <tr key={i}>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-10 w-10 rounded-md shrink-0" />
+                      <Skeleton className="h-4 w-32" />
+                    </div>
+                  </td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-16" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-16" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-5 w-14 rounded-full" /></td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Skeleton className="h-7 w-7 rounded-md" />
+                      <Skeleton className="h-7 w-7 rounded-md" />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   }

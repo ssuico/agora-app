@@ -12,6 +12,7 @@ import {
   WrenchIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CustomerFeedback } from './CustomerFeedback';
 import { CustomerInteractions } from './CustomerInteractions';
@@ -274,7 +275,18 @@ export function StoreReports({ storeId }: StoreReportsProps) {
           <div className="space-y-8">
             {/* All-time Financial Summary */}
             {summaryLoading ? (
-              <div className="py-12 text-center text-muted-foreground">Loading summary...</div>
+              <div className="space-y-6">
+                <Skeleton className="h-6 w-40" />
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="rounded-xl border bg-card p-4 space-y-2">
+                      <Skeleton className="h-3.5 w-24" />
+                      <Skeleton className="h-7 w-3/4" />
+                    </div>
+                  ))}
+                </div>
+                <Skeleton className="h-40 w-full rounded-lg" />
+              </div>
             ) : summaryError ? (
               <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
                 {summaryError}
@@ -341,9 +353,16 @@ export function StoreReports({ storeId }: StoreReportsProps) {
               </div>
 
               {dailyLoading ? (
-                <div className="flex items-center justify-center py-8 text-muted-foreground">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Loading daily data...
+                <div className="space-y-3">
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="rounded-xl border bg-card p-4 space-y-2">
+                        <Skeleton className="h-3.5 w-24" />
+                        <Skeleton className="h-7 w-3/4" />
+                      </div>
+                    ))}
+                  </div>
+                  <Skeleton className="h-48 w-full rounded-lg" />
                 </div>
               ) : dailyError ? (
                 <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">

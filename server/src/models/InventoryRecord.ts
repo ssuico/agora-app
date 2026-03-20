@@ -19,6 +19,7 @@ const inventoryRecordSchema = new Schema<IInventoryRecord>({
 });
 
 inventoryRecordSchema.index({ productId: 1, date: 1 }, { unique: true });
+inventoryRecordSchema.index({ storeId: 1, date: 1 });
 
 export const InventoryRecord = mongoose.model<IInventoryRecord>(
   'InventoryRecord',

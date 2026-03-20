@@ -16,6 +16,8 @@ const transactionItemSchema = new Schema<ITransactionItem>({
   costSubtotal: { type: Number, required: true },
 });
 
+transactionItemSchema.index({ transactionId: 1, productId: 1 });
+
 export const TransactionItem = mongoose.model<ITransactionItem>(
   'TransactionItem',
   transactionItemSchema

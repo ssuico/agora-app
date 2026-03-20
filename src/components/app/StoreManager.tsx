@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Skeleton } from '@/components/ui/skeleton';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
 import { Loader2, Pencil, Plus, Search, Trash2, UserMinus, UserPlus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -366,14 +367,6 @@ export function StoreManager() {
     });
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground">
-        Loading stores...
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -381,7 +374,7 @@ export function StoreManager() {
           <h1 className="text-2xl font-bold tracking-tight">Stores</h1>
           <p className="text-sm text-muted-foreground">Manage stores and assign managers</p>
         </div>
-        <Button onClick={openCreate}>
+        <Button onClick={openCreate} disabled={loading}>
           <Plus className="mr-1 h-4 w-4" />
           Add Store
         </Button>
@@ -401,7 +394,34 @@ export function StoreManager() {
               </tr>
             </thead>
             <tbody>
-              {stores.length === 0 ? (
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-36" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <Skeleton className="h-5 w-9 rounded-full" />
+                        <Skeleton className="h-3.5 w-10" />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <Skeleton className="h-5 w-9 rounded-full" />
+                        <Skeleton className="h-3.5 w-6" />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Skeleton className="h-7 w-7 rounded-md" />
+                        <Skeleton className="h-7 w-7 rounded-md" />
+                        <Skeleton className="h-7 w-7 rounded-md" />
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : stores.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                     No stores found. Click "Add Store" to create one.
@@ -524,7 +544,11 @@ export function StoreManager() {
                 Cancel
               </Button>
               <Button type="submit" disabled={submitting}>
-                {submitting ? 'Saving...' : editingStore ? 'Save Changes' : 'Create Store'}
+                {submitting ? (
+                  <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />{editingStore ? 'Saving...' : 'Creating...'}</>
+                ) : (
+                  editingStore ? 'Save Changes' : 'Create Store'
+                )}
               </Button>
             </DialogFooter>
           </form>
@@ -551,7 +575,11 @@ export function StoreManager() {
               Cancel
             </Button>
             <Button variant="destructive" onClick={handleDelete} disabled={submitting}>
-              {submitting ? 'Deleting...' : 'Delete Store'}
+              {submitting ? (
+                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Deleting...</>
+              ) : (
+                'Delete Store'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ShoppingBag, Star, Zap } from 'lucide-react';
 import { getSocket } from '@/lib/socket';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface ActivityLogEntry {
   _id: string;
@@ -155,10 +156,10 @@ export function ActivityFeed({ storeId }: ActivityFeedProps) {
           <div className="space-y-3 p-4">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex items-start gap-3">
-                <div className="mt-0.5 h-8 w-8 shrink-0 animate-pulse rounded-full bg-muted" />
+                <Skeleton className="mt-0.5 h-8 w-8 shrink-0 rounded-full" />
                 <div className="flex-1 space-y-1.5 pt-1">
-                  <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
-                  <div className="h-2.5 w-1/3 animate-pulse rounded bg-muted" />
+                  <Skeleton className="h-3 w-4/5" />
+                  <Skeleton className="h-2.5 w-1/3" />
                 </div>
               </div>
             ))}
