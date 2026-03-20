@@ -792,6 +792,7 @@ function ListingHistoryPanel({
   historyPage,
   onPageChange,
   onRelist,
+  onDelete,
 }: {
   storeId: string | undefined;
   historyProducts: HistoryProduct[];
@@ -801,6 +802,7 @@ function ListingHistoryPanel({
   historyPage: number;
   onPageChange: (p: number) => void;
   onRelist: (p: HistoryProduct) => void;
+  onDelete: (p: HistoryProduct) => void;
 }) {
   if (!storeId) {
     return (
@@ -919,14 +921,25 @@ function ListingHistoryPanel({
                       {p.timesListed}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <Button
-                        size="sm"
-                        variant="default"
-                        onClick={() => onRelist(p)}
-                      >
-                        <RotateCcw className="mr-1 h-3.5 w-3.5" />
-                        Relist
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={() => onRelist(p)}
+                        >
+                          <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                          Relist
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => onDelete(p)}
+                          className="text-destructive hover:text-destructive"
+                          title="Delete permanently"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1014,9 +1027,17 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const [historyPage, setHistoryPage] = useState(1);
   const [relistTarget, setRelistTarget] = useState<HistoryProduct | null>(null);
   const [relistQty, setRelistQty] = useState('');
+  const [relistCost, setRelistCost] = useState('');
   const [relistPrice, setRelistPrice] = useState('');
   const [relistDiscount, setRelistDiscount] = useState('');
   const [relistSubmitting, setRelistSubmitting] = useState(false);
+
+  const [dupPromptProducts, setDupPromptProducts] = useState<Product[]>([]);
+  const [dupPromptOpen, setDupPromptOpen] = useState(false);
+  const [dupPendingPayload, setDupPendingPayload] = useState<Record<string, unknown> | null>(null);
+
+  const [historyDeleteTarget, setHistoryDeleteTarget] = useState<HistoryProduct | null>(null);
+  const [historyDeleting, setHistoryDeleting] = useState(false);
 
   const isEditable = selectedDate === todayStr;
   const storeMap = new Map(stores.map((s) => [s._id, s.name]));
@@ -1110,6 +1131,8 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         storeId: effectiveStoreId,
         quantity: qty,
       };
+      const cost = parseFloat(relistCost);
+      if (Number.isFinite(cost) && cost >= 0) body.costPrice = cost;
       const price = parseFloat(relistPrice);
       if (Number.isFinite(price) && price >= 0) body.sellingPrice = price;
       const disc = relistDiscount.trim() === '' ? null : parseFloat(relistDiscount);
@@ -1128,6 +1151,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         toast.success(`${relistTarget.name} relisted successfully`);
         setRelistTarget(null);
         setRelistQty('');
+        setRelistCost('');
         setRelistPrice('');
         setRelistDiscount('');
         fetchListingHistory();
@@ -1140,6 +1164,92 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       toast.error('Failed to relist product');
     } finally {
       setRelistSubmitting(false);
+    }
+  };
+
+  const handleDupRelist = (product: Product) => {
+    setDupPromptOpen(false);
+    setDialogOpen(false);
+    const hp: HistoryProduct = {
+      _id: product._id,
+      name: product.name,
+      images: product.images,
+      costPrice: product.costPrice,
+      sellingPrice: product.sellingPrice,
+      discountPrice: product.discountPrice,
+      isPerishable: product.isPerishable,
+      sellerName: product.sellerName,
+      notes: product.notes,
+      lastListedDate: null,
+      timesListed: 0,
+    };
+    setRelistTarget(hp);
+    setRelistQty(dupPendingPayload ? String(dupPendingPayload.stockQuantity ?? '') : '');
+    setRelistCost(dupPendingPayload ? String(dupPendingPayload.costPrice ?? product.costPrice) : String(product.costPrice));
+    setRelistPrice(dupPendingPayload ? String(dupPendingPayload.sellingPrice ?? product.sellingPrice) : String(product.sellingPrice));
+    setRelistDiscount(
+      dupPendingPayload && dupPendingPayload.discountPrice != null
+        ? String(dupPendingPayload.discountPrice)
+        : product.discountPrice != null
+          ? String(product.discountPrice)
+          : ''
+    );
+    setDupPendingPayload(null);
+    setDupPromptProducts([]);
+  };
+
+  const handleDupDeleteAndCreate = async (product: Product) => {
+    setSubmitting(true);
+    try {
+      const delRes = await fetch(`/api/products/${product._id}`, { method: 'DELETE' });
+      if (!delRes.ok) {
+        const data = (await delRes.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to delete old product');
+        return;
+      }
+
+      if (!dupPendingPayload) return;
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dupPendingPayload),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to create product');
+        return;
+      }
+      toast.success('Old product removed and new product created');
+      setDupPromptOpen(false);
+      setDialogOpen(false);
+      setDupPendingPayload(null);
+      setDupPromptProducts([]);
+      await refreshData(filterStoreId);
+    } catch {
+      toast.error('Network error. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleHistoryDelete = async () => {
+    if (!historyDeleteTarget) return;
+    setHistoryDeleting(true);
+    try {
+      const res = await fetch(`/api/products/${historyDeleteTarget._id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to delete product');
+        return;
+      }
+      toast.success(`${historyDeleteTarget.name} permanently deleted`);
+      setHistoryDeleteTarget(null);
+      fetchListingHistory();
+      await refreshData(filterStoreId);
+    } catch {
+      toast.error('Network error. Please try again.');
+    } finally {
+      setHistoryDeleting(false);
     }
   };
 
@@ -1431,6 +1541,19 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           notes: form.notes.trim(),
         };
 
+        const nameLower = payload.name.toLowerCase();
+        const matches = products.filter(
+          (p) =>
+            p.storeId === form.storeId &&
+            p.name.toLowerCase() === nameLower
+        );
+        if (matches.length > 0) {
+          setDupPromptProducts(matches);
+          setDupPendingPayload(payload);
+          setDupPromptOpen(true);
+          return;
+        }
+
         const res = await fetch('/api/products', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1708,9 +1831,11 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           onRelist={(p) => {
             setRelistTarget(p);
             setRelistQty('');
+            setRelistCost(String(p.costPrice));
             setRelistPrice(String(p.sellingPrice));
             setRelistDiscount(p.discountPrice != null ? String(p.discountPrice) : '');
           }}
+          onDelete={(p) => setHistoryDeleteTarget(p)}
         />
       ) : mainTab === 'realtime-stocks' ? (
         effectiveStoreId ? (
@@ -2363,15 +2488,115 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         </>
       )}
 
+      {/* Duplicate Product Name prompt */}
+      <Dialog open={dupPromptOpen} onOpenChange={(open) => { if (!open) { setDupPromptOpen(false); setDupPendingPayload(null); setDupPromptProducts([]); } }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Info className="h-5 w-5 text-amber-500" />
+              Duplicate Product Name
+            </DialogTitle>
+            <DialogDescription>
+              A product named <strong>&quot;{dupPendingPayload?.name as string}&quot;</strong> already exists in this store. Choose how to proceed:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {dupPromptProducts.map((p) => (
+              <div key={p._id} className="rounded-lg border p-3 space-y-3">
+                <div className="flex items-start gap-3">
+                  {p.images.length > 0 ? (
+                    <img src={p.images[0]} alt="" className="h-10 w-10 rounded object-cover shrink-0" />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded bg-muted shrink-0">
+                      <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0 space-y-0.5">
+                    <div className="font-medium text-sm">{p.name}</div>
+                    <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5">
+                      <span>Cost: {fmt(p.costPrice)}</span>
+                      <span>Price: {fmt(p.sellingPrice)}</span>
+                      {p.discountPrice != null && <span>Discount: {fmt(p.discountPrice)}</span>}
+                      <span>{p.isPerishable ? 'Perishable' : 'Non-perishable'}</span>
+                      {p.sellerName && <span>Seller: {p.sellerName}</span>}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Stock: {p.stockQuantity} &middot; Created: {new Date(p.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => handleDupRelist(p)} className="flex-1">
+                    <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                    Relist This Product
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => handleDupDeleteAndCreate(p)} disabled={submitting} className="flex-1">
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    {submitting ? 'Deleting...' : 'Delete & Create New'}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => { setDupPromptOpen(false); setDupPendingPayload(null); setDupPromptProducts([]); }}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete from History confirmation dialog */}
+      <Dialog open={!!historyDeleteTarget} onOpenChange={(open) => { if (!open) setHistoryDeleteTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Product Permanently</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to permanently delete <strong>{historyDeleteTarget?.name}</strong>? This will remove the product definition from the store. Historical inventory records and past transaction data will remain, but will show as &quot;Unknown&quot; product.
+            </DialogDescription>
+          </DialogHeader>
+          {historyDeleteTarget && (
+            <div className="rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+              <div>Cost: <span className="font-medium">{fmt(historyDeleteTarget.costPrice)}</span> &middot; Price: <span className="font-medium">{fmt(historyDeleteTarget.sellingPrice)}</span></div>
+              {historyDeleteTarget.sellerName && <div>Seller: <span className="font-medium">{historyDeleteTarget.sellerName}</span></div>}
+              {historyDeleteTarget.timesListed > 0 && <div>Listed <span className="font-medium">{historyDeleteTarget.timesListed}</span> time{historyDeleteTarget.timesListed !== 1 ? 's' : ''}</div>}
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setHistoryDeleteTarget(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleHistoryDelete} disabled={historyDeleting}>
+              {historyDeleting ? (
+                <>
+                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-1 h-3.5 w-3.5" />
+                  Delete Permanently
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Relist Product dialog */}
       <Dialog open={!!relistTarget} onOpenChange={(open) => { if (!open) setRelistTarget(null); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Relist Product</DialogTitle>
             <DialogDescription>
-              Re-add <strong>{relistTarget?.name}</strong> to today&apos;s inventory. Set the quantity and optionally adjust pricing.
+              Re-add <strong>{relistTarget?.name}</strong> to today&apos;s inventory. Set the quantity and optionally adjust cost &amp; pricing. Historical records remain unchanged.
             </DialogDescription>
           </DialogHeader>
+          {relistTarget && (
+            <div className="rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+              <div>Type: <span className="font-medium">{relistTarget.isPerishable ? 'Perishable' : 'Non-perishable'}</span></div>
+              {relistTarget.sellerName && <div>Seller: <span className="font-medium">{relistTarget.sellerName}</span></div>}
+              {relistTarget.notes && <div>Notes: <span className="font-medium">{relistTarget.notes}</span></div>}
+            </div>
+          )}
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Quantity <span className="text-destructive">*</span></Label>
@@ -2383,18 +2608,33 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 placeholder="Enter quantity"
               />
             </div>
-            <div className="space-y-2">
-              <Label>Selling Price (PHP)</Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={relistPrice}
-                onChange={(e) => setRelistPrice(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Previous: {relistTarget ? fmt(relistTarget.sellingPrice) : '—'}
-              </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Cost Price (PHP)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={relistCost}
+                  onChange={(e) => setRelistCost(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Last: {relistTarget ? fmt(relistTarget.costPrice) : '—'}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Selling Price (PHP)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={relistPrice}
+                  onChange={(e) => setRelistPrice(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Last: {relistTarget ? fmt(relistTarget.sellingPrice) : '—'}
+                </p>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Discount Price (PHP, optional)</Label>
@@ -2408,7 +2648,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               />
               {relistTarget?.discountPrice != null && (
                 <p className="text-xs text-muted-foreground">
-                  Previous: {fmt(relistTarget.discountPrice)}
+                  Last: {fmt(relistTarget.discountPrice)}
                 </p>
               )}
             </div>

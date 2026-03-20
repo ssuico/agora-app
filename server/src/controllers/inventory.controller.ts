@@ -558,12 +558,13 @@ export const getListingHistory = async (req: Request, res: Response): Promise<vo
 
 export const relistProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { productId, storeId, quantity, sellingPrice, discountPrice } = req.body as {
+    const { productId, storeId, quantity, sellingPrice, discountPrice, costPrice } = req.body as {
       productId: string;
       storeId: string;
       quantity: number;
       sellingPrice?: number;
       discountPrice?: number | null;
+      costPrice?: number;
     };
 
     if (!productId || !storeId || !quantity || quantity <= 0) {
@@ -586,6 +587,9 @@ export const relistProduct = async (req: Request, res: Response): Promise<void> 
     }
 
     const priceUpdate: Record<string, unknown> = { stockQuantity: quantity };
+    if (typeof costPrice === 'number' && costPrice >= 0) {
+      priceUpdate.costPrice = costPrice;
+    }
     if (typeof sellingPrice === 'number' && sellingPrice >= 0) {
       priceUpdate.sellingPrice = sellingPrice;
     }
