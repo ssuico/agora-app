@@ -7,7 +7,7 @@ function redirect(path: string) {
   return new Response(null, { status: 302, headers: { Location: path } });
 }
 
-export const onRequest = defineMiddleware(({ url, cookies }, next) => {
+export const onRequest = defineMiddleware(async ({ url, cookies }, next) => {
   const isPublic = PUBLIC_PATHS.some(
     (p) => url.pathname === p || url.pathname.startsWith(p + '/')
   );
@@ -61,5 +61,17 @@ export const onRequest = defineMiddleware(({ url, cookies }, next) => {
     return redirect('/login');
   }
 
-  return next();
+  const response = await next();
+
+  // Prevent the browser from caching authenticated pages in its back/forward
+  // cache (bfcache). Without this, pressing the back button after logout serves
+  // a stale cached page from memory — the server is never contacted and the
+  // middleware never runs, so the user sees protected content while logged out.
+  if (!isApiRoute) {
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+  }
+
+  return response;
 });

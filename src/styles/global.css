@@ -312,3 +312,62 @@
   animation-direction: reverse;
 }
 
+/* ── Shop page layout ─────────────────────────────────────────────────────── */
+
+/* Sidebar widget container */
+.shop-widget {
+  position: relative;
+  border-radius: var(--radius-xl);
+  border: 1px solid color-mix(in oklch, var(--primary) 18%, var(--border) 82%);
+  background: color-mix(in oklch, var(--card) 74%, white 26%);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, white 38%, transparent) inset,
+    0 18px 40px -22px color-mix(in oklch, var(--primary) 40%, black 60%);
+  overflow: hidden;
+}
+
+/* Widget header band */
+.shop-widget-header {
+  position: relative;
+  padding: 0.7rem 1rem;
+  background: var(--card);
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 60%, transparent 40%);
+}
+
+/* Soft fade at the bottom of scroll areas */
+.shop-widget-scroll {
+  position: relative;
+}
+.shop-widget-scroll::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 36px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in oklch, var(--card) 78%, white 22%)
+  );
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Product section wrapper */
+.shop-products-section {
+  position: relative;
+  border-radius: var(--radius-2xl);
+  border: 1px solid color-mix(in oklch, var(--border) 48%, transparent 52%);
+  background: color-mix(in oklch, var(--background) 42%, transparent 58%);
+  backdrop-filter: blur(3px);
+  padding: 1.25rem;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* No decorative background — keep layer div in DOM for future use */
+.shop-products-bg {
+  display: none;
+}
+

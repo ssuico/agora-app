@@ -99,6 +99,8 @@ export function ActivityFeed({ storeId }: ActivityFeedProps) {
   const [loading, setLoading] = useState(true);
   const [, setTick] = useState(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [freshIds, setFreshIds] = useState<Set<string>>(new Set());
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Fetch initial logs
   useEffect(() => {
@@ -122,6 +124,21 @@ export function ActivityFeed({ storeId }: ActivityFeedProps) {
 
     const handler = (entry: ActivityLogEntry) => {
       setEntries((prev) => [entry, ...prev].slice(0, MAX_ENTRIES));
+
+      // Mark as fresh so the enter animation plays
+      setFreshIds((prev) => new Set([...prev, entry._id]));
+      setTimeout(() => {
+        setFreshIds((prev) => {
+          const next = new Set(prev);
+          next.delete(entry._id);
+          return next;
+        });
+      }, 800);
+
+      // Scroll list to top so the new item is visible
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      });
     };
     socket.on('activity:new', handler);
 
@@ -140,18 +157,29 @@ export function ActivityFeed({ storeId }: ActivityFeedProps) {
   }, []);
 
   return (
-    <div className="rounded-xl border bg-card">
-      <div className="flex items-center gap-2 border-b px-4 py-3">
-        <Activity className="h-4 w-4 text-primary" />
+    <div className="shop-widget">
+      {/* Header */}
+      <div className="shop-widget-header flex items-center gap-2">
+        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-primary/10">
+          <Activity className="h-3.5 w-3.5 text-primary" />
+        </div>
         <h3 className="text-sm font-semibold">Recent Activity</h3>
         {entries.length > 0 && (
-          <span className="ml-auto rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-            {entries.length}
-          </span>
+          <div className="ml-auto flex items-center gap-1.5">
+            {/* Live pulse dot */}
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+            </span>
+            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+              {entries.length}
+            </span>
+          </div>
         )}
       </div>
 
-      <div className="max-h-[300px] overflow-y-auto">
+      {/* Content */}
+      <div ref={scrollRef} className="shop-widget-scroll max-h-[300px] overflow-y-auto">
         {loading ? (
           <div className="space-y-3 p-4">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -165,14 +193,25 @@ export function ActivityFeed({ storeId }: ActivityFeedProps) {
             ))}
           </div>
         ) : entries.length === 0 ? (
-          <div className="py-10 text-center">
-            <Activity className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
+          <div className="flex flex-col items-center justify-center py-10 gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+              <Activity className="h-5 w-5 text-muted-foreground/40" />
+            </div>
             <p className="text-xs text-muted-foreground">No activity yet</p>
           </div>
         ) : (
-          <ul className="divide-y divide-border">
-            {entries.map((entry) => (
-              <li key={entry._id} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
+          <ul className="divide-y divide-border/60">
+            {entries.map((entry, idx) => (
+              <li
+                key={entry._id}
+                className={`flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/25 ${
+                  freshIds.has(entry._id)
+                    ? 'animate-in slide-in-from-top-3 fade-in duration-300 bg-primary/8'
+                    : idx === 0
+                      ? 'bg-primary/3'
+                      : ''
+                }`}
+              >
                 <ActorAvatar
                   name={entry.actorName}
                   avatar={entry.actorAvatar}
