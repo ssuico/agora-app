@@ -19,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Download, FileSpreadsheet, History, ImageIcon, Loader2, NotepadText, Package, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Clock, Coins, Download, FileSpreadsheet, History, ImageIcon, Loader2, NotepadText, Package, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -84,27 +84,39 @@ const COL_COUNT = 11;
 
 function ClaimBadge({ status }: { status: ClaimStatus }) {
   return status === 'claimed' ? (
-    <Badge variant="default" className="text-xs border-0">Claimed</Badge>
+    <Badge className="gap-1 border-green-200 bg-green-100 text-green-700 text-xs font-medium">
+      <Package className="h-3 w-3" />Claimed
+    </Badge>
   ) : (
-    <Badge variant="outline" className="text-xs text-muted-foreground">Unclaimed</Badge>
+    <Badge className="gap-1 border-amber-200 bg-amber-50 text-amber-700 text-xs font-medium">
+      <Clock className="h-3 w-3" />Unclaimed
+    </Badge>
   );
 }
 
 function PaymentBadge({ status, totalAmount, amountPaid }: { status: PaymentStatus; totalAmount?: number; amountPaid?: number }) {
   if (status === 'paid') {
-    return <Badge variant="default" className="text-xs border-0">Paid</Badge>;
-  }
-  if (status === 'partial' && totalAmount != null && amountPaid != null && amountPaid > 0) {
     return (
-      <Badge variant="secondary" className="text-xs border-0">
-        Partial ({fmt(amountPaid)} / {fmt(totalAmount)})
+      <Badge className="gap-1 border-emerald-200 bg-emerald-100 text-emerald-700 text-xs font-medium">
+        <CheckCircle2 className="h-3 w-3" />Paid
       </Badge>
     );
   }
   if (status === 'partial') {
-    return <Badge variant="secondary" className="text-xs border-0">Partial</Badge>;
+    const label = (totalAmount != null && amountPaid != null && amountPaid > 0)
+      ? `${fmt(amountPaid)} / ${fmt(totalAmount)}`
+      : 'Partial';
+    return (
+      <Badge className="gap-1 border-yellow-200 bg-yellow-50 text-yellow-700 text-xs font-medium">
+        <Coins className="h-3 w-3" />{label}
+      </Badge>
+    );
   }
-  return <Badge variant="destructive" className="text-xs border-0">Unpaid</Badge>;
+  return (
+    <Badge className="gap-1 border-red-200 bg-red-100 text-red-700 text-xs font-medium">
+      <AlertTriangle className="h-3 w-3" />Unpaid
+    </Badge>
+  );
 }
 
 function OrderBadge({ status }: { status: OrderStatus }) {
@@ -400,6 +412,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [newTxShowValidationWarning, setNewTxShowValidationWarning] = useState(false);
   const [newTxLoading, setNewTxLoading] = useState(false);
   const [newTxError, setNewTxError] = useState('');
+  const [newTxSearch, setNewTxSearch] = useState('');
   const [newTxLoadKey, setNewTxLoadKey] = useState(0);
   const [notesModalTx, setNotesModalTx] = useState<Transaction | null>(null);
   const [notesEdit, setNotesEdit] = useState('');
@@ -543,6 +556,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         setNewTxPaymentStatus('unpaid');
         setNewTxAmountPaid('');
         setNewTxNotes('');
+        setNewTxSearch('');
         fetchTransactions();
       } else {
         const data = (await res.json()) as { message?: string };
@@ -1076,7 +1090,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
       {/* New Transaction modal */}
       <Dialog open={newTxOpen} onOpenChange={(open) => { setNewTxOpen(open); if (!open) setNewTxShowValidationWarning(false); }}>
-        <DialogContent className="flex flex-col gap-4 p-6 w-[80vw]! max-w-[80vw]! h-[80vh]! max-h-[80vh]! overflow-hidden">
+        <DialogContent className="flex flex-col gap-4 p-6 w-[80vw]! max-w-[80vw]! h-[88vh]! max-h-[88vh]! overflow-hidden">
           <DialogHeader>
             <DialogTitle>New Transaction</DialogTitle>
             <DialogDescription>
@@ -1086,7 +1100,18 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
           <div className="flex flex-col gap-4 overflow-hidden flex-1 min-h-0">
             <div className="space-y-2 flex flex-col flex-1 min-h-0">
-              <Label className="text-sm font-medium shrink-0">Products</Label>
+              <div className="flex items-center justify-between gap-3 shrink-0">
+                <Label className="text-sm font-medium">Products</Label>
+                <div className="relative w-52">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder="Search products..."
+                    value={newTxSearch}
+                    onChange={(e) => setNewTxSearch(e.target.value)}
+                    className="pl-8 h-8 text-sm"
+                  />
+                </div>
+              </div>
               <div className="border rounded-md overflow-y-auto flex-1 min-h-[200px] p-2 bg-muted/30">
                 {newTxLoading ? (
                   <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 p-1">
@@ -1108,56 +1133,71 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 ) : newTxProducts.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-4 text-center">No products in this store.</p>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-                    {[...newTxProducts]
+                  <>{(() => {
+                    const filtered = [...newTxProducts]
+                      .filter((p) =>
+                        !newTxSearch.trim() ||
+                        p.name.toLowerCase().includes(newTxSearch.trim().toLowerCase())
+                      )
                       .sort((a, b) => {
                         const aInStock = a.stockQuantity > 0 ? 0 : 1;
                         const bInStock = b.stockQuantity > 0 ? 0 : 1;
                         if (aInStock !== bInStock) return aInStock - bInStock;
                         return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-                      })
-                      .map((p) => {
-                      const qty = newTxQuantities[p._id] ?? 0;
+                      });
+                    if (filtered.length === 0) {
                       return (
-                        <Card key={p._id} className="p-2 flex flex-col gap-1.5">
-                          <CardContent className="p-0 flex gap-2">
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <p className="text-xs font-medium leading-tight line-clamp-2">{p.name}</p>
-                              <p className="text-xs text-muted-foreground">{fmt(p.sellingPrice)}</p>
-                              <p className="text-xs text-muted-foreground">Stock: {p.stockQuantity}</p>
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-7 w-7 shrink-0"
-                                  onClick={() => setNewTxQty(p._id, -1)}
-                                  disabled={qty <= 0}
-                                >
-                                  −
-                                </Button>
-                                <span className="text-xs font-medium min-w-6 text-center">{qty}</span>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-7 w-7 shrink-0"
-                                  onClick={() => setNewTxQty(p._id, 1)}
-                                  disabled={qty >= p.stockQuantity}
-                                >
-                                  +
-                                </Button>
-                              </div>
-                            </div>
-                            <ProductImageThumb
-                              src={p.images?.[0]}
-                              className="h-16 w-16 rounded border border-border shrink-0"
-                            />
-                          </CardContent>
-                        </Card>
+                        <p className="text-sm text-muted-foreground py-4 text-center">
+                          No products match &ldquo;{newTxSearch}&rdquo;.
+                        </p>
                       );
-                    })}
-                  </div>
+                    }
+                    return (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+                        {filtered.map((p) => {
+                          const qty = newTxQuantities[p._id] ?? 0;
+                          return (
+                            <Card key={p._id} className="p-2 flex flex-col gap-1.5">
+                              <CardContent className="p-0 flex gap-2">
+                                <div className="flex-1 min-w-0 space-y-1">
+                                  <p className="text-xs font-medium leading-tight line-clamp-2">{p.name}</p>
+                                  <p className="text-xs text-muted-foreground">{fmt(p.sellingPrice)}</p>
+                                  <p className="text-xs text-muted-foreground">Stock: {p.stockQuantity}</p>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-7 w-7 shrink-0"
+                                      onClick={() => setNewTxQty(p._id, -1)}
+                                      disabled={qty <= 0}
+                                    >
+                                      −
+                                    </Button>
+                                    <span className="text-xs font-medium min-w-6 text-center">{qty}</span>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-7 w-7 shrink-0"
+                                      onClick={() => setNewTxQty(p._id, 1)}
+                                      disabled={qty >= p.stockQuantity}
+                                    >
+                                      +
+                                    </Button>
+                                  </div>
+                                </div>
+                                <ProductImageThumb
+                                  src={p.images?.[0]}
+                                  className="h-16 w-16 rounded border border-border shrink-0"
+                                />
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}</>
                 )}
               </div>
               {(() => {
@@ -1324,7 +1364,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
       {/* Cancel confirmation dialog */}
       <Dialog open={!!cancelTarget} onOpenChange={(open) => { if (!open) setCancelTarget(null); }}>
-        <DialogContent>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Cancel Order</DialogTitle>
             <DialogDescription>
@@ -1349,7 +1389,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
       {/* Delete confirmation dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
-        <DialogContent>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Delete Transaction</DialogTitle>
             <DialogDescription>
@@ -1374,7 +1414,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
       {/* Transaction notes modal */}
       <Dialog open={!!notesModalTx} onOpenChange={(open) => { if (!open) setNotesModalTx(null); }}>
-        <DialogContent>
+        <DialogContent className="w-[50vw] max-w-lg">
           <DialogHeader>
             <DialogTitle>Transaction notes</DialogTitle>
             <DialogDescription>
@@ -1420,7 +1460,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
       {/* Status action confirmation (Claim / Unclaim / Pay / Unpay) */}
       <Dialog open={!!confirmStatusAction} onOpenChange={(open) => { if (!open) setConfirmStatusAction(null); }}>
-        <DialogContent>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Confirm action</DialogTitle>
             <DialogDescription>
@@ -1450,7 +1490,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
       {/* Partial payment dialog */}
       <Dialog open={!!partialPaymentTarget} onOpenChange={(open) => { if (!open) { setPartialPaymentTarget(null); setPartialPaymentAmount(''); } }}>
-        <DialogContent>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Set partial payment</DialogTitle>
             <DialogDescription>
@@ -1581,68 +1621,77 @@ function TransactionRow({
         <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{fmtDate(new Date(tx.createdAt))}</td>
         <td className="px-4 py-3 text-right">
           {isCancelled ? (
-            <div className="flex items-center justify-end gap-1">
-              <span className="text-xs text-muted-foreground italic mr-1">Cancelled</span>
+            <div className="flex items-center justify-end gap-0.5">
               {onViewNotes && (
-                <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onViewNotes(tx)} title="View notes">
-                  <NotepadText className="h-3.5 w-3.5" />
-                </Button>
+                <div className="relative">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled={isUpdating} onClick={() => onViewNotes(tx)} title="View notes">
+                    <NotepadText className="h-3.5 w-3.5" />
+                  </Button>
+                  {(tx.notes?.trim() || tx.customerNotes?.trim()) && (
+                    <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-amber-400 ring-1 ring-background pointer-events-none" />
+                  )}
+                </div>
               )}
-              <Button variant="ghost" size="sm" disabled={isUpdating} onClick={onDeleteClick} title="Delete transaction" className="text-destructive hover:text-destructive">
-                <Trash2 className="mr-1 h-3.5 w-3.5" />Delete
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" disabled={isUpdating} onClick={onDeleteClick} title="Delete transaction">
+                <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
           ) : (
-            <div className="flex items-center justify-end gap-1">
+            <div className="flex items-center justify-end gap-0.5">
               {onViewNotes && (
-                <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onViewNotes(tx)} title="View notes">
-                  <NotepadText className="h-3.5 w-3.5" />
-                </Button>
+                <div className="relative">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled={isUpdating} onClick={() => onViewNotes(tx)} title="View notes">
+                    <NotepadText className="h-3.5 w-3.5" />
+                  </Button>
+                  {(tx.notes?.trim() || tx.customerNotes?.trim()) && (
+                    <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-amber-400 ring-1 ring-background pointer-events-none" />
+                  )}
+                </div>
               )}
               {tx.claimStatus === 'unclaimed' ? (
-                <Button variant="outline" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'claimStatus', 'claimed')} title="Mark as claimed">
-                  <Package className="mr-1 h-3.5 w-3.5" />Claim
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500 hover:text-green-700 hover:bg-green-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'claimStatus', 'claimed')} title="Mark as claimed">
+                  <Package className="h-3.5 w-3.5" />
                 </Button>
               ) : (
-                <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'claimStatus', 'unclaimed')} title="Revert to unclaimed" className="text-muted-foreground">
-                  <Package className="mr-1 h-3.5 w-3.5" />Unclaim
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-amber-600 hover:bg-amber-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'claimStatus', 'unclaimed')} title="Revert to unclaimed">
+                  <RotateCcw className="h-3.5 w-3.5" />
                 </Button>
               )}
               {tx.paymentStatus === 'unpaid' ? (
                 <>
-                  <Button variant="default" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'paid')} title="Mark as paid">
-                    <Check className="mr-1 h-3.5 w-3.5" />Pay
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500 hover:text-emerald-700 hover:bg-emerald-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'paid')} title="Mark as paid">
+                    <Check className="h-3.5 w-3.5" />
                   </Button>
                   {onRequestPartialPayment && (
-                    <Button variant="outline" size="sm" disabled={isUpdating} onClick={() => onRequestPartialPayment(tx)} title="Set partial payment">
-                      Partial
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500 hover:text-yellow-700 hover:bg-yellow-50" disabled={isUpdating} onClick={() => onRequestPartialPayment(tx)} title="Set partial payment">
+                      <Coins className="h-3.5 w-3.5" />
                     </Button>
                   )}
                 </>
               ) : tx.paymentStatus === 'partial' ? (
                 <>
-                  <Button variant="default" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'paid')} title="Mark as fully paid">
-                    <Check className="mr-1 h-3.5 w-3.5" />Mark paid
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600 hover:text-emerald-700 hover:bg-emerald-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'paid')} title="Mark as fully paid">
+                    <Check className="h-3.5 w-3.5" />
                   </Button>
                   {onRequestPartialPayment && (
-                    <Button variant="outline" size="sm" disabled={isUpdating} onClick={() => onRequestPartialPayment(tx)} title="Edit partial amount">
-                      Edit partial
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50" disabled={isUpdating} onClick={() => onRequestPartialPayment(tx)} title="Edit partial amount">
+                      <Coins className="h-3.5 w-3.5" />
                     </Button>
                   )}
-                  <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'unpaid')} title="Revert to unpaid" className="text-muted-foreground">
-                    Unpay
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-amber-600 hover:bg-amber-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'unpaid')} title="Revert to unpaid">
+                    <RotateCcw className="h-3.5 w-3.5" />
                   </Button>
                 </>
               ) : (
-                <Button variant="ghost" size="sm" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'unpaid')} title="Revert to unpaid" className="text-muted-foreground">
-                  <Check className="mr-1 h-3.5 w-3.5" />Unpay
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-amber-600 hover:bg-amber-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'unpaid')} title="Revert to unpaid">
+                  <RotateCcw className="h-3.5 w-3.5" />
                 </Button>
               )}
-              <Button variant="ghost" size="sm" disabled={isUpdating} onClick={onCancelClick} title="Cancel order" className="text-destructive hover:text-destructive">
-                <Ban className="mr-1 h-3.5 w-3.5" />Cancel
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" disabled={isUpdating} onClick={onCancelClick} title="Cancel order">
+                <Ban className="h-3.5 w-3.5" />
               </Button>
-              <Button variant="ghost" size="sm" disabled={isUpdating} onClick={onDeleteClick} title="Delete transaction" className="text-destructive hover:text-destructive">
-                <Trash2 className="mr-1 h-3.5 w-3.5" />Delete
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" disabled={isUpdating} onClick={onDeleteClick} title="Delete transaction">
+                <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
           )}
