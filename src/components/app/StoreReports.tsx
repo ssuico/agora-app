@@ -66,6 +66,9 @@ const toLocalDateString = (d: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+const getTodayEST = () =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+
 export function StoreReports({ storeId }: StoreReportsProps) {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
@@ -74,7 +77,7 @@ export function StoreReports({ storeId }: StoreReportsProps) {
   const [dailyReport, setDailyReport] = useState<DailyReportData | null>(null);
   const [dailyLoading, setDailyLoading] = useState(true);
   const [dailyError, setDailyError] = useState('');
-  const [dailyDate, setDailyDate] = useState(toLocalDateString(new Date()));
+  const [dailyDate, setDailyDate] = useState(getTodayEST());
 
   const [storeState, setStoreState] = useState<StoreState>({ isOpen: true, isMaintenance: false });
   const [storeStateLoading, setStoreStateLoading] = useState(true);
@@ -335,15 +338,15 @@ export function StoreReports({ storeId }: StoreReportsProps) {
                   <input
                     type="date"
                     value={dailyDate}
-                    max={toLocalDateString(new Date())}
+                    max={getTodayEST()}
                     onChange={(e) => setDailyDate(e.target.value)}
                     className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
-                  {dailyDate !== toLocalDateString(new Date()) && (
+                  {dailyDate !== getTodayEST() && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setDailyDate(toLocalDateString(new Date()))}
+                      onClick={() => setDailyDate(getTodayEST())}
                       className="text-xs"
                     >
                       Today
