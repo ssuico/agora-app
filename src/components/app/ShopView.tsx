@@ -252,32 +252,33 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-4xl overflow-hidden p-0 gap-0">
-        <div className="grid max-h-[92vh] grid-cols-1 md:grid-cols-[1.1fr_1fr] overflow-hidden">
+      <DialogContent className="w-[90vw] max-w-4xl h-[82vh] overflow-hidden p-0 gap-0">
+        <div className="grid h-full grid-cols-1 md:grid-cols-[3fr_2fr] overflow-hidden">
 
-          {/* Left: Image panel */}
-          <div className="flex flex-col border-b md:border-b-0 md:border-r bg-muted/20">
-            <div className="relative aspect-square bg-muted/30 overflow-hidden">
+          {/* ── Left: Image panel ── */}
+          <div className="flex flex-col border-b md:border-b-0 md:border-r bg-muted/40 overflow-hidden">
+            {/* Image fills fixed column height */}
+            <div className="relative min-h-52 md:min-h-0 md:flex-1 overflow-hidden bg-muted/30 flex items-center justify-center">
               {!hasImages || failedSet.has(selectedIndex) ? (
-                <ImagePlaceholder className="h-full w-full" iconSize="h-16 w-16" />
+                <ImagePlaceholder className="h-full w-full" iconSize="h-12 w-12" />
               ) : (
                 <SafeImage
                   src={images[selectedIndex]}
                   alt={product.name}
-                  className="h-full w-full"
+                  className="h-full w-full object-cover"
                   onError={() => setFailedSet((prev) => new Set(prev).add(selectedIndex))}
                 />
               )}
 
               {discountPercent > 0 && (
-                <Badge className="absolute left-3 top-3 bg-green-500 border-0 text-white text-xs font-bold shadow-sm">
+                <Badge className="absolute left-2.5 top-2.5 bg-green-500 border-0 text-white text-[11px] font-bold shadow-sm">
                   -{discountPercent}%
                 </Badge>
               )}
 
               {isOOS && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-[2px]">
-                  <Badge variant="destructive" className="px-4 py-1.5 text-sm font-semibold">
+                  <Badge variant="destructive" className="px-3 py-1.5 text-sm font-semibold">
                     All Reserved
                   </Badge>
                 </div>
@@ -287,35 +288,40 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
                 <>
                   <button
                     onClick={() => setSelectedIndex((i) => (i - 1 + images.length) % images.length)}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 transition-colors"
+                    className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-1.5 text-white hover:bg-black/65 transition-colors"
                   >
-                    <ChevronLeft className="h-5 w-5" />
+                    <ChevronLeft className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setSelectedIndex((i) => (i + 1) % images.length)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 transition-colors"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-1.5 text-white hover:bg-black/65 transition-colors"
                   >
-                    <ChevronRight className="h-5 w-5" />
+                    <ChevronRight className="h-4 w-4" />
                   </button>
                 </>
               )}
             </div>
 
+            {/* Thumbnail strip */}
             {images.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto p-3 bg-card/50">
+              <div className="flex shrink-0 gap-2 overflow-x-auto p-2.5 bg-card/70 border-t border-border/50">
                 {images.map((url, i) => (
                   <button
                     key={i}
                     onClick={() => setSelectedIndex(i)}
-                    className={`h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 transition-all ${i === selectedIndex ? 'border-primary shadow-sm' : 'border-transparent opacity-60 hover:opacity-100 hover:border-muted-foreground/30'}`}
+                    className={`h-11 w-11 shrink-0 overflow-hidden rounded-md border-2 transition-all ${
+                      i === selectedIndex
+                        ? 'border-primary shadow-sm'
+                        : 'border-transparent opacity-50 hover:opacity-100 hover:border-border'
+                    }`}
                   >
                     {failedSet.has(i) ? (
-                      <ImagePlaceholder className="h-full w-full" iconSize="h-4 w-4" />
+                      <ImagePlaceholder className="h-full w-full" iconSize="h-3 w-3" />
                     ) : (
                       <SafeImage
                         src={url}
                         alt=""
-                        className="h-full w-full"
+                        className="h-full w-full object-cover"
                         onError={() => setFailedSet((prev) => new Set(prev).add(i))}
                       />
                     )}
@@ -325,8 +331,8 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
             )}
           </div>
 
-          {/* Right: Details panel */}
-          <div className="relative flex min-h-0 flex-col overflow-y-auto">
+          {/* ── Right: Details panel (scrollable) ── */}
+          <div className="relative flex h-full flex-col overflow-y-auto">
             <button
               onClick={() => onOpenChange(false)}
               className="absolute right-3 top-3 z-10 rounded-full p-1.5 transition-colors hover:bg-muted"
@@ -334,142 +340,144 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
               <X className="h-4 w-4" />
             </button>
 
-            <div className="flex flex-col gap-4 p-5 sm:p-6">
-              {/* Name + price */}
-              <div className="pr-8">
-                <h2 className="text-xl font-bold leading-snug">{product.name}</h2>
+            {/* ① Product info */}
+            <div className="px-6 pt-6 pr-14 pb-5 space-y-4">
+              <h2 className="text-2xl font-bold leading-snug">{product.name}</h2>
 
-                <div className="mt-3 flex items-end gap-3">
-                  <p className="text-3xl font-bold text-primary">{fmt(effectivePrice)}</p>
-                  {discountPercent > 0 && (
-                    <div className="mb-1 flex flex-col">
-                      <span className="text-sm text-muted-foreground line-through">{fmt(product.sellingPrice)}</span>
-                      <span className="text-xs font-semibold text-green-600">{discountPercent}% off</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Stock + rating row */}
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Badge
-                    variant="secondary"
-                    className={`text-xs font-medium ${
-                      isOOS
-                        ? 'bg-red-100 text-red-700 border-red-200'
-                        : product.stockQuantity < 10
-                          ? 'bg-amber-100 text-amber-700 border-amber-200'
-                          : 'bg-green-100 text-green-700 border-green-200'
-                    }`}
-                  >
-                    <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${isOOS ? 'bg-red-500' : product.stockQuantity < 10 ? 'bg-amber-500' : 'bg-green-500'}`} />
-                    {isOOS ? 'All Reserved' : `${product.stockQuantity} in stock`}
-                  </Badge>
-                  {cartQty > 0 && (
-                    <Badge variant="outline" className="text-xs text-primary border-primary/30 bg-primary/5">
-                      {cartQty} in cart
-                    </Badge>
-                  )}
-                </div>
-
-                {rating && rating.totalCount > 0 && (
-                  <div className="mt-2.5">
-                    <MiniStars value={rating.averageStars} count={rating.totalCount} />
+              {/* Price */}
+              <div className="flex items-end gap-3">
+                <p className="text-4xl font-bold text-primary leading-none">{fmt(effectivePrice)}</p>
+                {discountPercent > 0 && (
+                  <div className="mb-0.5 flex flex-col gap-0.5">
+                    <span className="text-xs text-muted-foreground line-through leading-none">{fmt(product.sellingPrice)}</span>
+                    <span className="text-[11px] font-semibold text-green-600 leading-none">{discountPercent}% off</span>
                   </div>
                 )}
+              </div>
 
+              {/* Stock + in-cart badges */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge
+                  variant="secondary"
+                  className={`text-xs font-medium ${
+                    isOOS
+                      ? 'bg-red-100 text-red-700 border-red-200'
+                      : product.stockQuantity < 10
+                        ? 'bg-amber-100 text-amber-700 border-amber-200'
+                        : 'bg-green-100 text-green-700 border-green-200'
+                  }`}
+                >
+                  <span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${isOOS ? 'bg-red-500' : product.stockQuantity < 10 ? 'bg-amber-500' : 'bg-green-500'}`} />
+                  {isOOS ? 'All Reserved' : `${product.stockQuantity} in stock`}
+                </Badge>
+                {cartQty > 0 && (
+                  <Badge variant="outline" className="text-xs text-primary border-primary/30 bg-primary/5">
+                    {cartQty} in cart
+                  </Badge>
+                )}
+              </div>
+
+              {/* Rating + rate link */}
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  {rating && rating.totalCount > 0
+                    ? <MiniStars value={rating.averageStars} count={rating.totalCount} />
+                    : <p className="text-xs text-muted-foreground">No ratings yet</p>
+                  }
+                </div>
                 <a
                   href={`/products/${product._id}/rate`}
-                  className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-amber-400 hover:bg-amber-50 hover:text-amber-600"
                 >
-                  <Star className="h-3.5 w-3.5" />
-                  Rate this product
+                  <Star className="h-3 w-3" />
+                  Rate product
                 </a>
               </div>
+            </div>
 
-              <Separator />
+            <Separator />
 
-              {/* Add to cart section */}
-              <div className="rounded-xl border bg-muted/20 p-4">
-                {isOOS ? (
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-center space-y-1">
-                    <p className="text-sm font-semibold text-red-700">Fully reserved</p>
-                    <p className="text-xs text-red-600">Check back later for availability.</p>
-                  </div>
-                ) : available > 0 ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-medium text-muted-foreground">Quantity</span>
-                      <QuantityPicker value={qty} max={available} onChange={setQty} size="md" />
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Subtotal</span>
-                      <span className="font-bold text-foreground">{fmt(effectivePrice * qty)}</span>
-                    </div>
-                    <Button
-                      className="w-full rounded-xl"
-                      size="lg"
-                      onClick={() => {
-                        onAddToCart(product, qty);
-                        setQty(1);
-                      }}
-                      disabled={isCooldown}
-                    >
-                      {isCooldown ? (
-                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Added!</>
-                      ) : (
-                        <><ShoppingCart className="mr-2 h-4 w-4" />Add {qty > 1 ? `${qty} × ` : ''}to Cart</>
-                      )}
-                    </Button>
-                  </div>
-                ) : (
-                  <p className="py-2 text-center text-sm text-muted-foreground">All available stock is already in your cart.</p>
-                )}
-              </div>
-
-              {/* Reviews */}
-              <div className="rounded-xl border bg-card overflow-hidden">
-                <div className="flex items-center justify-between border-b px-4 py-3 bg-muted/30">
-                  <h4 className="flex items-center gap-1.5 text-sm font-semibold">
-                    <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                    Customer Reviews
-                  </h4>
-                  <span className="text-xs text-muted-foreground">
-                    {reviewCount} review{reviewCount === 1 ? '' : 's'}
-                  </span>
+            {/* ② Add to cart */}
+            <div className="px-6 py-5">
+              {isOOS ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-center space-y-1">
+                  <p className="text-sm font-semibold text-red-700">Fully reserved</p>
+                  <p className="text-xs text-red-600">Check back later for availability.</p>
                 </div>
+              ) : available > 0 ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-base text-muted-foreground">Quantity</span>
+                    <QuantityPicker value={qty} max={available} onChange={setQty} size="md" />
+                  </div>
+                  <div className="flex items-center justify-between border-t border-border/40 pt-4">
+                    <span className="text-base text-muted-foreground">Subtotal</span>
+                    <span className="text-2xl font-bold">{fmt(effectivePrice * qty)}</span>
+                  </div>
+                  <Button
+                    className="w-full rounded-xl h-12 text-base"
+                    size="lg"
+                    onClick={() => { onAddToCart(product, qty); setQty(1); }}
+                    disabled={isCooldown}
+                  >
+                    {isCooldown ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Added!</>
+                    ) : (
+                      <><ShoppingCart className="mr-2 h-5 w-5" />Add {qty > 1 ? `${qty} × ` : ''}to Cart</>
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                <p className="py-3 text-center text-sm text-muted-foreground">All available stock is already in your cart.</p>
+              )}
+            </div>
 
-                {sortedReviews.length > 0 ? (
-                  <ul className="max-h-56 overflow-y-auto divide-y divide-border">
-                    {sortedReviews.map((r) => (
-                      <li key={r._id} className="px-4 py-3 hover:bg-muted/30 transition-colors">
-                        <div className="mb-1.5 flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-0.5">
-                            {[1, 2, 3, 4, 5].map((s) => (
-                              <Star
-                                key={s}
-                                className={`h-3 w-3 ${s <= r.stars ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/20'}`}
-                              />
-                            ))}
-                          </span>
-                          <span className="shrink-0 text-[10px] text-muted-foreground">
-                            {new Date(r.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
-                          </span>
-                        </div>
-                        {r.comment ? (
-                          <p className="wrap-break-word text-xs leading-relaxed text-foreground">{r.comment}</p>
-                        ) : (
-                          <p className="text-xs italic text-muted-foreground">No comment provided.</p>
-                        )}
-                        <p className="mt-1 text-[10px] font-medium text-muted-foreground">— {r.customerId?.name ?? 'Anonymous'}</p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="px-4 py-6 text-center text-xs text-muted-foreground">No reviews yet for this product.</p>
-                )}
+            <Separator />
+
+            {/* ③ Customer Reviews */}
+            <div className="pb-4">
+              <div className="flex items-center justify-between px-6 py-4">
+                <h4 className="flex items-center gap-2 text-sm font-semibold">
+                  <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                  Customer Reviews
+                </h4>
+                <span className="text-xs text-muted-foreground">
+                  {reviewCount} {reviewCount === 1 ? 'review' : 'reviews'}
+                </span>
               </div>
+
+              {sortedReviews.length > 0 ? (
+                <ul className="divide-y divide-border/60">
+                  {sortedReviews.map((r) => (
+                    <li key={r._id} className="px-6 py-4 transition-colors hover:bg-muted/20">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Star
+                              key={s}
+                              className={`h-3 w-3 ${s <= r.stars ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/20'}`}
+                            />
+                          ))}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {new Date(r.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      </div>
+                      {r.comment ? (
+                        <p className="wrap-break-word text-xs leading-relaxed text-foreground">{r.comment}</p>
+                      ) : (
+                        <p className="text-xs italic text-muted-foreground">No comment provided.</p>
+                      )}
+                      <p className="mt-1 text-[10px] font-medium text-muted-foreground">— {r.customerId?.name ?? 'Anonymous'}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="px-6 py-10 text-center text-xs text-muted-foreground">No reviews yet for this product.</p>
+              )}
             </div>
           </div>
+
         </div>
       </DialogContent>
     </Dialog>
