@@ -6,6 +6,7 @@ import {
   getMyPurchases,
   getTransaction,
   getTransactions,
+  updateTransactionCustomer,
   updateTransactionNotes,
   updateTransactionStatus,
 } from '../controllers/transaction.controller.js';
@@ -29,6 +30,11 @@ transactionRoutes.patch(
   '/:id/status',
   authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
   updateTransactionStatus
+);
+transactionRoutes.patch(
+  '/:id/customer',
+  authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  updateTransactionCustomer
 );
 transactionRoutes.patch(
   '/:id/notes',

@@ -19,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Clock, Coins, Download, FileSpreadsheet, History, ImageIcon, Loader2, NotepadText, Package, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Clock, Coins, Download, FileSpreadsheet, History, ImageIcon, Loader2, NotepadText, Package, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -418,6 +418,14 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [notesEdit, setNotesEdit] = useState('');
   const [notesSaving, setNotesSaving] = useState(false);
 
+  const [editCustomerTx, setEditCustomerTx] = useState<Transaction | null>(null);
+  const [editCustomerType, setEditCustomerType] = useState<'registered' | 'walk-in'>('walk-in');
+  const [editCustomerSelectedId, setEditCustomerSelectedId] = useState('');
+  const [editCustomerWalkInName, setEditCustomerWalkInName] = useState('');
+  const [editCustomerSubmitting, setEditCustomerSubmitting] = useState(false);
+  const [editCustomerCustomers, setEditCustomerCustomers] = useState<Array<{ _id: string; name: string; email: string; role?: string }>>([]);
+  const [editCustomerLoadingList, setEditCustomerLoadingList] = useState(false);
+
   useEffect(() => {
     if (!newTxOpen) return;
     const controller = new AbortController();
@@ -710,6 +718,79 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     if (notesModalTx) setNotesEdit(notesModalTx.notes ?? '');
     else setNotesEdit('');
   }, [notesModalTx]);
+
+  const openEditCustomer = (tx: Transaction) => {
+    setEditCustomerTx(tx);
+    if (tx.customerId && typeof tx.customerId === 'object') {
+      setEditCustomerType('registered');
+      setEditCustomerSelectedId(tx.customerId._id);
+      setEditCustomerWalkInName('');
+    } else {
+      setEditCustomerType('walk-in');
+      setEditCustomerSelectedId('');
+      setEditCustomerWalkInName(tx.walkInCustomerName ?? '');
+    }
+  };
+
+  useEffect(() => {
+    if (!editCustomerTx) return;
+    if (editCustomerCustomers.length > 0) return;
+    setEditCustomerLoadingList(true);
+    (async () => {
+      try {
+        const [customersRes, managersRes] = await Promise.all([
+          fetch('/api/users?role=customer'),
+          fetch('/api/users?role=store_manager'),
+        ]);
+        const customers: Array<{ _id: string; name: string; email: string; role?: string }> =
+          customersRes.ok ? await customersRes.json() : [];
+        const managers: Array<{ _id: string; name: string; email: string; role?: string }> =
+          managersRes.ok ? await managersRes.json() : [];
+        const seen = new Set<string>();
+        const merged: typeof customers = [];
+        for (const u of [...customers, ...managers]) {
+          if (!seen.has(u._id)) { seen.add(u._id); merged.push(u); }
+        }
+        setEditCustomerCustomers(
+          merged.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
+        );
+      } catch { /* ignore */ } finally {
+        setEditCustomerLoadingList(false);
+      }
+    })();
+  }, [editCustomerTx]);
+
+  const handleSaveEditCustomer = async () => {
+    if (!editCustomerTx) return;
+    setEditCustomerSubmitting(true);
+    try {
+      const body =
+        editCustomerType === 'registered' && editCustomerSelectedId
+          ? { customerId: editCustomerSelectedId, walkInCustomerName: null }
+          : { customerId: null, walkInCustomerName: editCustomerWalkInName.trim() || null };
+
+      const res = await fetch(`/api/transactions/${editCustomerTx._id}/customer`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const updated: Transaction = await res.json();
+        setTransactions((prev) =>
+          prev.map((tx) => (tx._id === updated._id ? { ...tx, ...updated } : tx))
+        );
+        setEditCustomerTx(null);
+        toast.success('Customer updated');
+      } else {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to update customer');
+      }
+    } catch {
+      toast.error('Failed to update customer');
+    } finally {
+      setEditCustomerSubmitting(false);
+    }
+  };
 
   const handleSaveNotes = async () => {
     if (!notesModalTx) return;
@@ -1063,6 +1144,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                         onRequestStatusChange={(tx, field, value) => setConfirmStatusAction({ tx, field, value })}
                         onRequestPartialPayment={openPartialPaymentDialog}
                         onViewNotes={() => setNotesModalTx(tx)}
+                        onEditCustomer={() => openEditCustomer(tx)}
                         onCancelClick={() => setCancelTarget(tx)}
                         onDeleteClick={() => setDeleteTarget(tx)}
                       />
@@ -1412,6 +1494,101 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Edit customer dialog */}
+      <Dialog open={!!editCustomerTx} onOpenChange={(open) => { if (!open) setEditCustomerTx(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Customer</DialogTitle>
+            <DialogDescription>
+              Change the customer linked to this transaction.
+            </DialogDescription>
+          </DialogHeader>
+          {editCustomerTx && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+                <p><span className="text-muted-foreground">Order ID:</span> <span className="font-mono">{editCustomerTx._id.slice(-8)}</span></p>
+                <p><span className="text-muted-foreground">Amount:</span> <span className="font-medium">{fmt(editCustomerTx.totalAmount)}</span></p>
+              </div>
+
+              {/* Toggle: registered vs walk-in */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Customer type</Label>
+                <div className="flex rounded-md border border-input p-0.5 bg-muted/30">
+                  <button
+                    type="button"
+                    onClick={() => setEditCustomerType('registered')}
+                    className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
+                      editCustomerType === 'registered'
+                        ? 'bg-background text-foreground shadow'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Registered
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditCustomerType('walk-in')}
+                    className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
+                      editCustomerType === 'walk-in'
+                        ? 'bg-background text-foreground shadow'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Walk-in
+                  </button>
+                </div>
+              </div>
+
+              {editCustomerType === 'registered' ? (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Select customer</Label>
+                  {editCustomerLoadingList ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading customers...
+                    </div>
+                  ) : (
+                    <Select value={editCustomerSelectedId} onValueChange={setEditCustomerSelectedId}>
+                      <SelectTrigger><SelectValue placeholder="Select a customer..." /></SelectTrigger>
+                      <SelectContent>
+                        {editCustomerCustomers.map((c) => (
+                          <SelectItem key={c._id} value={c._id}>
+                            {c.name}{c.email ? ` (${c.email})` : ''}
+                            {c.role === 'store_manager' && <span className="ml-1 text-muted-foreground text-xs"> [Manager]</span>}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="edit-customer-walk-in-name" className="text-sm font-medium">Customer name</Label>
+                  <Input
+                    id="edit-customer-walk-in-name"
+                    placeholder="e.g. Juan dela Cruz"
+                    value={editCustomerWalkInName}
+                    onChange={(e) => setEditCustomerWalkInName(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditCustomerTx(null)} disabled={editCustomerSubmitting}>Cancel</Button>
+            <Button
+              onClick={handleSaveEditCustomer}
+              disabled={
+                editCustomerSubmitting ||
+                (editCustomerType === 'registered' && !editCustomerSelectedId)
+              }
+            >
+              {editCustomerSubmitting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {editCustomerSubmitting ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Transaction notes modal */}
       <Dialog open={!!notesModalTx} onOpenChange={(open) => { if (!open) setNotesModalTx(null); }}>
         <DialogContent className="w-[50vw] max-w-lg">
@@ -1546,6 +1723,7 @@ function TransactionRow({
   onRequestStatusChange,
   onRequestPartialPayment,
   onViewNotes,
+  onEditCustomer,
   onCancelClick,
   onDeleteClick,
 }: {
@@ -1560,6 +1738,7 @@ function TransactionRow({
   onRequestStatusChange: (tx: Transaction, field: 'claimStatus' | 'paymentStatus', value: string) => void;
   onRequestPartialPayment?: (tx: Transaction) => void;
   onViewNotes?: (tx: Transaction) => void;
+  onEditCustomer?: () => void;
   onCancelClick: () => void;
   onDeleteClick: () => void;
 }) {
@@ -1632,6 +1811,11 @@ function TransactionRow({
                   )}
                 </div>
               )}
+              {onEditCustomer && (
+                <Button variant="ghost" size="icon" className="h-7 w-7" disabled={isUpdating} onClick={onEditCustomer} title="Edit customer">
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              )}
               <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" disabled={isUpdating} onClick={onDeleteClick} title="Delete transaction">
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
@@ -1647,6 +1831,11 @@ function TransactionRow({
                     <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-amber-400 ring-1 ring-background pointer-events-none" />
                   )}
                 </div>
+              )}
+              {onEditCustomer && (
+                <Button variant="ghost" size="icon" className="h-7 w-7" disabled={isUpdating} onClick={onEditCustomer} title="Edit customer">
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
               )}
               {tx.claimStatus === 'unclaimed' ? (
                 <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500 hover:text-green-700 hover:bg-green-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'claimStatus', 'claimed')} title="Mark as claimed">

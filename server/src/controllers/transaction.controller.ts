@@ -327,6 +327,50 @@ export const updateTransactionStatus = async (req: Request, res: Response): Prom
   }
 };
 
+export const updateTransactionCustomer = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { customerId: bodyCustomerId, walkInCustomerName: bodyWalkInName } = req.body as {
+      customerId?: string | null;
+      walkInCustomerName?: string | null;
+    };
+
+    const update: Record<string, unknown> = {};
+
+    if (bodyCustomerId && typeof bodyCustomerId === 'string' && mongoose.Types.ObjectId.isValid(bodyCustomerId)) {
+      const user = await User.findById(bodyCustomerId).select('_id').lean();
+      if (!user) {
+        res.status(404).json({ message: 'Customer not found' });
+        return;
+      }
+      update.customerId = bodyCustomerId;
+      update.walkInCustomerName = null;
+    } else {
+      update.customerId = null;
+      update.walkInCustomerName =
+        typeof bodyWalkInName === 'string' && bodyWalkInName.trim()
+          ? bodyWalkInName.trim()
+          : null;
+    }
+
+    const transaction = await Transaction.findByIdAndUpdate(req.params.id, update, { new: true })
+      .populate('customerId', 'name email');
+
+    if (!transaction) {
+      res.status(404).json({ message: 'Transaction not found' });
+      return;
+    }
+
+    try {
+      const io = getIO();
+      io.to(`store:${transaction.storeId}`).emit('transaction:updated', transaction.toJSON());
+    } catch { /* socket broadcast is non-critical */ }
+
+    res.json(transaction);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
 export const updateTransactionNotes = async (req: Request, res: Response): Promise<void> => {
   try {
     const { notes: bodyNotes } = req.body as { notes?: string };
