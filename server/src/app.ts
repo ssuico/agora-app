@@ -35,7 +35,7 @@ app.use(
 app.use(cookieParser());
 app.use(express.json({ limit: '4mb' }));
 
-// Strict limit only for sensitive auth actions (login, register, reset-password).
+// Strict limit only for sensitive auth actions (login, signup, password reset, register).
 // GET /me and PATCH /me are not limited here so normal app usage (layout + profile) doesn't hit 429.
 app.use('/api/auth', authRoutes);
 app.use('/api/locations', locationRoutes);

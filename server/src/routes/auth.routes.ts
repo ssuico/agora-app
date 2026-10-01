@@ -1,6 +1,19 @@
 import { Router, type Router as IRouter } from 'express';
 import rateLimit from 'express-rate-limit';
-import { getMe, login, logout, register, resetPassword, updateProfile } from '../controllers/auth.controller.js';
+import {
+  confirmPasswordReset,
+  confirmSignup,
+  getAuthOptions,
+  getMe,
+  login,
+  logout,
+  register,
+  resetPassword,
+  sendPasswordResetCode,
+  sendSignupCode,
+  signup,
+  updateProfile,
+} from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { authorize } from '../middleware/role.js';
 import { UserRole } from '../types/index.js';
@@ -17,6 +30,12 @@ const sensitiveAuthLimiter = rateLimit({
 
 authRoutes.post('/login', sensitiveAuthLimiter, login);
 authRoutes.post('/logout', logout);
+authRoutes.get('/options', getAuthOptions);
+authRoutes.post('/signup', sensitiveAuthLimiter, signup);
+authRoutes.post('/signup/code', sensitiveAuthLimiter, sendSignupCode);
+authRoutes.post('/signup/confirm', sensitiveAuthLimiter, confirmSignup);
+authRoutes.post('/forgot-password/code', sensitiveAuthLimiter, sendPasswordResetCode);
+authRoutes.post('/forgot-password/confirm', sensitiveAuthLimiter, confirmPasswordReset);
 authRoutes.post('/register', sensitiveAuthLimiter, authenticate, authorize(UserRole.ADMIN), register);
 authRoutes.get('/me', authenticate, getMe);
 authRoutes.patch('/me', authenticate, updateProfile);
