@@ -1,0 +1,34 @@
+---
+import AuthShell from '../components/app/AuthShell.astro';
+import { SignupForm } from '../components/app/SignupForm';
+import { decodeJWT } from '../lib/jwt';
+
+const token = Astro.cookies.get('agora_token')?.value;
+if (token) {
+  const payload = decodeJWT(token);
+  if (payload) {
+    const isExpired = payload.exp != null && payload.exp * 1000 < Date.now();
+    if (!isExpired) return Astro.redirect('/');
+  }
+  Astro.cookies.delete('agora_token', { path: '/' });
+}
+---
+
+<AuthShell
+  title="Create Account"
+  kicker="New customer"
+  headline="Open a customer account with your work email."
+  lede="The account is a customer. Staff access is issued separately."
+  notices={[
+    { label: 'Outdoor Equipped', detail: '@outdoorequipped.com' },
+    { label: 'Channel Precision', detail: '@channelprecision.com' },
+    { label: 'Customer', detail: 'You can shop. You cannot manage a store.' },
+  ]}
+>
+  <div class="flex w-full max-w-md flex-col gap-4 self-center">
+    <SignupForm client:load />
+    <div class="auth-credit">
+      <p>Powered by Channel Precision Devs</p>
+    </div>
+  </div>
+</AuthShell>

@@ -1,7 +1,17 @@
 import { defineMiddleware } from 'astro:middleware';
 import { decodeJWT } from './lib/jwt';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout'];
+const PUBLIC_PATHS = [
+  '/login',
+  '/signup',
+  '/forgot-password',
+  '/_image',
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/auth/options',
+  '/api/auth/signup',
+  '/api/auth/forgot-password',
+];
 
 function redirect(path: string) {
   return new Response(null, { status: 302, headers: { Location: path } });
