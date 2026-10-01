@@ -349,15 +349,6 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
 
           {/* ── Right: Details panel (scrollable) ── */}
           <div className="relative flex h-full flex-col overflow-y-auto">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => onOpenChange(false)}
-              className="absolute right-3 top-3 z-10 rounded-full"
-            >
-              <X />
-            </Button>
-
             {/* ① Product info */}
             <div className="flex flex-col gap-4 px-6 pt-6 pr-14 pb-5">
               <DialogHeader>
