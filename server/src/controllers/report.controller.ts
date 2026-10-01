@@ -4,6 +4,7 @@ import { Expense } from '../models/Expense.js';
 import { InventoryRecord } from '../models/InventoryRecord.js';
 import { Product } from '../models/Product.js';
 import { Rating } from '../models/Rating.js';
+import { Store } from '../models/Store.js';
 import { Transaction } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 
@@ -26,10 +27,18 @@ export const getSummary = async (req: Request, res: Response): Promise<void> => 
     const { storeId } = req.query;
     const filter: Record<string, unknown> = { ...REPORT_TX_FILTER };
     const normalizedStoreId = typeof storeId === 'string' && storeId.trim() ? storeId : null;
-    if (normalizedStoreId) filter.storeId = normalizedStoreId;
 
     const expenseFilter: Record<string, unknown> = {};
-    if (normalizedStoreId) expenseFilter.storeId = normalizedStoreId;
+    if (normalizedStoreId) {
+      filter.storeId = normalizedStoreId;
+      expenseFilter.storeId = normalizedStoreId;
+    } else {
+      // Deleting a store does not remove its transactions/expenses, so system-wide
+      // totals must be limited to stores that still exist.
+      const existingStoreIds = await Store.find().distinct('_id');
+      filter.storeId = { $in: existingStoreIds };
+      expenseFilter.storeId = { $in: existingStoreIds };
+    }
 
     const [transactions, expenses] = await Promise.all([
       Transaction.find(filter),
