@@ -631,7 +631,7 @@ export function StoreManager() {
 
       {/* Manager Assignment Dialog */}
       <Dialog open={managerDialogOpen} onOpenChange={(open) => { setManagerDialogOpen(open); if (!open) { setSelectedToAdd(new Set()); setManagerSearch(''); } }}>
-        <DialogContent className="w-[85vw] max-w-none sm:max-w-none">
+        <DialogContent className="max-w-[min(48rem,calc(100%-2rem))]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="size-4" />
