@@ -30,10 +30,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
-import { AlertCircle, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
+import { AlertCircle, Dices, Eye, EyeOff, KeyRound, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 
@@ -42,7 +43,15 @@ interface User {
   name: string;
   email: string;
   role: string;
+  roles?: string[];
   createdAt: string;
+}
+
+const ROLE_ORDER = ['admin', 'store_manager', 'customer'] as const;
+
+function rolesOf(user: User): string[] {
+  const granted = new Set([user.role, ...(user.roles ?? [])]);
+  return ROLE_ORDER.filter((r) => granted.has(r));
 }
 
 interface UserFormData {
@@ -66,6 +75,14 @@ const ROLE_VARIANTS: Record<string, React.ComponentProps<typeof Badge>['variant'
   customer: 'secondary',
 };
 
+const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+
+function generatePassword(length = 12): string {
+  const bytes = new Uint32Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (n) => PASSWORD_ALPHABET[n % PASSWORD_ALPHABET.length]).join('');
+}
+
 export function UserManager() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,7 +93,15 @@ export function UserManager() {
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [editForm, setEditForm] = useState<{ name: string; role: string }>({ name: '', role: '' });
+  const [editForm, setEditForm] = useState<{ name: string; role: string; roles: string[] }>({
+    name: '',
+    role: '',
+    roles: [],
+  });
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [passwordUser, setPasswordUser] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [form, setForm] = useState<UserFormData>(EMPTY_FORM);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -110,9 +135,55 @@ export function UserManager() {
 
   const openEdit = (user: User) => {
     setEditingUser(user);
-    setEditForm({ name: user.name, role: user.role });
+    setEditForm({ name: user.name, role: user.role, roles: rolesOf(user) });
     setError('');
     setEditDialogOpen(true);
+  };
+
+  const toggleEditRole = (value: string, checked: boolean) => {
+    setEditForm((prev) => {
+      const roles = ROLE_ORDER.filter((r) => (r === value ? checked : prev.roles.includes(r)));
+      const role = roles.includes(prev.role as (typeof ROLE_ORDER)[number]) ? prev.role : (roles[0] ?? '');
+      return { ...prev, roles, role };
+    });
+  };
+
+  const openPasswordReset = (user: User) => {
+    setPasswordUser(user);
+    setNewPassword('');
+    setShowNewPassword(false);
+    setError('');
+    setPasswordDialogOpen(true);
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordUser) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/users/${passwordUser._id}/password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword }),
+      });
+      const data = (await res.json()) as { message?: string };
+      if (!res.ok) {
+        const msg = data.message ?? 'Failed to reset password';
+        setError(msg);
+        toast.error(msg);
+        return;
+      }
+      toast.success('Password updated');
+      setPasswordDialogOpen(false);
+      setPasswordUser(null);
+      setNewPassword('');
+    } catch {
+      setError('Network error');
+      toast.error('Network error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const updateEditField = (field: 'name' | 'role', value: string) => {
@@ -131,6 +202,7 @@ export function UserManager() {
         body: JSON.stringify({
           name: editForm.name.trim(),
           role: editForm.role,
+          roles: editForm.roles,
         }),
       });
       if (!res.ok) {
@@ -310,9 +382,13 @@ export function UserManager() {
                   <td className="px-4 py-3 font-medium">{user.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
                   <td className="px-4 py-3">
-                    <Badge variant={ROLE_VARIANTS[user.role] ?? 'outline'}>
-                      {ROLE_LABELS[user.role] ?? user.role}
-                    </Badge>
+                    <div className="flex flex-wrap gap-1">
+                      {rolesOf(user).map((r) => (
+                        <Badge key={r} variant={ROLE_VARIANTS[r] ?? 'outline'}>
+                          {ROLE_LABELS[r] ?? r}
+                        </Badge>
+                      ))}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {new Date(user.createdAt).toLocaleDateString()}
@@ -323,9 +399,18 @@ export function UserManager() {
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => openEdit(user)}
-                        title="Edit name and role"
+                        title="Edit name and roles"
                       >
                         <Pencil />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => openPasswordReset(user)}
+                        title="Reset password"
+                        aria-label={`Reset password for ${user.name}`}
+                      >
+                        <KeyRound />
                       </Button>
                       <Button
                         variant="ghost"
@@ -439,7 +524,7 @@ export function UserManager() {
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
             <DialogDescription>
-              Update name and role for {editingUser?.email}.
+              Update name and roles for {editingUser?.email}.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleEditSubmit}>
@@ -454,17 +539,39 @@ export function UserManager() {
                   required
                 />
               </Field>
+              <fieldset className="flex flex-col gap-2">
+                <legend className="text-sm font-medium">Roles</legend>
+                <p className="text-xs text-muted-foreground">
+                  An account with more than one role can switch views from the top bar.
+                </p>
+                {ROLE_ORDER.map((r) => (
+                  <label key={r} htmlFor={`edit-role-${r}`} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      id={`edit-role-${r}`}
+                      checked={editForm.roles.includes(r)}
+                      onCheckedChange={(checked) => toggleEditRole(r, checked === true)}
+                    />
+                    {ROLE_LABELS[r]}
+                  </label>
+                ))}
+              </fieldset>
               <Field className="gap-2">
-                <FieldLabel htmlFor="edit-user-role">Role</FieldLabel>
-                <Select value={editForm.role} onValueChange={(v) => updateEditField('role', v)}>
+                <FieldLabel htmlFor="edit-user-role">Default view</FieldLabel>
+                <Select
+                  value={editForm.role}
+                  onValueChange={(v) => updateEditField('role', v)}
+                  disabled={editForm.roles.length === 0}
+                >
                   <SelectTrigger id="edit-user-role">
                     <SelectValue placeholder="Select a role" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="store_manager">Store Manager</SelectItem>
-                      <SelectItem value="customer">Customer</SelectItem>
+                      {editForm.roles.map((r) => (
+                        <SelectItem key={r} value={r}>
+                          {ROLE_LABELS[r]}
+                        </SelectItem>
+                      ))}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -479,11 +586,95 @@ export function UserManager() {
                 <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={submitting}>
+                <Button type="submit" disabled={submitting || editForm.roles.length === 0}>
                   {submitting ? (
                     <><Spinner data-icon="inline-start" />Saving...</>
                   ) : (
                     'Save changes'
+                  )}
+                </Button>
+              </DialogFooter>
+            </FieldGroup>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog
+        open={passwordDialogOpen}
+        onOpenChange={(open) => {
+          setPasswordDialogOpen(open);
+          if (!open) {
+            setPasswordUser(null);
+            setNewPassword('');
+            setError('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>
+              Set a new password for {passwordUser?.name} ({passwordUser?.email}). Share it with them privately.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handlePasswordSubmit}>
+            <FieldGroup className="gap-4">
+              <Field className="gap-2">
+                <FieldLabel htmlFor="reset-user-password">New password</FieldLabel>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      id="reset-user-password"
+                      name="new-password"
+                      type={showNewPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      spellCheck={false}
+                      placeholder="Min 6 characters"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      maxLength={128}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword((v) => !v)}
+                      aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {showNewPassword ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
+                    </button>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setNewPassword(generatePassword());
+                      setShowNewPassword(true);
+                    }}
+                  >
+                    <Dices data-icon="inline-start" />
+                    Generate
+                  </Button>
+                </div>
+              </Field>
+              {error && (
+                <Alert variant="destructive" role="alert">
+                  <AlertCircle />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setPasswordDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={submitting || newPassword.length < 6}>
+                  {submitting ? (
+                    <><Spinner data-icon="inline-start" />Updating…</>
+                  ) : (
+                    'Update Password'
                   )}
                 </Button>
               </DialogFooter>
