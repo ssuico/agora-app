@@ -1,26 +1,37 @@
 ---
+import { getImage } from 'astro:assets';
 import { Toaster } from '../components/app/Toaster';
+import marketBustle from '../marketbustle.jpg';
 import '../styles/global.css';
 interface Props {
   title?: string;
 }
 const { title = 'Agora POS' } = Astro.props;
+const backdrop = await getImage({ src: marketBustle, format: 'webp', width: 1920, quality: 70 });
 ---
 
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
     <title>{title}</title>
   </head>
-  <body class="bg-background text-foreground antialiased">
+  <body class="bg-canvas text-foreground antialiased">
     <Toaster client:load />
-    <div class="relative isolate flex min-h-screen items-center justify-center overflow-hidden px-4 py-8 sm:px-6">
-      <div class="auth-orb pointer-events-none absolute -top-32 right-[-12rem] h-80 w-80 rounded-full bg-primary/28 blur-3xl sm:h-96 sm:w-96"></div>
-      <div class="auth-orb auth-orb-alt pointer-events-none absolute -bottom-36 left-[-10rem] h-72 w-72 rounded-full bg-accent/30 blur-3xl sm:h-96 sm:w-96"></div>
-      <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(38,42,86,0.16),transparent_38%),radial-gradient(circle_at_80%_80%,rgba(184,98,27,0.18),transparent_40%)]"></div>
+    <a class="auth-skip" href="#auth-form">Skip to form</a>
+    <main class="relative isolate flex min-h-screen items-center justify-center overflow-x-hidden px-4 pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6">
+      <div class="auth-backdrop" style={`background-image: url('${backdrop.src}')`} aria-hidden="true"></div>
       <slot />
-    </div>
+    </main>
   </body>
 </html>

@@ -1,9 +1,11 @@
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck } from 'lucide-react';
-import { useState } from 'react';
+import { Spinner } from '@/components/ui/spinner';
+import { AlertCircle, ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 
 interface LoginResponse {
@@ -36,6 +38,24 @@ export function LoginForm() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [emailResetEnabled, setEmailResetEnabled] = useState(false);
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
+
+  useEffect(() => {
+    fetch('/api/auth/options')
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as { emailVerificationEnabled?: boolean };
+        setEmailResetEnabled(data.emailVerificationEnabled === true);
+      })
+      .catch(() => {
+        setEmailResetEnabled(false);
+      });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +78,7 @@ export function LoginForm() {
         return;
       }
 
-      toast.success('Signed in successfully');
+      toast.success('Signed In');
       window.location.href = getRedirectUrl(data);
     } catch {
       const msg = 'Network error. Please check your connection.';
@@ -70,79 +90,104 @@ export function LoginForm() {
   };
 
   return (
-    <Card className="w-full border-border/70 bg-background/80 shadow-[0_25px_80px_-40px_rgba(38,42,86,0.58)] backdrop-blur-md">
-      <CardHeader className="space-y-2 pb-5 text-center">
-        <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-accent">
-          <ShieldCheck className="size-3.5" />
-          Secure Access
-        </div>
-        <CardTitle className="text-3xl font-bold tracking-tight text-foreground">Agora POS</CardTitle>
-        <CardDescription className="text-foreground/75">
-          Sign in to continue to your dashboard
+    <Card className="w-full border-0 bg-transparent py-0 shadow-none">
+      <CardHeader className="gap-3 pb-6 text-center">
+        <CardTitle>
+          <h1 className="auth-wordmark text-primary" translate="no">Agora</h1>
+        </CardTitle>
+        <CardDescription className="text-base font-medium tracking-wide text-foreground/75">
+          Shop - Reserve - Claim
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-foreground">
-              Email
-            </Label>
-            <div className="relative">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/50" />
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                className="h-11 border-input bg-background/85 pl-9 text-foreground placeholder:text-foreground/45 focus-visible:border-primary focus-visible:ring-primary/30"
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-foreground">
-              Password
-            </Label>
-            <div className="relative">
-              <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/50" />
-              <Input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-                className="h-11 border-input bg-background/85 pl-9 pr-11 text-foreground placeholder:text-foreground/45 focus-visible:border-primary focus-visible:ring-primary/30"
-              />
-              <button
-                type="button"
-                className="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-foreground/65 transition hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
-          </div>
-          {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
-          <Button
-            type="submit"
-            className="h-11 w-full bg-primary text-primary-foreground shadow-[0_14px_35px_-15px_rgba(38,42,86,0.9)] transition hover:bg-primary/90"
-            disabled={loading}
-          >
-            {loading ? (
-              'Signing in...'
-            ) : (
-              <span className="inline-flex items-center gap-2">
-                Sign in
-                <ArrowRight className="size-4" />
-              </span>
+        <form onSubmit={handleSubmit}>
+          <FieldGroup className="gap-5">
+            <Field className="gap-2">
+              <FieldLabel htmlFor="email" className="text-foreground">
+                Email
+              </FieldLabel>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/50" aria-hidden="true" />
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="name@outdoorequipped.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  spellCheck={false}
+                  className="h-11 border-input bg-background/85 pl-9 text-foreground placeholder:text-foreground/45 focus-visible:border-primary focus-visible:ring-primary/30"
+                />
+              </div>
+            </Field>
+            <Field className="gap-2">
+              <FieldLabel htmlFor="password" className="text-foreground">
+                Password
+              </FieldLabel>
+              <div className="relative">
+                <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/50" aria-hidden="true" />
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  className="h-11 border-input bg-background/85 pl-9 pr-11 text-foreground placeholder:text-foreground/45 focus-visible:border-primary focus-visible:ring-primary/30"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                </Button>
+              </div>
+              {emailResetEnabled && (
+                <div className="flex justify-end">
+                  <a href="/forgot-password" className="text-sm font-semibold text-primary hover:underline">
+                    Forgot password?
+                  </a>
+                </div>
+              )}
+            </Field>
+            {error && (
+              <Alert ref={errorRef} tabIndex={-1} variant="destructive" aria-live="polite" className="outline-none">
+                <AlertCircle />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
-          </Button>
-          <p className="text-center text-xs text-foreground/60">Protected by role-based account access.</p>
+            <Button
+              type="submit"
+              className="h-11 w-full"
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <Spinner data-icon="inline-start" />
+                  Signing In…
+                </>
+              ) : (
+                <>
+                  Sign In
+                  <ArrowRight data-icon="inline-end" aria-hidden="true" />
+                </>
+              )}
+            </Button>
+            <p className="text-center text-sm text-foreground/70">
+              New here?{' '}
+              <a href="/signup" className="font-semibold text-primary hover:underline">
+                Create an Account
+              </a>
+            </p>
+          </FieldGroup>
         </form>
       </CardContent>
     </Card>

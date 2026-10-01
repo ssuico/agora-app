@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-labelledby="agora-logo-title">
+  <title id="agora-logo-title">Agora</title>
+  <defs>
+    <clipPath id="agora-awning">
+      <path d="M16 14H48L56 30A6 6 0 0 1 44 30A6 6 0 0 1 32 30A6 6 0 0 1 20 30A6 6 0 0 1 8 30Z" />
+    </clipPath>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#de283b" />
+  <g clip-path="url(#agora-awning)">
+    <rect x="0" y="10" width="64" height="30" fill="#ffffff" />
+    <rect x="20" y="10" width="12" height="30" fill="#005461" />
+    <rect x="44" y="10" width="12" height="30" fill="#005461" />
+  </g>
+  <rect x="12" y="31" width="4" height="19" rx="1" fill="#ffffff" />
+  <rect x="48" y="31" width="4" height="19" rx="1" fill="#ffffff" />
+  <circle cx="24" cy="42.5" r="3.5" fill="#ffccc4" />
+  <circle cx="32" cy="42.5" r="3.5" fill="#25b1bf" />
+  <circle cx="40" cy="42.5" r="3.5" fill="#ffccc4" />
+  <rect x="8" y="46" width="48" height="6" rx="2" fill="#ffffff" />
+</svg>
