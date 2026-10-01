@@ -20,7 +20,7 @@ function solid(token: string) {
 export function Toaster() {
   return (
     <HotToaster
-      position="bottom-right"
+      position="top-center"
       toastOptions={{
         duration: 4000,
         style: neutralStyle,
