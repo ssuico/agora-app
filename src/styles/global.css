@@ -344,9 +344,16 @@
   inset: 0;
   z-index: -1;
   background-color: var(--text-100);
+  background-image: url("/auth-bg-960.webp");
   background-position: center 45%;
   background-size: cover;
   background-repeat: no-repeat;
+}
+
+@media (min-width: 1024px) {
+  .auth-backdrop {
+    background-image: url("/auth-bg-1920.webp");
+  }
 }
 
 .auth-backdrop::after {
