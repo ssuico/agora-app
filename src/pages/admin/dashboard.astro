@@ -20,6 +20,7 @@ interface User {
   _id: string;
   name: string;
   role: string;
+  roles?: string[];
 }
 interface Summary {
   totalSales: number;
@@ -103,8 +104,9 @@ if (stores.length > 0) {
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(toSafeNumber(n));
 
-const managerCount = users.filter((u) => u.role === 'store_manager').length;
-const customerCount = users.filter((u) => u.role === 'customer').length;
+const hasRole = (u: User, role: string) => u.role === role || (u.roles ?? []).includes(role);
+const managerCount = users.filter((u) => hasRole(u, 'store_manager')).length;
+const customerCount = users.filter((u) => hasRole(u, 'customer')).length;
 
 const overviewCards = [
   { label: 'Locations', value: locations.length.toString() },

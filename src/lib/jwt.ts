@@ -2,6 +2,7 @@ export interface TokenPayload {
   userId: string;
   name: string;
   role: string;
+  roles?: string[];
   storeIds?: string[];
   exp?: number;
 }

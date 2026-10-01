@@ -7,15 +7,17 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
-import { ChevronDown, Clock, LogOut, User } from 'lucide-react';
+import { Check, ChevronDown, Clock, LogOut, User } from 'lucide-react';
 
 interface TopbarProps {
   name: string;
   role: string;
+  roles?: string[];
   avatar?: string;
 }
 
@@ -69,7 +71,11 @@ function useEstClock() {
 
 const PROFILE_UPDATED_EVENT = 'profile-updated';
 
-export function Topbar({ name, role, avatar: initialAvatar }: TopbarProps) {
+const ROLE_ORDER = ['admin', 'store_manager', 'customer'];
+
+export function Topbar({ name, role, roles = [], avatar: initialAvatar }: TopbarProps) {
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
+  const switchableRoles = ROLE_ORDER.filter((r) => roles.includes(r));
   const [avatar, setAvatar] = useState(initialAvatar ?? '');
   const [avatarError, setAvatarError] = useState(false);
 
@@ -104,6 +110,28 @@ export function Topbar({ name, role, avatar: initialAvatar }: TopbarProps) {
 
   const { time, date } = useEstClock();
   const showAvatarImage = avatar?.trim() && !avatarError;
+
+  const handleSwitchView = async (target: string) => {
+    if (target === role || switchingTo) return;
+    setSwitchingTo(target);
+    try {
+      const res = await fetch('/api/auth/switch-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: target }),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Could not switch view');
+        setSwitchingTo(null);
+        return;
+      }
+      window.location.href = '/';
+    } catch {
+      toast.error('Could not switch view');
+      setSwitchingTo(null);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -170,6 +198,26 @@ export function Topbar({ name, role, avatar: initialAvatar }: TopbarProps) {
               </a>
             </DropdownMenuItem>
           </DropdownMenuGroup>
+          {switchableRoles.length > 1 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="text-xs text-muted-foreground">Switch view</DropdownMenuLabel>
+                {switchableRoles.map((r) => (
+                  <DropdownMenuItem
+                    key={r}
+                    onClick={() => handleSwitchView(r)}
+                    disabled={switchingTo !== null}
+                    aria-current={r === role ? 'true' : undefined}
+                    className="cursor-pointer"
+                  >
+                    {r === role ? <Check /> : <span className="size-4" aria-hidden="true" />}
+                    {ROLE_LABELS[r] ?? r}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            </>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
             <DropdownMenuItem onClick={handleLogout} variant="destructive" className="cursor-pointer">
