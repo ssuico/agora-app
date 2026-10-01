@@ -1,4 +1,16 @@
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -7,11 +19,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -19,13 +39,22 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
 import {
+  AlertCircle,
   CreditCard,
   Eye,
   ImageIcon,
   Link,
-  Loader2,
   Pencil,
   Plus,
   QrCode,
@@ -90,32 +119,42 @@ function QrPreview({ url }: { url: string }) {
   if (!url) return null;
 
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-border/60 bg-muted/30 p-4">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">QR Preview</p>
-      <div className="relative flex h-48 w-48 items-center justify-center rounded-lg border border-border bg-white overflow-hidden">
-        {status === 'loading' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-muted animate-pulse">
-            <QrCode className="h-10 w-10 text-muted-foreground/30" />
-          </div>
-        )}
-        {status === 'error' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-muted/60">
-            <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
-            <p className="text-xs text-muted-foreground">Unable to load image</p>
-          </div>
-        )}
-        <img
-          src={url}
-          alt="QR preview"
-          className={`h-full w-full object-contain transition-opacity ${status === 'loaded' ? 'opacity-100' : 'opacity-0'}`}
-          onLoad={() => setStatus('loaded')}
-          onError={() => setStatus('error')}
-        />
-      </div>
+    <Card className="items-center gap-3 py-4">
+      <CardHeader className="px-4">
+        <CardTitle>QR Preview</CardTitle>
+      </CardHeader>
+      <CardContent className="px-4">
+        <div className="relative flex size-48 items-center justify-center overflow-hidden rounded-lg border border-border bg-white">
+          {status === 'loading' && (
+            <Skeleton className="absolute inset-0 flex items-center justify-center rounded-none">
+              <QrCode className="size-10 text-muted-foreground/30" />
+            </Skeleton>
+          )}
+          {status === 'error' && (
+            <Empty className="absolute inset-0 justify-center gap-0 rounded-none bg-muted/60 p-0 md:p-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <ImageIcon />
+                </EmptyMedia>
+                <EmptyDescription>Unable to load image</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
+          <img
+            src={url}
+            alt="QR preview"
+            className={`size-full object-contain transition-opacity ${status === 'loaded' ? 'opacity-100' : 'opacity-0'}`}
+            onLoad={() => setStatus('loaded')}
+            onError={() => setStatus('error')}
+          />
+        </div>
+      </CardContent>
       {status === 'loaded' && (
-        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Image loaded successfully</p>
+        <CardFooter className="px-4">
+          <Badge variant="success">Image loaded successfully</Badge>
+        </CardFooter>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -286,7 +325,7 @@ export function PaymentOptionManager({ storeId }: PaymentOptionManagerProps) {
   const paginated = options.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -295,103 +334,108 @@ export function PaymentOptionManager({ storeId }: PaymentOptionManagerProps) {
             Manage QR codes and payment methods for your store.
           </p>
         </div>
-        <Button onClick={openCreate} className="gap-2">
-          <Plus className="h-4 w-4" />
+        <Button onClick={openCreate}>
+          <Plus data-icon="inline-start" />
           Add Payment Option
         </Button>
       </div>
 
       {/* Table */}
       <div className="rounded-xl border border-border/60 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border/60 bg-muted/40">
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">QR Code</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Label / Type</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Recipient</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Account Details</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>QR Code</TableHead>
+              <TableHead>Label / Type</TableHead>
+              <TableHead>Recipient</TableHead>
+              <TableHead>Account Details</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading ? (
               Array.from({ length: 4 }).map((_, i) => (
-                <tr key={i} className="border-b border-border/40">
-                  <td className="px-4 py-3"><Skeleton className="h-16 w-16 rounded-lg" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-5 w-14 rounded-full" /></td>
-                  <td className="px-4 py-3 text-right"><Skeleton className="ml-auto h-8 w-20 rounded-lg" /></td>
-                </tr>
+                <TableRow key={i}>
+                  <TableCell><Skeleton className="size-16 rounded-lg" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-14 rounded-full" /></TableCell>
+                  <TableCell className="text-right"><Skeleton className="ml-auto h-8 w-20 rounded-lg" /></TableCell>
+                </TableRow>
               ))
             ) : paginated.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
-                  <div className="flex flex-col items-center gap-2">
-                    <QrCode className="h-8 w-8 text-muted-foreground/40" />
-                    <p>No payment options yet.</p>
-                    <p className="text-xs">Click "Add Payment Option" to get started.</p>
-                  </div>
-                </td>
-              </tr>
+              <TableRow>
+                <TableCell colSpan={6} className="py-8">
+                  <Empty className="md:p-6">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <QrCode />
+                      </EmptyMedia>
+                      <EmptyTitle>No payment options yet.</EmptyTitle>
+                      <EmptyDescription>Click "Add Payment Option" to get started.</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                </TableCell>
+              </TableRow>
             ) : (
               paginated.map((option) => (
-                <tr key={option._id} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3">
-                    <button
+                <TableRow key={option._id}>
+                  <TableCell>
+                    <Button
+                      variant="outline"
+                      size="icon"
                       onClick={() => openPreview(option)}
-                      className="group relative h-16 w-16 rounded-lg overflow-hidden border border-border bg-white hover:ring-2 hover:ring-primary/40 transition-all"
+                      className="group relative size-16 overflow-hidden rounded-lg bg-white p-0 hover:bg-white hover:ring-2 hover:ring-primary/40"
                       title="Click to view full QR code"
                     >
                       <QrImageCell url={option.qrImageUrl} />
                       <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/10 transition-colors">
-                        <Eye className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                        <Eye className="size-4 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
                       </div>
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
+                    </Button>
+                  </TableCell>
+                  <TableCell>
                     <div className="font-medium">{option.label || '—'}</div>
                     <div className="flex items-center gap-1 mt-0.5">
                       {option.type === 'e-wallet'
-                        ? <Wallet className="h-3 w-3 text-muted-foreground" />
-                        : <CreditCard className="h-3 w-3 text-muted-foreground" />}
+                        ? <Wallet className="size-3 text-muted-foreground" />
+                        : <CreditCard className="size-3 text-muted-foreground" />}
                       <span className="text-xs text-muted-foreground capitalize">{option.type}</span>
                     </div>
-                  </td>
-                  <td className="px-4 py-3 font-medium">{option.recipientName}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{option.accountDetails || '—'}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant={option.isActive ? 'default' : 'secondary'}>
+                  </TableCell>
+                  <TableCell className="font-medium">{option.recipientName}</TableCell>
+                  <TableCell className="text-muted-foreground">{option.accountDetails || '—'}</TableCell>
+                  <TableCell>
+                    <Badge variant={option.isActive ? 'success' : 'secondary'}>
                       {option.isActive ? 'Active' : 'Inactive'}
                     </Badge>
-                  </td>
-                  <td className="px-4 py-3">
+                  </TableCell>
+                  <TableCell>
                     <div className="flex items-center justify-end gap-2">
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon-sm"
                         onClick={() => openEdit(option)}
-                        className="h-8 w-8 p-0"
                       >
-                        <Pencil className="h-3.5 w-3.5" />
+                        <Pencil />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon-sm"
                         onClick={() => openDelete(option)}
-                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                        className="text-destructive hover:text-destructive"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 />
                       </Button>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {!loading && options.length > ITEMS_PER_PAGE && (
@@ -414,10 +458,11 @@ export function PaymentOptionManager({ storeId }: PaymentOptionManagerProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit}>
+            <FieldGroup className="gap-4">
             {/* Type */}
-            <div className="space-y-1.5">
-              <Label htmlFor="type">Type</Label>
+            <Field className="gap-2">
+              <FieldLabel htmlFor="type">Type</FieldLabel>
               <Select
                 value={form.type}
                 onValueChange={(v) => updateField('type', v as PaymentOptionType)}
@@ -426,36 +471,38 @@ export function PaymentOptionManager({ storeId }: PaymentOptionManagerProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="e-wallet">
-                    <span className="flex items-center gap-2">
-                      <Wallet className="h-4 w-4" /> E-Wallet
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="bank">
-                    <span className="flex items-center gap-2">
-                      <CreditCard className="h-4 w-4" /> Bank
-                    </span>
-                  </SelectItem>
+                  <SelectGroup>
+                    <SelectItem value="e-wallet">
+                      <span className="flex items-center gap-2">
+                        <Wallet className="size-4" /> E-Wallet
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="bank">
+                      <span className="flex items-center gap-2">
+                        <CreditCard className="size-4" /> Bank
+                      </span>
+                    </SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
 
             {/* Label */}
-            <div className="space-y-1.5">
-              <Label htmlFor="label">
+            <Field className="gap-2">
+              <FieldLabel htmlFor="label">
                 Label <span className="text-muted-foreground text-xs">(optional — e.g. GCash, BPI)</span>
-              </Label>
+              </FieldLabel>
               <Input
                 id="label"
                 placeholder="e.g. GCash, BPI Savings"
                 value={form.label}
                 onChange={(e) => updateField('label', e.target.value)}
               />
-            </div>
+            </Field>
 
             {/* Recipient Name */}
-            <div className="space-y-1.5">
-              <Label htmlFor="recipientName">Recipient Name <span className="text-destructive">*</span></Label>
+            <Field className="gap-2">
+              <FieldLabel htmlFor="recipientName">Recipient Name <span className="text-destructive">*</span></FieldLabel>
               <Input
                 id="recipientName"
                 placeholder="e.g. Juan Dela Cruz"
@@ -463,90 +510,92 @@ export function PaymentOptionManager({ storeId }: PaymentOptionManagerProps) {
                 onChange={(e) => updateField('recipientName', e.target.value)}
                 required
               />
-            </div>
+            </Field>
 
             {/* Account Details */}
-            <div className="space-y-1.5">
-              <Label htmlFor="accountDetails">
+            <Field className="gap-2">
+              <FieldLabel htmlFor="accountDetails">
                 Account Details <span className="text-muted-foreground text-xs">(optional — masked ok)</span>
-              </Label>
+              </FieldLabel>
               <Input
                 id="accountDetails"
                 placeholder="e.g. 09XX-XXX-9876"
                 value={form.accountDetails}
                 onChange={(e) => updateField('accountDetails', e.target.value)}
               />
-            </div>
+            </Field>
 
             {/* QR Image */}
-            <div className="space-y-2">
+            <Field className="gap-2">
               <div className="flex items-center justify-between">
-                <Label>
+                <FieldLabel>
                   QR Code Image <span className="text-destructive">*</span>
-                </Label>
-                <button
+                </FieldLabel>
+                <Button
                   type="button"
+                  variant="link"
+                  size="xs"
                   onClick={() => {
                     setUseUrlInput((v) => !v);
                     updateField('qrImageUrl', '');
                     setFileName('');
                     if (fileInputRef.current) fileInputRef.current.value = '';
                   }}
-                  className="flex items-center gap-1 text-xs text-primary hover:underline"
                 >
                   {useUrlInput ? (
-                    <><Upload className="h-3 w-3" /> Upload file instead</>
+                    <><Upload data-icon="inline-start" /> Upload file instead</>
                   ) : (
-                    <><Link className="h-3 w-3" /> Paste URL instead</>
+                    <><Link data-icon="inline-start" /> Paste URL instead</>
                   )}
-                </button>
+                </Button>
               </div>
 
               {useUrlInput ? (
-                <div className="space-y-1">
+                <div className="flex flex-col gap-1">
                   <Input
                     id="qrImageUrl"
                     placeholder="Paste direct image URL (PNG or JPG)..."
                     value={form.qrImageUrl}
                     onChange={(e) => { updateField('qrImageUrl', e.target.value); setFileName(''); }}
                   />
-                  <p className="text-xs text-muted-foreground">The URL must point directly to an image file.</p>
+                  <FieldDescription>The URL must point directly to an image file.</FieldDescription>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="flex flex-col gap-2">
                   {/* Drop zone / file picker */}
                   <label
                     htmlFor="qrFileInput"
                     className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 transition-colors ${
                       fileName
-                        ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20'
-                        : 'border-border hover:border-primary/50 hover:bg-muted/40'
+                        ? 'border-success bg-success-soft'
+                        : 'border-input hover:border-ring hover:bg-muted'
                     }`}
                   >
                     {encodingFile ? (
-                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <Spinner className="size-6 text-muted-foreground" />
                     ) : fileName ? (
                       <div className="flex items-center gap-2">
-                        <QrCode className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        <span className="max-w-[180px] truncate text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                        <QrCode className="size-5 text-success shrink-0" />
+                        <span className="max-w-45 truncate text-sm font-medium text-success-ink">
                           {fileName}
                         </span>
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="icon-xs"
                           onClick={(e) => {
                             e.preventDefault();
                             updateField('qrImageUrl', '');
                             setFileName('');
                             if (fileInputRef.current) fileInputRef.current.value = '';
                           }}
-                          className="ml-1 rounded p-0.5 hover:bg-emerald-100 dark:hover:bg-emerald-800"
                         >
-                          <X className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />
-                        </button>
+                          <X />
+                        </Button>
                       </div>
                     ) : (
                       <>
-                        <Upload className="h-6 w-6 text-muted-foreground/60" />
+                        <Upload className="size-6 text-muted-foreground/60" />
                         <div className="text-center">
                           <p className="text-sm font-medium text-foreground">Click to upload QR code</p>
                           <p className="text-xs text-muted-foreground">PNG or JPG · max 2 MB</p>
@@ -562,63 +611,75 @@ export function PaymentOptionManager({ storeId }: PaymentOptionManagerProps) {
                     className="sr-only"
                     onChange={handleFileChange}
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <FieldDescription>
                     The image is encoded and stored directly — no external hosting needed.
-                  </p>
+                  </FieldDescription>
                 </div>
               )}
 
               {form.qrImageUrl && <QrPreview url={form.qrImageUrl} />}
-            </div>
+            </Field>
 
             {/* Active toggle */}
-            <div className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3">
-              <div>
-                <p className="text-sm font-medium">Active</p>
-                <p className="text-xs text-muted-foreground">Show this payment option to customers</p>
-              </div>
+            <Field orientation="horizontal" className="justify-between rounded-lg border border-border/60 px-4 py-3">
+              <FieldContent>
+                <FieldLabel htmlFor="isActive">Active</FieldLabel>
+                <FieldDescription>Show this payment option to customers</FieldDescription>
+              </FieldContent>
               <Switch
+                id="isActive"
                 checked={form.isActive}
                 onCheckedChange={(v) => updateField('isActive', v)}
               />
-            </div>
+            </Field>
 
-            {formError && <p className="text-sm text-destructive">{formError}</p>}
+            {formError && (
+              <Alert variant="destructive">
+                <AlertCircle />
+                <AlertDescription>{formError}</AlertDescription>
+              </Alert>
+            )}
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancel
               </Button>
               <Button type="submit" disabled={submitting}>
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {submitting && <Spinner data-icon="inline-start" />}
                 {editingOption ? 'Save Changes' : 'Add Payment Option'}
               </Button>
             </DialogFooter>
+            </FieldGroup>
           </form>
         </DialogContent>
       </Dialog>
 
       {/* Delete Confirm Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete Payment Option</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Payment Option</AlertDialogTitle>
+            <AlertDialogDescription>
               Are you sure you want to delete{' '}
               <strong>{deletingOption?.label || deletingOption?.recipientName}</strong>? This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                handleDelete();
+              }}
+            >
+              {deleting && <Spinner data-icon="inline-start" />}
               Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* QR Preview Dialog */}
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
@@ -626,8 +687,8 @@ export function PaymentOptionManager({ storeId }: PaymentOptionManagerProps) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {previewOption?.type === 'e-wallet'
-                ? <Wallet className="h-4 w-4" />
-                : <CreditCard className="h-4 w-4" />}
+                ? <Wallet className="size-4" />
+                : <CreditCard className="size-4" />}
               {previewOption?.label || previewOption?.type}
             </DialogTitle>
             <DialogDescription>
@@ -653,8 +714,8 @@ function QrImageCell({ url }: { url: string }) {
   const [failed, setFailed] = useState(false);
   if (failed || !url) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-muted">
-        <QrCode className="h-5 w-5 text-muted-foreground/40" />
+      <div className="flex size-full items-center justify-center bg-muted">
+        <QrCode className="size-5 text-muted-foreground/40" />
       </div>
     );
   }
@@ -662,7 +723,7 @@ function QrImageCell({ url }: { url: string }) {
     <img
       src={url}
       alt="QR"
-      className="h-full w-full object-contain"
+      className="size-full object-contain"
       onError={() => setFailed(true)}
     />
   );
@@ -672,12 +733,14 @@ function FullQrImage({ url, label }: { url: string; label: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
-      <div className="flex h-64 w-64 items-center justify-center rounded-xl border border-dashed border-border bg-muted">
-        <div className="flex flex-col items-center gap-2 text-muted-foreground">
-          <ImageIcon className="h-10 w-10 text-muted-foreground/40" />
-          <p className="text-xs">Image unavailable</p>
-        </div>
-      </div>
+      <Empty className="size-64 flex-none justify-center border p-0 md:p-0">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <ImageIcon />
+          </EmptyMedia>
+          <EmptyDescription>Image unavailable</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
   return (

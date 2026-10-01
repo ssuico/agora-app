@@ -9,17 +9,33 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Clock, Coins, Download, FileSpreadsheet, History, ImageIcon, Loader2, NotepadText, Package, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
+import { Textarea } from '@/components/ui/textarea';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AlertCircle, AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Clock, Coins, Download, FileSpreadsheet, History, ImageIcon, NotepadText, Package, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -84,12 +100,12 @@ const COL_COUNT = 11;
 
 function ClaimBadge({ status }: { status: ClaimStatus }) {
   return status === 'claimed' ? (
-    <Badge className="gap-1 border-green-200 bg-green-100 text-green-700 text-xs font-medium">
-      <Package className="h-3 w-3" />Claimed
+    <Badge variant="operational">
+      <Package />Claimed
     </Badge>
   ) : (
-    <Badge className="gap-1 border-amber-200 bg-amber-50 text-amber-700 text-xs font-medium">
-      <Clock className="h-3 w-3" />Unclaimed
+    <Badge variant="warning">
+      <Clock />Unclaimed
     </Badge>
   );
 }
@@ -97,8 +113,8 @@ function ClaimBadge({ status }: { status: ClaimStatus }) {
 function PaymentBadge({ status, totalAmount, amountPaid }: { status: PaymentStatus; totalAmount?: number; amountPaid?: number }) {
   if (status === 'paid') {
     return (
-      <Badge className="gap-1 border-emerald-200 bg-emerald-100 text-emerald-700 text-xs font-medium">
-        <CheckCircle2 className="h-3 w-3" />Paid
+      <Badge variant="success">
+        <CheckCircle2 />Paid
       </Badge>
     );
   }
@@ -107,23 +123,58 @@ function PaymentBadge({ status, totalAmount, amountPaid }: { status: PaymentStat
       ? `${fmt(amountPaid)} / ${fmt(totalAmount)}`
       : 'Partial';
     return (
-      <Badge className="gap-1 border-yellow-200 bg-yellow-50 text-yellow-700 text-xs font-medium">
-        <Coins className="h-3 w-3" />{label}
+      <Badge variant="info">
+        <Coins />{label}
       </Badge>
     );
   }
   return (
-    <Badge className="gap-1 border-red-200 bg-red-100 text-red-700 text-xs font-medium">
-      <AlertTriangle className="h-3 w-3" />Unpaid
+    <Badge variant="error">
+      <AlertTriangle />Unpaid
     </Badge>
+  );
+}
+
+function StockLabel({ quantity }: { quantity: number }) {
+  if (quantity <= 0) {
+    return (
+      <span className="flex items-center gap-1 text-xs font-medium text-error">
+        <PackageX className="size-3" />Out of stock
+      </span>
+    );
+  }
+  if (quantity < 10) {
+    return (
+      <span className="flex items-center gap-1 text-xs font-medium text-warning">
+        <AlertTriangle className="size-3" />Low · {quantity} left
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-xs font-medium text-operational">
+      <PackageCheck className="size-3" />In stock · {quantity}
+    </span>
+  );
+}
+
+/** Selected state is carried by fill, ring, weight, and a check mark, not color alone. */
+function SegmentTrigger({ value, children }: { value: string; children: React.ReactNode }) {
+  return (
+    <TabsTrigger
+      value={value}
+      className="group/seg gap-1 data-[state=active]:bg-primary-subtle data-[state=active]:ring-1 data-[state=active]:ring-primary/60"
+    >
+      <Check aria-hidden="true" className="hidden size-3.5 text-primary group-data-[state=active]/seg:block" />
+      {children}
+    </TabsTrigger>
   );
 }
 
 function OrderBadge({ status }: { status: OrderStatus }) {
   return status === 'cancelled' ? (
-    <Badge variant="destructive" className="text-xs border-0">Cancelled</Badge>
+    <Badge variant="error">Cancelled</Badge>
   ) : (
-    <Badge variant="secondary" className="text-xs border-0">Active</Badge>
+    <Badge variant="secondary">Active</Badge>
   );
 }
 
@@ -132,7 +183,7 @@ function ProductImageThumb({ src, className }: { src?: string; className?: strin
   if (!src || failed) {
     return (
       <div className={`flex items-center justify-center bg-muted rounded shrink-0 ${className}`}>
-        <ImageIcon className="h-4 w-4 text-muted-foreground/40" />
+        <ImageIcon className="size-4 text-muted-foreground/40" />
       </div>
     );
   }
@@ -213,33 +264,35 @@ function ReportHistory({ storeId }: { storeId: string }) {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
-        <table className="data-table w-full">
-          <thead>
-            <tr>
-              <th>Date/Time Generated</th>
-              <th>Generated By</th>
-              <th>Report Date</th>
-              <th className="text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: 4 }).map((_, i) => (
-              <tr key={i}>
-                <td className="px-4 py-3"><Skeleton className="h-4 w-40" /></td>
-                <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
-                <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <Skeleton className="h-7 w-24 rounded-md" />
-                    <Skeleton className="h-7 w-16 rounded-md" />
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Card className="gap-0 overflow-hidden py-0">
+        <CardContent className="p-0">
+          <Table className="w-full">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date/Time Generated</TableHead>
+                <TableHead>Generated By</TableHead>
+                <TableHead>Report Date</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell className="px-4 py-3"><Skeleton className="h-4 w-40" /></TableCell>
+                  <TableCell className="px-4 py-3"><Skeleton className="h-4 w-28" /></TableCell>
+                  <TableCell className="px-4 py-3"><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Skeleton className="h-7 w-24 rounded-md" />
+                      <Skeleton className="h-7 w-16 rounded-md" />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -247,7 +300,8 @@ function ReportHistory({ storeId }: { storeId: string }) {
 
   return (
     <>
-      <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col">
+      <Card className="gap-0 overflow-hidden py-0">
+        <CardContent className="p-0">
         <div className="data-table-scroll-wrapper flex-1 min-h-0">
           <table className="data-table">
             <thead>
@@ -262,7 +316,12 @@ function ReportHistory({ storeId }: { storeId: string }) {
               {reports.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                    No reports generated yet
+                    <Empty className="border-0 p-4 md:p-4">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon"><History /></EmptyMedia>
+                        <EmptyTitle>No reports generated yet</EmptyTitle>
+                      </EmptyHeader>
+                    </Empty>
                   </td>
                 </tr>
               ) : (
@@ -282,7 +341,7 @@ function ReportHistory({ storeId }: { storeId: string }) {
                         size="sm"
                         onClick={() => handleDownload(r._id, r.fileName)}
                       >
-                        <Download className="mr-1 h-3.5 w-3.5" />
+                        <Download data-icon="inline-start" />
                         Download
                       </Button>
                       <Button
@@ -291,7 +350,7 @@ function ReportHistory({ storeId }: { storeId: string }) {
                         onClick={() => setDeleteTarget(r)}
                         className="text-destructive hover:text-destructive"
                       >
-                        <Trash2 className="mr-1 h-3.5 w-3.5" />
+                        <Trash2 data-icon="inline-start" />
                         Delete
                       </Button>
                     </div>
@@ -302,38 +361,45 @@ function ReportHistory({ storeId }: { storeId: string }) {
             </tbody>
           </table>
         </div>
+        </CardContent>
         {reports.length > 0 && (
-          <TablePagination
-            currentPage={page}
-            totalItems={reports.length}
-            onPageChange={setPage}
-            label="reports"
-          />
+          <CardFooter className="block p-0">
+            <TablePagination
+              currentPage={page}
+              totalItems={reports.length}
+              onPageChange={setPage}
+              label="reports"
+            />
+          </CardFooter>
         )}
-      </div>
+      </Card>
 
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Report</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Report</AlertDialogTitle>
+            <AlertDialogDescription>
               Are you sure you want to delete this report? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
           {deleteTarget && (
-            <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+            <div className="flex flex-col gap-1 rounded-md border px-4 py-3 text-sm">
               <p><span className="text-muted-foreground">Transaction Date:</span> <span className="font-mono">{deleteTarget.transactionDate}</span></p>
               <p><span className="text-muted-foreground">Generated By:</span> {deleteTarget.generatedBy?.name ?? 'Unknown'}</p>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleting}
+              onClick={(e) => { e.preventDefault(); handleDelete(); }}
+            >
               {deleting ? 'Deleting...' : 'Yes, Delete Report'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -888,50 +954,52 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="flex flex-col gap-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Transactions</h1>
           <p className="text-sm text-muted-foreground">Reservations and sales history</p>
         </div>
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <table className="data-table w-full">
-            <thead>
-              <tr>
-                <th></th>
-                <th>Customer</th>
-                <th>Amount</th>
-                <th>Claim</th>
-                <th>Payment</th>
-                <th>Date</th>
-                <th className="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: 6 }).map((_, i) => (
-                <tr key={i}>
-                  <td className="px-4 py-3"><Skeleton className="h-4 w-4" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-4 w-36" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-5 w-20 rounded-full" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-5 w-16 rounded-full" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Skeleton className="h-7 w-7 rounded-md" />
-                      <Skeleton className="h-7 w-7 rounded-md" />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card className="gap-0 overflow-hidden py-0">
+          <CardContent className="p-0">
+            <Table className="w-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead></TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Claim</TableHead>
+                  <TableHead>Payment</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="px-4 py-3"><Skeleton className="size-4" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-4 w-36" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-4 w-20" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-4 w-24" /></TableCell>
+                    <TableCell className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Skeleton className="size-7 rounded-md" />
+                        <Skeleton className="size-7 rounded-md" />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Transactions</h1>
         <p className="text-sm text-muted-foreground">Manage reservations, claiming, and payment statuses</p>
@@ -940,16 +1008,16 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       <Tabs defaultValue="transactions">
         <TabsList>
           <TabsTrigger value="transactions">
-            <FileSpreadsheet className="h-4 w-4" />
+            <FileSpreadsheet />
             Transactions
           </TabsTrigger>
           <TabsTrigger value="report-history">
-            <History className="h-4 w-4" />
+            <History />
             Report History
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="transactions" className="space-y-4">
+        <TabsContent value="transactions" className="flex flex-col gap-4">
           {/* Filters + Generate button */}
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
@@ -957,9 +1025,11 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               <Select value={filterClaim} onValueChange={setFilterClaim}>
                 <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="unclaimed">Unclaimed</SelectItem>
-                  <SelectItem value="claimed">Claimed</SelectItem>
+                  <SelectGroup>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="unclaimed">Unclaimed</SelectItem>
+                    <SelectItem value="claimed">Claimed</SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
@@ -968,10 +1038,12 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               <Select value={filterPayment} onValueChange={setFilterPayment}>
                 <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="unpaid">Unpaid</SelectItem>
-                  <SelectItem value="partial">Partial</SelectItem>
-                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectGroup>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="unpaid">Unpaid</SelectItem>
+                    <SelectItem value="partial">Partial</SelectItem>
+                    <SelectItem value="paid">Paid</SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
@@ -980,9 +1052,11 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               <Select value={filterOrder} onValueChange={setFilterOrder}>
                 <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectGroup>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
@@ -1000,10 +1074,12 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               <Select value={filterProductId || 'all'} onValueChange={(v) => setFilterProductId(v === 'all' ? '' : v)}>
                 <SelectTrigger className="w-44"><SelectValue placeholder="All products" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All products</SelectItem>
-                  {filterProducts.map((p) => (
-                    <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>
-                  ))}
+                  <SelectGroup>
+                    <SelectItem value="all">All products</SelectItem>
+                    {filterProducts.map((p) => (
+                      <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
@@ -1047,7 +1123,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 size="sm"
                 onClick={() => setNewTxOpen(true)}
               >
-                <Plus className="mr-1 h-3.5 w-3.5" />
+                <Plus data-icon="inline-start" />
                 New Transaction
               </Button>
               <Button
@@ -1057,9 +1133,9 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 disabled={generating}
               >
                 {generating ? (
-                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  <Spinner data-icon="inline-start" />
                 ) : (
-                  <FileSpreadsheet className="mr-1 h-3.5 w-3.5" />
+                  <FileSpreadsheet data-icon="inline-start" />
                 )}
                 {generating ? 'Generating...' : 'Generate Report'}
               </Button>
@@ -1075,14 +1151,14 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 return (
                   <>
                     <span className="text-xs text-muted-foreground">
-                      Paid: <span className="font-medium text-green-600">{fmt(totalPaid)}</span>
+                      Paid: <span className="font-medium text-success">{fmt(totalPaid)}</span>
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      Unpaid: <span className="font-medium text-amber-600">{fmt(totalUnpaid)}</span>
+                      Unpaid: <span className="font-medium text-warning">{fmt(totalUnpaid)}</span>
                     </span>
                     {partialTxs.length > 0 && (
                       <span className="text-xs text-muted-foreground">
-                        Partial: <span className="font-medium text-blue-600">{fmt(partialPaid)}</span> paid, <span className="font-medium text-slate-600">{fmt(partialRemaining)}</span> remaining
+                        Partial: <span className="font-medium text-info">{fmt(partialPaid)}</span> paid, <span className="font-medium text-foreground">{fmt(partialRemaining)}</span> remaining
                       </span>
                     )}
                     <span className="text-xs text-muted-foreground">
@@ -1095,7 +1171,8 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
           </div>
 
           {/* Table */}
-          <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col">
+          <Card className="gap-0 overflow-hidden py-0">
+            <CardContent className="p-0">
             <div className="data-table-scroll-wrapper flex-1 min-h-0">
               <table className="data-table transactions-table">
                 <thead>
@@ -1117,7 +1194,14 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 <tbody>
                   {transactions.length === 0 ? (
                     <tr>
-                      <td colSpan={COL_COUNT + 1} className="px-4 py-8 text-center text-muted-foreground">No transactions found</td>
+                      <td colSpan={COL_COUNT + 1} className="px-4 py-8 text-center text-muted-foreground">
+                        <Empty className="border-0 p-4 md:p-4">
+                          <EmptyHeader>
+                            <EmptyMedia variant="icon"><FileSpreadsheet /></EmptyMedia>
+                            <EmptyTitle>No transactions found</EmptyTitle>
+                          </EmptyHeader>
+                        </Empty>
+                      </td>
                     </tr>
                   ) : (
                     transactions
@@ -1154,18 +1238,21 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 </tbody>
               </table>
             </div>
+            </CardContent>
             {transactions.length > 0 && (
-              <TablePagination
-                currentPage={page}
-                totalItems={transactions.length}
-                onPageChange={setPage}
-                label="transactions"
-              />
+              <CardFooter className="block p-0">
+                <TablePagination
+                  currentPage={page}
+                  totalItems={transactions.length}
+                  onPageChange={setPage}
+                  label="transactions"
+                />
+              </CardFooter>
             )}
-          </div>
+          </Card>
         </TabsContent>
 
-        <TabsContent value="report-history" className="space-y-4">
+        <TabsContent value="report-history" className="flex flex-col gap-4">
           <ReportHistory key={reportHistoryKey} storeId={storeId} />
         </TabsContent>
       </Tabs>
@@ -1181,11 +1268,11 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
           </DialogHeader>
 
           <div className="flex flex-col gap-4 overflow-hidden flex-1 min-h-0">
-            <div className="space-y-2 flex flex-col flex-1 min-h-0">
+            <div className="flex flex-col gap-2 flex-1 min-h-0">
               <div className="flex items-center justify-between gap-3 shrink-0">
                 <Label className="text-sm font-medium">Products</Label>
                 <div className="relative w-52">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
                   <Input
                     placeholder="Search products..."
                     value={newTxSearch}
@@ -1198,22 +1285,32 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 {newTxLoading ? (
                   <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 p-1">
                     {Array.from({ length: 6 }).map((_, i) => (
-                      <div key={i} className="rounded-lg border bg-card p-2 space-y-2">
-                        <Skeleton className="aspect-square w-full rounded-md" />
-                        <Skeleton className="h-3.5 w-3/4" />
-                        <Skeleton className="h-3 w-1/2" />
-                      </div>
+                      <Card key={i} className="gap-2 p-2">
+                        <CardContent className="flex flex-col gap-2 p-0">
+                          <Skeleton className="aspect-square w-full rounded-md" />
+                          <Skeleton className="h-3.5 w-3/4" />
+                          <Skeleton className="h-3 w-1/2" />
+                        </CardContent>
+                      </Card>
                     ))}
                   </div>
                 ) : newTxError ? (
                   <div className="flex flex-col items-center justify-center gap-3 py-12">
-                    <p className="text-sm text-destructive">{newTxError}</p>
-                    <Button variant="outline" size="sm" onClick={() => setNewTxLoadKey((k) => k + 1)} className="gap-1.5">
+                    <Alert variant="destructive" className="w-auto max-w-sm">
+                      <AlertCircle />
+                      <AlertDescription>{newTxError}</AlertDescription>
+                    </Alert>
+                    <Button variant="outline" size="sm" onClick={() => setNewTxLoadKey((k) => k + 1)}>
                       Retry
                     </Button>
                   </div>
                 ) : newTxProducts.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4 text-center">No products in this store.</p>
+                  <Empty className="border-0 p-4 md:p-4">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon"><Package /></EmptyMedia>
+                      <EmptyTitle>No products in this store.</EmptyTitle>
+                    </EmptyHeader>
+                  </Empty>
                 ) : (
                   <>{(() => {
                     const filtered = [...newTxProducts]
@@ -1229,9 +1326,12 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                       });
                     if (filtered.length === 0) {
                       return (
-                        <p className="text-sm text-muted-foreground py-4 text-center">
-                          No products match &ldquo;{newTxSearch}&rdquo;.
-                        </p>
+                        <Empty className="border-0 p-4 md:p-4">
+                          <EmptyHeader>
+                            <EmptyMedia variant="icon"><Search /></EmptyMedia>
+                            <EmptyTitle>No products match &ldquo;{newTxSearch}&rdquo;.</EmptyTitle>
+                          </EmptyHeader>
+                        </Empty>
                       );
                     }
                     return (
@@ -1239,29 +1339,31 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                         {filtered.map((p) => {
                           const qty = newTxQuantities[p._id] ?? 0;
                           return (
-                            <Card key={p._id} className="p-2 flex flex-col gap-1.5">
+                            <Card key={p._id} className={`p-2 flex flex-col gap-1.5 ${qty > 0 ? 'border-primary/60 bg-primary-subtle/30' : ''}`}>
                               <CardContent className="p-0 flex gap-2">
-                                <div className="flex-1 min-w-0 space-y-1">
-                                  <p className="text-xs font-medium leading-tight line-clamp-2">{p.name}</p>
-                                  <p className="text-xs text-muted-foreground">{fmt(p.sellingPrice)}</p>
-                                  <p className="text-xs text-muted-foreground">Stock: {p.stockQuantity}</p>
+                                <div className="flex flex-1 min-w-0 flex-col gap-1">
+                                  <p className="text-xs font-semibold leading-tight line-clamp-2">{p.name}</p>
+                                  <p className="text-xs font-medium text-foreground">{fmt(p.sellingPrice)}</p>
+                                  <StockLabel quantity={p.stockQuantity} />
                                   <div className="flex items-center gap-1">
                                     <Button
                                       type="button"
                                       variant="outline"
                                       size="icon"
-                                      className="h-7 w-7 shrink-0"
+                                      className="size-7 shrink-0"
+                                      aria-label={`Remove one ${p.name}`}
                                       onClick={() => setNewTxQty(p._id, -1)}
                                       disabled={qty <= 0}
                                     >
                                       −
                                     </Button>
-                                    <span className="text-xs font-medium min-w-6 text-center">{qty}</span>
+                                    <span className="text-xs font-semibold text-foreground min-w-6 text-center">{qty}</span>
                                     <Button
                                       type="button"
                                       variant="outline"
                                       size="icon"
-                                      className="h-7 w-7 shrink-0"
+                                      className="size-7 shrink-0 border-primary/40 text-primary hover:bg-primary-subtle/60 hover:text-primary"
+                                      aria-label={`Add one ${p.name}`}
                                       onClick={() => setNewTxQty(p._id, 1)}
                                       disabled={qty >= p.stockQuantity}
                                     >
@@ -1271,7 +1373,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                                 </div>
                                 <ProductImageThumb
                                   src={p.images?.[0]}
-                                  className="h-16 w-16 rounded border border-border shrink-0"
+                                  className="size-16 rounded border border-border shrink-0"
                                 />
                               </CardContent>
                             </Card>
@@ -1288,27 +1390,35 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                   0
                 );
                 if (total <= 0) return null;
+                const itemCount = Object.values(newTxQuantities).reduce((a, b) => a + b, 0);
                 return (
-                  <p className="text-sm font-semibold text-right pt-1">
-                    Total: {fmt(total)}
-                  </p>
+                  <div className="flex shrink-0 items-center justify-between rounded-md border bg-muted px-3 py-2">
+                    <span className="text-sm text-muted-foreground">
+                      {itemCount} item{itemCount !== 1 ? 's' : ''} selected
+                    </span>
+                    <span className="text-base font-bold text-foreground">
+                      Total: {fmt(total)}
+                    </span>
+                  </div>
                 );
               })()}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label className="text-sm font-medium">Customer</Label>
                 <Select value={newTxCustomerId || 'walk-in'} onValueChange={(v) => setNewTxCustomerId(v === 'walk-in' ? '' : v)}>
                   <SelectTrigger><SelectValue placeholder="Walk-in" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="walk-in">Walk-in (enter name below)</SelectItem>
-                    {newTxCustomers.map((c) => (
-                      <SelectItem key={c._id} value={c._id}>
-                        {c.name} {c.email ? `(${c.email})` : ''}
-                        {c.role === 'store_manager' && <span className="ml-1 text-muted-foreground text-xs">[Store Manager]</span>}
-                      </SelectItem>
-                    ))}
+                    <SelectGroup>
+                      <SelectItem value="walk-in">Walk-in (enter name below)</SelectItem>
+                      {newTxCustomers.map((c) => (
+                        <SelectItem key={c._id} value={c._id}>
+                          {c.name} {c.email ? `(${c.email})` : ''}
+                          {c.role === 'store_manager' && <span className="ml-1 text-muted-foreground text-xs">[Store Manager]</span>}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
                 {(!newTxCustomerId || newTxCustomerId === '') && (
@@ -1320,75 +1430,29 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                   />
                 )}
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label className="text-sm font-medium">Claim / Payment</Label>
                 <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                   <div className="flex flex-col gap-1.5">
                     <span className="text-xs text-muted-foreground">Claim</span>
-                    <div className="flex rounded-md border border-input p-0.5 bg-muted/30">
-                      <button
-                        type="button"
-                        onClick={() => setNewTxClaimStatus('unclaimed')}
-                        className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
-                          newTxClaimStatus === 'unclaimed'
-                            ? 'bg-background text-foreground shadow'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Unclaimed
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setNewTxClaimStatus('claimed')}
-                        className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
-                          newTxClaimStatus === 'claimed'
-                            ? 'bg-background text-foreground shadow'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Claimed
-                      </button>
-                    </div>
+                    <Tabs value={newTxClaimStatus} onValueChange={(v) => setNewTxClaimStatus(v as ClaimStatus)}>
+                      <TabsList className="w-full">
+                        <SegmentTrigger value="unclaimed">Unclaimed</SegmentTrigger>
+                        <SegmentTrigger value="claimed">Claimed</SegmentTrigger>
+                      </TabsList>
+                    </Tabs>
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <span className="text-xs text-muted-foreground">Payment</span>
-                    <div className="flex rounded-md border border-input p-0.5 bg-muted/30">
-                      <button
-                        type="button"
-                        onClick={() => setNewTxPaymentStatus('unpaid')}
-                        className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
-                          newTxPaymentStatus === 'unpaid'
-                            ? 'bg-background text-foreground shadow'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Unpaid
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setNewTxPaymentStatus('partial')}
-                        className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
-                          newTxPaymentStatus === 'partial'
-                            ? 'bg-background text-foreground shadow'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Partial
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setNewTxPaymentStatus('paid')}
-                        className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
-                          newTxPaymentStatus === 'paid'
-                            ? 'bg-background text-foreground shadow'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Paid
-                      </button>
-                    </div>
+                    <Tabs value={newTxPaymentStatus} onValueChange={(v) => setNewTxPaymentStatus(v as PaymentStatus)}>
+                      <TabsList className="w-full">
+                        <SegmentTrigger value="unpaid">Unpaid</SegmentTrigger>
+                        <SegmentTrigger value="partial">Partial</SegmentTrigger>
+                        <SegmentTrigger value="paid">Paid</SegmentTrigger>
+                      </TabsList>
+                    </Tabs>
                     {newTxPaymentStatus === 'partial' && (
-                      <div className="space-y-1">
+                      <div className="flex flex-col gap-1">
                         <Label htmlFor="new-tx-amount-paid" className="text-xs">Amount paid (PHP)</Label>
                         <Input
                           id="new-tx-amount-paid"
@@ -1405,11 +1469,11 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                   </div>
                 </div>
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="new-tx-notes" className="text-sm font-medium">Notes (optional)</Label>
-                <textarea
+                <Textarea
                   id="new-tx-notes"
-                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="min-h-20"
                   placeholder="Add any notes for this transaction..."
                   value={newTxNotes}
                   onChange={(e) => setNewTxNotes(e.target.value)}
@@ -1427,17 +1491,17 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
             if (!hasCustomer) missing.push('customer name (select or enter walk-in)');
             if (missing.length === 0) return null;
             return (
-              <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
-                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                <p>Please add {missing.join(' and ')} before creating the transaction.</p>
-              </div>
+              <Alert variant="warning">
+                <AlertTriangle />
+                <AlertDescription>Please add {missing.join(' and ')} before creating the transaction.</AlertDescription>
+              </Alert>
             );
           })()}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewTxOpen(false)} disabled={newTxSubmitting}>Cancel</Button>
             <Button onClick={handleCreateTransaction} disabled={newTxSubmitting}>
-              {newTxSubmitting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {newTxSubmitting ? <Spinner data-icon="inline-start" /> : null}
               {newTxSubmitting ? 'Creating...' : 'Create Transaction'}
             </Button>
           </DialogFooter>
@@ -1445,54 +1509,62 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       </Dialog>
 
       {/* Cancel confirmation dialog */}
-      <Dialog open={!!cancelTarget} onOpenChange={(open) => { if (!open) setCancelTarget(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Cancel Order</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={!!cancelTarget} onOpenChange={(open) => { if (!open) setCancelTarget(null); }}>
+        <AlertDialogContent className="data-[size=default]:sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Order</AlertDialogTitle>
+            <AlertDialogDescription>
               Are you sure you want to cancel this order? The reserved items will be returned to stock.
-            </DialogDescription>
-          </DialogHeader>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
           {cancelTarget && (
-            <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+            <div className="flex flex-col gap-1 rounded-md border px-4 py-3 text-sm">
               <p><span className="text-muted-foreground">Order ID:</span> <span className="font-mono">{cancelTarget._id.slice(-8)}</span></p>
               <p><span className="text-muted-foreground">Customer:</span> {cancelTarget.customerId && typeof cancelTarget.customerId === 'object' ? cancelTarget.customerId.name : (cancelTarget.walkInCustomerName || 'Walk-in')}</p>
               <p><span className="text-muted-foreground">Amount:</span> <span className="font-medium">{fmt(cancelTarget.totalAmount)}</span></p>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelTarget(null)} disabled={cancelling}>Keep Order</Button>
-            <Button variant="destructive" onClick={handleCancel} disabled={cancelling}>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>Keep Order</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={cancelling}
+              onClick={(e) => { e.preventDefault(); handleCancel(); }}
+            >
               {cancelling ? 'Cancelling...' : 'Yes, Cancel Order'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete confirmation dialog */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete Transaction</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent className="data-[size=default]:sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Transaction</AlertDialogTitle>
+            <AlertDialogDescription>
               Permanently delete this transaction? If it was not cancelled, product stock will be restored. This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
           {deleteTarget && (
-            <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+            <div className="flex flex-col gap-1 rounded-md border px-4 py-3 text-sm">
               <p><span className="text-muted-foreground">Order ID:</span> <span className="font-mono">{deleteTarget._id.slice(-8)}</span></p>
               <p><span className="text-muted-foreground">Customer:</span> {deleteTarget.customerId && typeof deleteTarget.customerId === 'object' ? deleteTarget.customerId.name : (deleteTarget.walkInCustomerName || 'Walk-in')}</p>
               <p><span className="text-muted-foreground">Amount:</span> <span className="font-medium">{fmt(deleteTarget.totalAmount)}</span></p>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleting}
+              onClick={(e) => { e.preventDefault(); handleDelete(); }}
+            >
               {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Edit customer dialog */}
       <Dialog open={!!editCustomerTx} onOpenChange={(open) => { if (!open) setEditCustomerTx(null); }}>
@@ -1504,64 +1576,48 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
             </DialogDescription>
           </DialogHeader>
           {editCustomerTx && (
-            <div className="space-y-4 py-2">
-              <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+            <div className="flex flex-col gap-4 py-2">
+              <div className="flex flex-col gap-1 rounded-md border px-4 py-3 text-sm">
                 <p><span className="text-muted-foreground">Order ID:</span> <span className="font-mono">{editCustomerTx._id.slice(-8)}</span></p>
                 <p><span className="text-muted-foreground">Amount:</span> <span className="font-medium">{fmt(editCustomerTx.totalAmount)}</span></p>
               </div>
 
               {/* Toggle: registered vs walk-in */}
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label className="text-sm font-medium">Customer type</Label>
-                <div className="flex rounded-md border border-input p-0.5 bg-muted/30">
-                  <button
-                    type="button"
-                    onClick={() => setEditCustomerType('registered')}
-                    className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
-                      editCustomerType === 'registered'
-                        ? 'bg-background text-foreground shadow'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Registered
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditCustomerType('walk-in')}
-                    className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
-                      editCustomerType === 'walk-in'
-                        ? 'bg-background text-foreground shadow'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Walk-in
-                  </button>
-                </div>
+                <Tabs value={editCustomerType} onValueChange={(v) => setEditCustomerType(v as 'registered' | 'walk-in')}>
+                  <TabsList className="w-full">
+                    <TabsTrigger value="registered">Registered</TabsTrigger>
+                    <TabsTrigger value="walk-in">Walk-in</TabsTrigger>
+                  </TabsList>
+                </Tabs>
               </div>
 
               {editCustomerType === 'registered' ? (
-                <div className="space-y-2">
+                <div className="flex flex-col gap-2">
                   <Label className="text-sm font-medium">Select customer</Label>
                   {editCustomerLoadingList ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading customers...
+                      <Spinner /> Loading customers...
                     </div>
                   ) : (
                     <Select value={editCustomerSelectedId} onValueChange={setEditCustomerSelectedId}>
                       <SelectTrigger><SelectValue placeholder="Select a customer..." /></SelectTrigger>
                       <SelectContent>
-                        {editCustomerCustomers.map((c) => (
-                          <SelectItem key={c._id} value={c._id}>
-                            {c.name}{c.email ? ` (${c.email})` : ''}
-                            {c.role === 'store_manager' && <span className="ml-1 text-muted-foreground text-xs"> [Manager]</span>}
-                          </SelectItem>
-                        ))}
+                        <SelectGroup>
+                          {editCustomerCustomers.map((c) => (
+                            <SelectItem key={c._id} value={c._id}>
+                              {c.name}{c.email ? ` (${c.email})` : ''}
+                              {c.role === 'store_manager' && <span className="ml-1 text-muted-foreground text-xs"> [Manager]</span>}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
                       </SelectContent>
                     </Select>
                   )}
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="flex flex-col gap-2">
                   <Label htmlFor="edit-customer-walk-in-name" className="text-sm font-medium">Customer name</Label>
                   <Input
                     id="edit-customer-walk-in-name"
@@ -1582,7 +1638,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 (editCustomerType === 'registered' && !editCustomerSelectedId)
               }
             >
-              {editCustomerSubmitting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {editCustomerSubmitting ? <Spinner data-icon="inline-start" /> : null}
               {editCustomerSubmitting ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
@@ -1599,24 +1655,24 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
             </DialogDescription>
           </DialogHeader>
           {notesModalTx && (
-            <div className="space-y-4 py-2">
-              <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+            <div className="flex flex-col gap-4 py-2">
+              <div className="flex flex-col gap-1 rounded-md border px-4 py-3 text-sm">
                 <p><span className="text-muted-foreground">Order ID:</span> <span className="font-mono">{notesModalTx._id.slice(-8)}</span></p>
                 <p><span className="text-muted-foreground">Customer:</span> {notesModalTx.customerId && typeof notesModalTx.customerId === 'object' ? notesModalTx.customerId.name : (notesModalTx.walkInCustomerName || 'Walk-in')}</p>
                 <p><span className="text-muted-foreground">Amount:</span> <span className="font-medium">{fmt(notesModalTx.totalAmount)}</span></p>
                 <p><span className="text-muted-foreground">Date:</span> {fmtDate(new Date(notesModalTx.createdAt))}</p>
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label className="text-sm text-muted-foreground">Customer reservation notes</Label>
                 <div className="rounded-md border bg-muted/30 px-3 py-3 text-sm min-h-[60px] whitespace-pre-wrap">
                   {notesModalTx.customerNotes?.trim() || <span className="text-muted-foreground italic">No notes from customer.</span>}
                 </div>
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="notes-edit" className="text-sm text-muted-foreground">Store notes (editable)</Label>
-                <textarea
+                <Textarea
                   id="notes-edit"
-                  className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="min-h-25"
                   placeholder="Add or edit notes for this transaction..."
                   value={notesEdit}
                   onChange={(e) => setNotesEdit(e.target.value)}
@@ -1628,7 +1684,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setNotesModalTx(null)}>Close</Button>
             <Button onClick={handleSaveNotes} disabled={notesSaving || !notesModalTx}>
-              {notesSaving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {notesSaving ? <Spinner data-icon="inline-start" /> : null}
               {notesSaving ? 'Saving...' : 'Save notes'}
             </Button>
           </DialogFooter>
@@ -1650,7 +1706,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
             </DialogDescription>
           </DialogHeader>
           {confirmStatusAction && (
-            <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+            <div className="flex flex-col gap-1 rounded-md border px-4 py-3 text-sm">
               <p><span className="text-muted-foreground">Order ID:</span> <span className="font-mono">{confirmStatusAction.tx._id.slice(-8)}</span></p>
               <p><span className="text-muted-foreground">Customer:</span> {confirmStatusAction.tx.customerId && typeof confirmStatusAction.tx.customerId === 'object' ? confirmStatusAction.tx.customerId.name : (confirmStatusAction.tx.walkInCustomerName || 'Walk-in')}</p>
             </div>
@@ -1658,7 +1714,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmStatusAction(null)} disabled={executingStatusAction}>Cancel</Button>
             <Button onClick={handleConfirmStatusAction} disabled={executingStatusAction}>
-              {executingStatusAction ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {executingStatusAction ? <Spinner data-icon="inline-start" /> : null}
               {executingStatusAction ? 'Updating...' : 'Confirm'}
             </Button>
           </DialogFooter>
@@ -1675,11 +1731,11 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
             </DialogDescription>
           </DialogHeader>
           {partialPaymentTarget && (
-            <div className="space-y-4 py-2">
-              <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+            <div className="flex flex-col gap-4 py-2">
+              <div className="flex flex-col gap-1 rounded-md border px-4 py-3 text-sm">
                 <p><span className="text-muted-foreground">Order total:</span> <span className="font-medium">{fmt(partialPaymentTarget.totalAmount)}</span></p>
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="partial-amount">Amount paid (PHP)</Label>
                 <Input
                   id="partial-amount"
@@ -1697,7 +1753,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
           <DialogFooter>
             <Button variant="outline" onClick={() => { setPartialPaymentTarget(null); setPartialPaymentAmount(''); }} disabled={partialPaymentSubmitting}>Cancel</Button>
             <Button onClick={handlePartialPaymentSubmit} disabled={partialPaymentSubmitting || !partialPaymentAmount.trim()}>
-              {partialPaymentSubmitting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {partialPaymentSubmitting ? <Spinner data-icon="inline-start" /> : null}
               {partialPaymentSubmitting ? 'Saving...' : 'Save partial payment'}
             </Button>
           </DialogFooter>
@@ -1751,7 +1807,7 @@ function TransactionRow({
         <td className="px-2 py-3 text-center">
           {isComplete ? (
             <span title="Order complete (claimed & paid)" className="inline-flex">
-              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mx-auto" />
+              <CheckCircle2 className="size-5 text-success mx-auto" />
             </span>
           ) : (
             <span className="text-muted-foreground/40">—</span>
@@ -1759,15 +1815,15 @@ function TransactionRow({
         </td>
         {/* Expand toggle */}
         <td className="px-2 py-3">
-          <button onClick={onToggleExpand} className="flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors" title="View items">
+          <Button variant="ghost" size="icon-xs" className="text-muted-foreground" onClick={onToggleExpand} title="View items">
             {isLoadingItems ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              <Spinner />
             ) : isExpanded ? (
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              <ChevronDown />
             ) : (
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+              <ChevronRight />
             )}
-          </button>
+          </Button>
         </td>
         <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{tx._id.slice(-8)}</td>
         <td className="px-4 py-3">
@@ -1783,17 +1839,17 @@ function TransactionRow({
         {/* Items summary */}
         <td className="px-4 py-3">
           {itemCount !== null ? (
-            <button onClick={onToggleExpand} className="text-xs text-primary hover:underline cursor-pointer">
+            <Button variant="link" size="xs" className="h-auto p-0" onClick={onToggleExpand}>
               {itemCount} item{itemCount !== 1 ? 's' : ''} ({items!.length} product{items!.length !== 1 ? 's' : ''})
-            </button>
+            </Button>
           ) : (
-            <button onClick={onToggleExpand} className="text-xs text-muted-foreground hover:text-primary cursor-pointer">
+            <Button variant="link" size="xs" className="h-auto p-0 text-muted-foreground hover:text-primary hover:no-underline" onClick={onToggleExpand}>
               View items
-            </button>
+            </Button>
           )}
         </td>
         <td className={`px-4 py-3 font-medium ${isCancelled ? 'line-through text-muted-foreground' : ''}`}>{fmt(tx.totalAmount)}</td>
-        <td className={`px-4 py-3 font-medium ${isCancelled ? 'line-through text-muted-foreground' : 'text-primary'}`}>{fmt(tx.grossProfit)}</td>
+        <td className={`px-4 py-3 font-medium ${isCancelled ? 'line-through text-muted-foreground' : ''}`}>{fmt(tx.grossProfit)}</td>
         <td className="px-4 py-3"><OrderBadge status={tx.orderStatus ?? 'active'} /></td>
         <td className="px-4 py-3">{isCancelled ? <span className="text-xs text-muted-foreground">—</span> : <ClaimBadge status={tx.claimStatus} />}</td>
         <td className="px-4 py-3">{isCancelled ? <span className="text-xs text-muted-foreground">—</span> : <PaymentBadge status={tx.paymentStatus} totalAmount={tx.totalAmount} amountPaid={tx.amountPaid} />}</td>
@@ -1803,84 +1859,84 @@ function TransactionRow({
             <div className="flex items-center justify-end gap-0.5">
               {onViewNotes && (
                 <div className="relative">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled={isUpdating} onClick={() => onViewNotes(tx)} title="View notes">
-                    <NotepadText className="h-3.5 w-3.5" />
+                  <Button variant="ghost" size="icon" className="size-7" disabled={isUpdating} onClick={() => onViewNotes(tx)} title="View notes">
+                    <NotepadText />
                   </Button>
                   {(tx.notes?.trim() || tx.customerNotes?.trim()) && (
-                    <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-amber-400 ring-1 ring-background pointer-events-none" />
+                    <span className="absolute right-0.5 top-0.5 size-2 rounded-full bg-operational ring-1 ring-card pointer-events-none" />
                   )}
                 </div>
               )}
               {onEditCustomer && (
-                <Button variant="ghost" size="icon" className="h-7 w-7" disabled={isUpdating} onClick={onEditCustomer} title="Edit customer">
-                  <Pencil className="h-3.5 w-3.5" />
+                <Button variant="ghost" size="icon" className="size-7" disabled={isUpdating} onClick={onEditCustomer} title="Edit customer">
+                  <Pencil />
                 </Button>
               )}
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" disabled={isUpdating} onClick={onDeleteClick} title="Delete transaction">
-                <Trash2 className="h-3.5 w-3.5" />
+              <Button variant="ghost" size="icon" className="size-7 text-destructive hover:bg-error-soft hover:text-destructive" disabled={isUpdating} onClick={onDeleteClick} title="Delete transaction">
+                <Trash2 />
               </Button>
             </div>
           ) : (
             <div className="flex items-center justify-end gap-0.5">
               {onViewNotes && (
                 <div className="relative">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled={isUpdating} onClick={() => onViewNotes(tx)} title="View notes">
-                    <NotepadText className="h-3.5 w-3.5" />
+                  <Button variant="ghost" size="icon" className="size-7" disabled={isUpdating} onClick={() => onViewNotes(tx)} title="View notes">
+                    <NotepadText />
                   </Button>
                   {(tx.notes?.trim() || tx.customerNotes?.trim()) && (
-                    <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-amber-400 ring-1 ring-background pointer-events-none" />
+                    <span className="absolute right-0.5 top-0.5 size-2 rounded-full bg-operational ring-1 ring-card pointer-events-none" />
                   )}
                 </div>
               )}
               {onEditCustomer && (
-                <Button variant="ghost" size="icon" className="h-7 w-7" disabled={isUpdating} onClick={onEditCustomer} title="Edit customer">
-                  <Pencil className="h-3.5 w-3.5" />
+                <Button variant="ghost" size="icon" className="size-7" disabled={isUpdating} onClick={onEditCustomer} title="Edit customer">
+                  <Pencil />
                 </Button>
               )}
               {tx.claimStatus === 'unclaimed' ? (
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500 hover:text-green-700 hover:bg-green-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'claimStatus', 'claimed')} title="Mark as claimed">
-                  <Package className="h-3.5 w-3.5" />
+                <Button variant="ghost" size="icon" className="size-7 text-warning hover:text-operational hover:bg-operational-subtle" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'claimStatus', 'claimed')} title="Mark as claimed">
+                  <Package />
                 </Button>
               ) : (
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-amber-600 hover:bg-amber-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'claimStatus', 'unclaimed')} title="Revert to unclaimed">
-                  <RotateCcw className="h-3.5 w-3.5" />
+                <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-warning hover:bg-warning-soft" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'claimStatus', 'unclaimed')} title="Revert to unclaimed">
+                  <RotateCcw />
                 </Button>
               )}
               {tx.paymentStatus === 'unpaid' ? (
                 <>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500 hover:text-emerald-700 hover:bg-emerald-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'paid')} title="Mark as paid">
-                    <Check className="h-3.5 w-3.5" />
+                  <Button variant="ghost" size="icon" className="size-7 text-warning hover:text-success hover:bg-success-soft" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'paid')} title="Mark as paid">
+                    <Check />
                   </Button>
                   {onRequestPartialPayment && (
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-500 hover:text-yellow-700 hover:bg-yellow-50" disabled={isUpdating} onClick={() => onRequestPartialPayment(tx)} title="Set partial payment">
-                      <Coins className="h-3.5 w-3.5" />
+                    <Button variant="ghost" size="icon" className="size-7 text-warning hover:text-info hover:bg-info-soft" disabled={isUpdating} onClick={() => onRequestPartialPayment(tx)} title="Set partial payment">
+                      <Coins />
                     </Button>
                   )}
                 </>
               ) : tx.paymentStatus === 'partial' ? (
                 <>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600 hover:text-emerald-700 hover:bg-emerald-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'paid')} title="Mark as fully paid">
-                    <Check className="h-3.5 w-3.5" />
+                  <Button variant="ghost" size="icon" className="size-7 text-info hover:text-success hover:bg-success-soft" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'paid')} title="Mark as fully paid">
+                    <Check />
                   </Button>
                   {onRequestPartialPayment && (
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50" disabled={isUpdating} onClick={() => onRequestPartialPayment(tx)} title="Edit partial amount">
-                      <Coins className="h-3.5 w-3.5" />
+                    <Button variant="ghost" size="icon" className="size-7 text-info hover:text-info hover:bg-info-soft" disabled={isUpdating} onClick={() => onRequestPartialPayment(tx)} title="Edit partial amount">
+                      <Coins />
                     </Button>
                   )}
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-amber-600 hover:bg-amber-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'unpaid')} title="Revert to unpaid">
-                    <RotateCcw className="h-3.5 w-3.5" />
+                  <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-warning hover:bg-warning-soft" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'unpaid')} title="Revert to unpaid">
+                    <RotateCcw />
                   </Button>
                 </>
               ) : (
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-amber-600 hover:bg-amber-50" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'unpaid')} title="Revert to unpaid">
-                  <RotateCcw className="h-3.5 w-3.5" />
+                <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-warning hover:bg-warning-soft" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'unpaid')} title="Revert to unpaid">
+                  <RotateCcw />
                 </Button>
               )}
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" disabled={isUpdating} onClick={onCancelClick} title="Cancel order">
-                <Ban className="h-3.5 w-3.5" />
+              <Button variant="ghost" size="icon" className="size-7 text-destructive hover:bg-error-soft hover:text-destructive" disabled={isUpdating} onClick={onCancelClick} title="Cancel order">
+                <Ban />
               </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" disabled={isUpdating} onClick={onDeleteClick} title="Delete transaction">
-                <Trash2 className="h-3.5 w-3.5" />
+              <Button variant="ghost" size="icon" className="size-7 text-destructive hover:bg-error-soft hover:text-destructive" disabled={isUpdating} onClick={onDeleteClick} title="Delete transaction">
+                <Trash2 />
               </Button>
             </div>
           )}
@@ -1894,7 +1950,7 @@ function TransactionRow({
             <div className="px-10 py-3 border-b">
               {isLoadingItems ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading items...
+                  <Spinner /> Loading items...
                 </div>
               ) : items && items.length > 0 ? (
                 <table className="data-table text-xs">
@@ -1913,9 +1969,7 @@ function TransactionRow({
                           {item.productId ? item.productId.name : <span className="italic text-muted-foreground">Deleted product</span>}
                         </td>
                         <td className="py-1.5 px-4 text-center">
-                          <span className="inline-flex items-center justify-center bg-primary/10 text-primary font-semibold rounded-full h-5 min-w-[20px] px-1.5 text-[11px]">
-                            {item.quantity}
-                          </span>
+                          <Badge variant="secondary">{item.quantity}</Badge>
                         </td>
                         <td className="py-1.5 px-4 text-right text-muted-foreground">
                           {item.quantity > 0 ? fmt(item.subtotal / item.quantity) : '—'}
@@ -1934,7 +1988,11 @@ function TransactionRow({
                   </tbody>
                 </table>
               ) : (
-                <p className="text-xs text-muted-foreground py-2">No items found for this transaction.</p>
+                <Empty className="border-0 p-2 md:p-2">
+                  <EmptyHeader>
+                    <EmptyDescription>No items found for this transaction.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               )}
             </div>
           </td>

@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Check, HelpCircle, Lightbulb, Loader2, MessageSquare, RefreshCw } from 'lucide-react';
+import { AlertCircle, Check, HelpCircle, Lightbulb, MessageSquare, RefreshCw } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import toast from 'react-hot-toast';
 
 type InteractionType = 'recommendation' | 'question';
@@ -91,7 +96,7 @@ export function CustomerInteractions({ storeId }: CustomerInteractionsProps) {
   const pendingCount = interactions.filter((i) => i.status === 'pending').length;
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold">Customer Interactions</h2>
@@ -101,8 +106,8 @@ export function CustomerInteractions({ storeId }: CustomerInteractionsProps) {
             </Badge>
           )}
         </div>
-        <Button variant="ghost" size="sm" onClick={fetchData} className="gap-1.5 text-xs">
-          <RefreshCw className="h-3.5 w-3.5" />
+        <Button variant="ghost" size="sm" onClick={fetchData} className="text-xs">
+          <RefreshCw data-icon="inline-start" />
           Refresh
         </Button>
       </div>
@@ -110,70 +115,73 @@ export function CustomerInteractions({ storeId }: CustomerInteractionsProps) {
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
         {(['all', 'question', 'recommendation'] as const).map((t) => (
-          <button
+          <Button
             key={t}
+            variant={filterType === t ? 'default' : 'secondary'}
+            size="sm"
             onClick={() => setFilterType(t)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              filterType === t
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            }`}
+            className="rounded-full text-xs"
           >
             {t === 'all' ? 'All' : t === 'question' ? 'Questions' : 'Recommendations'}
-          </button>
+          </Button>
         ))}
         <div className="ml-auto flex gap-2">
           {(['all', 'pending', 'responded'] as const).map((s) => (
-            <button
+            <Button
               key={s}
+              variant={filterStatus === s ? 'secondary' : 'ghost'}
+              size="sm"
               onClick={() => setFilterStatus(s)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                filterStatus === s
-                  ? 'bg-secondary text-secondary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
-              }`}
+              className="rounded-full text-xs"
             >
               {s.charAt(0).toUpperCase() + s.slice(1)}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
 
       {loading ? (
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-24 w-full rounded-xl" />
           ))}
         </div>
       ) : error ? (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : interactions.length === 0 ? (
-        <div className="rounded-xl border bg-card py-12 text-center">
-          <MessageSquare className="mx-auto mb-2 h-8 w-8 text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground">No interactions found</p>
-        </div>
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <MessageSquare />
+            </EmptyMedia>
+            <EmptyTitle>No interactions found</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <>
           <p className="text-xs text-muted-foreground">{total} total</p>
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             {interactions.map((item) => {
               const authorName = item.userId?.name ?? item.guestName ?? 'Anonymous';
               return (
-                <div
+                <Card
                   key={item._id}
-                  className="rounded-xl border bg-card p-4 transition-colors hover:bg-muted/20"
+                  className="gap-0 py-4 transition-colors hover:bg-muted/20"
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <CardContent className="flex items-start justify-between gap-3 px-4">
                     <div className="flex items-start gap-3 min-w-0 flex-1">
-                      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
-                        {item.type === 'question' ? (
-                          <HelpCircle className="h-3.5 w-3.5 text-blue-500" />
-                        ) : (
-                          <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
-                        )}
-                      </div>
+                      <Avatar className="mt-0.5 size-7">
+                        <AvatarFallback>
+                          {item.type === 'question' ? (
+                            <HelpCircle className="size-3.5 text-operational" />
+                          ) : (
+                            <Lightbulb className="size-3.5 text-warning" />
+                          )}
+                        </AvatarFallback>
+                      </Avatar>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           <span className="text-xs font-medium">{authorName}</span>
@@ -206,19 +214,19 @@ export function CustomerInteractions({ storeId }: CustomerInteractionsProps) {
                     <Button
                       variant={item.status === 'pending' ? 'outline' : 'ghost'}
                       size="sm"
-                      className="shrink-0 gap-1 text-xs"
+                      className="shrink-0 text-xs"
                       disabled={markingId === item._id}
                       onClick={() => handleMarkResponded(item._id, item.status)}
                     >
                       {markingId === item._id ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <Spinner data-icon="inline-start" />
                       ) : (
-                        <Check className="h-3 w-3" />
+                        <Check data-icon="inline-start" />
                       )}
                       {item.status === 'pending' ? 'Mark Responded' : 'Reopen'}
                     </Button>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               );
             })}
           </div>

@@ -1,6 +1,9 @@
 ---
 import AppLayout from '../../layouts/AppLayout.astro';
 import { createApiClient } from '../../lib/api';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Store as StoreIcon } from 'lucide-react';
 
 const token = Astro.cookies.get('agora_token')?.value ?? '';
 const api = createApiClient(token);
@@ -120,7 +123,7 @@ const financeCards = [
 ---
 
 <AppLayout title="Admin Dashboard">
-  <div class="space-y-6">
+  <div class="flex flex-col gap-6">
     <div>
       <h1 class="text-2xl font-bold tracking-tight">Admin Dashboard</h1>
       <p class="text-sm text-muted-foreground">System-wide overview</p>
@@ -131,10 +134,14 @@ const financeCards = [
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {
           overviewCards.map((card) => (
-            <div class="rounded-lg border bg-card p-5 shadow-sm">
-              <p class="text-sm font-medium text-muted-foreground">{card.label}</p>
-              <p class="mt-1 text-2xl font-bold">{card.value}</p>
-            </div>
+            <Card className="gap-1 py-5">
+              <CardHeader className="px-5">
+                <CardDescription className="font-medium">{card.label}</CardDescription>
+              </CardHeader>
+              <CardContent className="px-5">
+                <p class="text-2xl font-bold">{card.value}</p>
+              </CardContent>
+            </Card>
           ))
         }
       </div>
@@ -145,10 +152,14 @@ const financeCards = [
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {
           financeCards.map((card) => (
-            <div class="rounded-lg border bg-card p-5 shadow-sm">
-              <p class="text-sm font-medium text-muted-foreground">{card.label}</p>
-              <p class="mt-1 text-2xl font-bold">{card.value}</p>
-            </div>
+            <Card className="gap-1 py-5">
+              <CardHeader className="px-5">
+                <CardDescription className="font-medium">{card.label}</CardDescription>
+              </CardHeader>
+              <CardContent className="px-5">
+                <p class="text-2xl font-bold">{card.value}</p>
+              </CardContent>
+            </Card>
           ))
         }
       </div>
@@ -158,15 +169,22 @@ const financeCards = [
       <h2 class="mb-3 text-lg font-semibold">Financial Summary Per Store</h2>
       {
         perStoreSummaries.length === 0 ? (
-          <div class="rounded-lg border bg-card p-5 text-sm text-muted-foreground">
-            No stores found.
-          </div>
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <StoreIcon />
+              </EmptyMedia>
+              <EmptyTitle>No stores found.</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <div class="grid gap-4 lg:grid-cols-2">
             {perStoreSummaries.map(({ store, summary: storeSummary }) => (
-              <div class="rounded-lg border bg-card p-5 shadow-sm">
-                <h3 class="text-base font-semibold">{store.name}</h3>
-                <div class="mt-4 grid gap-3 sm:grid-cols-2">
+              <Card className="py-5">
+                <CardHeader className="px-5">
+                  <CardTitle className="text-base">{store.name}</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-3 px-5 sm:grid-cols-2">
                   <div>
                     <p class="text-xs text-muted-foreground">Total Sales</p>
                     <p class="text-lg font-bold">{fmt(storeSummary.totalSales)}</p>
@@ -187,8 +205,8 @@ const financeCards = [
                     <p class="text-xs text-muted-foreground">Transactions</p>
                     <p class="text-lg font-bold">{storeSummary.transactionCount}</p>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         )

@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, Plus, X } from 'lucide-react';
+import { Empty, EmptyDescription, EmptyHeader } from '@/components/ui/empty';
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Spinner } from '@/components/ui/spinner';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Plus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface User {
@@ -16,28 +20,18 @@ interface User {
 }
 
 function AvatarImageWithFallback({ src, name, className }: { src?: string; name: string; className?: string }) {
-  const [failed, setFailed] = useState(false);
   const initials = name
     .split(' ')
     .map((n) => n[0])
     .join('')
     .toUpperCase()
     .slice(0, 2);
-  const showImg = !!src?.trim() && !failed;
 
   return (
-    <div className={`shrink-0 rounded-full overflow-hidden flex items-center justify-center bg-secondary/55 font-semibold text-foreground ${className ?? ''}`}>
-      {showImg ? (
-        <img
-          src={src}
-          alt=""
-          className="h-full w-full object-cover"
-          onError={() => setFailed(true)}
-        />
-      ) : (
-        initials
-      )}
-    </div>
+    <Avatar className={className}>
+      {src?.trim() && <AvatarImage src={src} alt="" className="object-cover" />}
+      <AvatarFallback className="bg-secondary/55 font-semibold text-foreground">{initials}</AvatarFallback>
+    </Avatar>
   );
 }
 
@@ -172,16 +166,18 @@ export function Profile() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Spinner className="size-8 text-muted-foreground" />
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="rounded-lg border bg-card p-6 text-center text-muted-foreground">
-        Could not load profile. Please try again.
-      </div>
+      <Empty className="border bg-card">
+        <EmptyHeader>
+          <EmptyDescription>Could not load profile. Please try again.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
@@ -194,54 +190,54 @@ export function Profile() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 pb-6">
-      <div className="rounded-2xl border bg-gradient-to-r from-secondary/45 via-card to-card p-5 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 pb-6">
+      <Card className="rounded-2xl bg-linear-to-r from-secondary/45 via-card to-card py-5">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
             <p className="text-sm text-muted-foreground">Manage your account and password</p>
           </div>
           <Button variant="outline" onClick={handleBack} className="w-fit shrink-0">
-            <ArrowLeft className="mr-2 h-4 w-4" />
+            <ArrowLeft data-icon="inline-start" />
             Back
           </Button>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 xl:grid-cols-[1.65fr_1fr]">
-        <div className="space-y-6">
+        <div className="flex flex-col gap-6">
           <Card>
             <CardHeader>
               <CardTitle>Profile</CardTitle>
               <CardDescription>Update your name and avatar (image URL only)</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="flex flex-col gap-6">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
                 <div className="flex min-w-32 flex-col items-center gap-2">
                   <AvatarImageWithFallback
                     src={profileForm.avatar || user.avatar}
                     name={profileForm.name || user.name}
-                    className="h-24 w-24"
+                    className="size-24"
                   />
                   <span className="text-xs text-muted-foreground">Avatar preview</span>
                 </div>
-                <div className="flex-1 space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="profile-name">Name</Label>
+                <FieldGroup className="flex-1 gap-4">
+                  <Field className="gap-2">
+                    <FieldLabel htmlFor="profile-name">Name</FieldLabel>
                     <Input
                       id="profile-name"
                       value={profileForm.name}
                       onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))}
                       placeholder="Your name"
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Avatar image URL</Label>
+                  </Field>
+                  <Field className="gap-2">
+                    <FieldLabel>Avatar image URL</FieldLabel>
                     {profileForm.avatar ? (
                       <div className="flex items-center gap-2">
                         <Input value={profileForm.avatar} readOnly className="bg-muted" />
                         <Button type="button" variant="outline" size="icon" onClick={handleClearAvatar} title="Remove avatar">
-                          <X className="h-4 w-4" />
+                          <X />
                         </Button>
                       </div>
                     ) : (
@@ -265,17 +261,17 @@ export function Profile() {
                           disabled={!newAvatarUrl.trim()}
                           title="Add avatar URL"
                         >
-                          <Plus className="h-4 w-4" />
+                          <Plus />
                         </Button>
                       </div>
                     )}
-                    <p className="text-xs text-muted-foreground">Add an image URL for your avatar.</p>
-                  </div>
-                </div>
+                    <FieldDescription className="text-xs">Add an image URL for your avatar.</FieldDescription>
+                  </Field>
+                </FieldGroup>
               </div>
               <div className="flex gap-2">
                 <Button onClick={handleSaveProfile} disabled={profileSaving}>
-                  {profileSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save profile'}
+                  {profileSaving ? <Spinner /> : 'Save profile'}
                 </Button>
               </div>
             </CardContent>
@@ -288,8 +284,8 @@ export function Profile() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleResetPassword} className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="old-password">Current password</Label>
+                <Field className="gap-2 md:col-span-2">
+                  <FieldLabel htmlFor="old-password">Current password</FieldLabel>
                   <Input
                     id="old-password"
                     type={showPassword ? 'text' : 'password'}
@@ -301,9 +297,9 @@ export function Profile() {
                     placeholder="Enter current password"
                     autoComplete="current-password"
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-password">New password</Label>
+                </Field>
+                <Field className="gap-2">
+                  <FieldLabel htmlFor="new-password">New password</FieldLabel>
                   <Input
                     id="new-password"
                     type={showPassword ? 'text' : 'password'}
@@ -315,9 +311,9 @@ export function Profile() {
                     placeholder="At least 6 characters"
                     autoComplete="new-password"
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirm-password">Confirm new password</Label>
+                </Field>
+                <Field className="gap-2">
+                  <FieldLabel htmlFor="confirm-password">Confirm new password</FieldLabel>
                   <Input
                     id="confirm-password"
                     type={showPassword ? 'text' : 'password'}
@@ -329,29 +325,20 @@ export function Profile() {
                     placeholder="Confirm new password"
                     autoComplete="new-password"
                   />
-                </div>
+                </Field>
                 {passwordFeedback && (
-                  <div
+                  <Alert
                     role={passwordFeedback.type === 'error' ? 'alert' : 'status'}
-                    className={`rounded-lg border-2 px-3 py-2.5 text-sm font-medium md:col-span-2 ${
-                      passwordFeedback.type === 'error'
-                        ? 'border-red-300 bg-red-50 text-red-800'
-                        : 'border-accent/45 bg-accent/10 text-accent'
-                    }`}
+                    variant={passwordFeedback.type === 'error' ? 'destructive' : 'default'}
+                    className="md:col-span-2"
                   >
-                    <div className="flex items-start gap-2">
-                      {passwordFeedback.type === 'error' ? (
-                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                      ) : (
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                      )}
-                      <span>{passwordFeedback.message}</span>
-                    </div>
-                  </div>
+                    {passwordFeedback.type === 'error' ? <AlertTriangle /> : <CheckCircle2 />}
+                    <AlertDescription>{passwordFeedback.message}</AlertDescription>
+                  </Alert>
                 )}
                 <div className="flex items-center gap-2 md:col-span-2">
                   <Button type="submit" disabled={passwordSaving}>
-                    {passwordSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Update password'}
+                    {passwordSaving ? <Spinner /> : 'Update password'}
                   </Button>
                   <Button
                     type="button"
@@ -367,25 +354,25 @@ export function Profile() {
           </Card>
         </div>
 
-        <div className="space-y-6">
+        <div className="flex flex-col gap-6">
           <Card>
             <CardHeader>
               <CardTitle>Account info</CardTitle>
               <CardDescription>Read-only details</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 text-sm">
+            <CardContent className="flex flex-col gap-4 text-sm">
               <div className="flex items-center gap-3 rounded-md border bg-muted/40 p-3">
                 <AvatarImageWithFallback
                   src={profileForm.avatar || user.avatar}
                   name={profileForm.name || user.name}
-                  className="h-12 w-12"
+                  className="size-12"
                 />
                 <div className="min-w-0">
                   <p className="truncate font-medium">{profileForm.name || user.name}</p>
                   <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                 </div>
               </div>
-              <div className="space-y-2 rounded-md border bg-card p-3">
+              <div className="flex flex-col gap-2 rounded-md border bg-card p-3">
                 <p>
                   <span className="text-muted-foreground">Role:</span> {user.role}
                 </p>

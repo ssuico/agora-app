@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ShoppingBag, Star, Zap } from 'lucide-react';
 import { getSocket } from '@/lib/socket';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface ActivityLogEntry {
@@ -36,14 +39,11 @@ function getInitials(name: string): string {
 
 /** Deterministic background color from a string */
 const AVATAR_COLORS = [
-  'bg-blue-500',
-  'bg-violet-500',
-  'bg-pink-500',
-  'bg-amber-500',
-  'bg-green-500',
-  'bg-cyan-500',
-  'bg-rose-500',
-  'bg-indigo-500',
+  'bg-operational text-operational-foreground',
+  'bg-muted text-foreground',
+  'bg-primary-subtle text-foreground',
+  'bg-operational-subtle text-operational',
+  'bg-border text-foreground',
 ];
 function getAvatarColor(name: string): string {
   let hash = 0;
@@ -53,39 +53,29 @@ function getAvatarColor(name: string): string {
 
 function ActivityTypeIcon({ type }: { type: ActivityLogEntry['type'] }) {
   if (type === 'reservation_created')
-    return <ShoppingBag className="h-2.5 w-2.5 text-white" />;
+    return <ShoppingBag className="size-2.5 text-white" />;
   if (type === 'rating_submitted')
-    return <Star className="h-2.5 w-2.5 text-white" />;
-  return <Zap className="h-2.5 w-2.5 text-white" />;
+    return <Star className="size-2.5 text-white" />;
+  return <Zap className="size-2.5 text-white" />;
 }
 
 function typeBadgeColor(type: ActivityLogEntry['type']): string {
-  if (type === 'reservation_created') return 'bg-blue-500';
-  if (type === 'rating_submitted') return 'bg-amber-500';
+  if (type === 'reservation_created') return 'bg-operational';
+  if (type === 'rating_submitted') return 'bg-warning';
   return 'bg-muted-foreground';
 }
 
 function ActorAvatar({ name, avatar, type }: { name: string; avatar?: string | null; type: ActivityLogEntry['type'] }) {
-  const [imgError, setImgError] = useState(false);
-  const showImg = !!avatar && !imgError;
-
   return (
     <div className="relative mt-0.5 shrink-0">
-      {/* Main avatar circle */}
-      <div className={`flex h-8 w-8 items-center justify-center rounded-full text-white text-xs font-semibold overflow-hidden ${showImg ? '' : getAvatarColor(name)}`}>
-        {showImg ? (
-          <img
-            src={avatar!}
-            alt={name}
-            className="h-full w-full object-cover"
-            onError={() => setImgError(true)}
-          />
-        ) : (
-          getInitials(name)
-        )}
-      </div>
+      <Avatar>
+        {avatar && <AvatarImage src={avatar} alt={name} className="object-cover" />}
+        <AvatarFallback className={`text-xs font-semibold ${getAvatarColor(name)}`}>
+          {getInitials(name)}
+        </AvatarFallback>
+      </Avatar>
       {/* Type badge — bottom-right of avatar */}
-      <span className={`absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full ring-2 ring-card ${typeBadgeColor(type)}`}>
+      <span className={`absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full ring-2 ring-card ${typeBadgeColor(type)}`}>
         <ActivityTypeIcon type={type} />
       </span>
     </div>
@@ -160,20 +150,20 @@ export function ActivityFeed({ storeId }: ActivityFeedProps) {
     <div className="shop-widget">
       {/* Header */}
       <div className="shop-widget-header flex items-center gap-2">
-        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-primary/10">
-          <Activity className="h-3.5 w-3.5 text-primary" />
+        <div className="flex size-6 items-center justify-center rounded-lg bg-operational-subtle">
+          <Activity className="size-3.5 text-operational" />
         </div>
         <h3 className="text-sm font-semibold">Recent Activity</h3>
         {entries.length > 0 && (
           <div className="ml-auto flex items-center gap-1.5">
             {/* Live pulse dot */}
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+            <span className="relative flex size-2">
+              <span className="animate-ping absolute inline-flex size-full rounded-full bg-success opacity-60" />
+              <span className="relative inline-flex size-2 rounded-full bg-success" />
             </span>
-            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+            <Badge variant="secondary" className="px-1.5 text-[10px] font-semibold">
               {entries.length}
-            </span>
+            </Badge>
           </div>
         )}
       </div>
@@ -181,11 +171,11 @@ export function ActivityFeed({ storeId }: ActivityFeedProps) {
       {/* Content */}
       <div ref={scrollRef} className="shop-widget-scroll max-h-[300px] overflow-y-auto">
         {loading ? (
-          <div className="space-y-3 p-4">
+          <div className="flex flex-col gap-3 p-4">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex items-start gap-3">
-                <Skeleton className="mt-0.5 h-8 w-8 shrink-0 rounded-full" />
-                <div className="flex-1 space-y-1.5 pt-1">
+                <Skeleton className="mt-0.5 size-8 shrink-0 rounded-full" />
+                <div className="flex flex-1 flex-col gap-1.5 pt-1">
                   <Skeleton className="h-3 w-4/5" />
                   <Skeleton className="h-2.5 w-1/3" />
                 </div>
@@ -193,22 +183,24 @@ export function ActivityFeed({ storeId }: ActivityFeedProps) {
             ))}
           </div>
         ) : entries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-              <Activity className="h-5 w-5 text-muted-foreground/40" />
-            </div>
-            <p className="text-xs text-muted-foreground">No activity yet</p>
-          </div>
+          <Empty className="p-6 md:p-6">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Activity />
+              </EmptyMedia>
+              <EmptyDescription>No activity yet</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
-          <ul className="divide-y divide-border/60">
+          <ul className="divide-y divide-border">
             {entries.map((entry, idx) => (
               <li
                 key={entry._id}
-                className={`flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/25 ${
+                className={`flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted ${
                   freshIds.has(entry._id)
-                    ? 'animate-in slide-in-from-top-3 fade-in duration-300 bg-primary/8'
+                    ? 'animate-in slide-in-from-top-3 fade-in duration-300 bg-primary-subtle/40'
                     : idx === 0
-                      ? 'bg-primary/3'
+                      ? 'bg-muted/60'
                       : ''
                 }`}
               >

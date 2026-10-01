@@ -1,3 +1,14 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -7,11 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
-import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { AlertCircle, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 
@@ -123,14 +136,14 @@ export function LocationManager() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Locations</h1>
           <p className="text-sm text-muted-foreground">Manage geographic locations for your stores</p>
         </div>
         <Button onClick={openCreate} disabled={loading}>
-          <Plus className="mr-1 h-4 w-4" />
+          <Plus data-icon="inline-start" />
           Add Location
         </Button>
       </div>
@@ -153,16 +166,24 @@ export function LocationManager() {
                     <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Skeleton className="h-7 w-7 rounded-md" />
-                        <Skeleton className="h-7 w-7 rounded-md" />
+                        <Skeleton className="size-7 rounded-md" />
+                        <Skeleton className="size-7 rounded-md" />
                       </div>
                     </td>
                   </tr>
                 ))
               ) : locations.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">
-                    No locations found. Click "Add Location" to create one.
+                  <td colSpan={3} className="px-4 py-8">
+                    <Empty className="md:p-6">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <MapPin />
+                        </EmptyMedia>
+                        <EmptyTitle>No locations found.</EmptyTitle>
+                        <EmptyDescription>Click "Add Location" to create one.</EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
                   </td>
                 </tr>
               ) : (
@@ -176,16 +197,16 @@ export function LocationManager() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(loc)}>
-                        <Pencil className="h-3.5 w-3.5" />
+                      <Button variant="ghost" size="icon-sm" onClick={() => openEdit(loc)}>
+                        <Pencil />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon-sm"
                         className="text-destructive hover:text-destructive"
                         onClick={() => openDelete(loc)}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 />
                       </Button>
                     </div>
                   </td>
@@ -213,66 +234,75 @@ export function LocationManager() {
               {editing ? 'Update the location name.' : 'Enter a name for the new location.'}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="loc-name">Name</Label>
-              <Input
-                id="loc-name"
-                placeholder="e.g. Cebu"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </div>
-            {error && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </p>
-            )}
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? (
-                  <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />{editing ? 'Saving...' : 'Creating...'}</>
-                ) : (
-                  editing ? 'Save Changes' : 'Create Location'
-                )}
-              </Button>
-            </DialogFooter>
+          <form onSubmit={handleSubmit}>
+            <FieldGroup className="gap-4">
+              <Field className="gap-2">
+                <FieldLabel htmlFor="loc-name">Name</FieldLabel>
+                <Input
+                  id="loc-name"
+                  placeholder="e.g. Cebu"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </Field>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? (
+                    <><Spinner data-icon="inline-start" />{editing ? 'Saving...' : 'Creating...'}</>
+                  ) : (
+                    editing ? 'Save Changes' : 'Create Location'
+                  )}
+                </Button>
+              </DialogFooter>
+            </FieldGroup>
           </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Location</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Location</AlertDialogTitle>
+            <AlertDialogDescription>
               Are you sure you want to delete <strong>{deleting?.name}</strong>? Stores under this
               location may be affected.
-            </DialogDescription>
-          </DialogHeader>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
           {error && (
-            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setDeleteDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={submitting}>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={submitting}
+              onClick={(e) => {
+                e.preventDefault();
+                handleDelete();
+              }}
+            >
               {submitting ? (
-                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Deleting...</>
+                <><Spinner data-icon="inline-start" />Deleting...</>
               ) : (
                 'Delete Location'
               )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

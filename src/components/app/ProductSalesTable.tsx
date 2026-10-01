@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, Package, RefreshCw, Search } from 'lucide-react';
+import { AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Package, PackageCheck, PackageX, RefreshCw, Search } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from '@/components/ui/empty';
+import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface ProductInfo {
@@ -120,15 +125,17 @@ export function ProductSalesTable({ storeId }: ProductSalesTableProps) {
   const totalSold = useMemo(() => products.reduce((s, p) => s + p.totalSold, 0), [products]);
 
   const SortIcon = ({ col }: { col: SortKey }) => {
-    if (sortKey !== col) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
-    return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+    if (sortKey !== col) return <ArrowUpDown className="opacity-40" />;
+    return sortDir === 'asc' ? <ArrowUp /> : <ArrowDown />;
   };
 
+  const sortHeadButtonClass = '-mr-2 ml-auto text-muted-foreground hover:text-foreground';
+
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Package className="h-5 w-5 text-primary" />
+          <Package className="size-5 text-operational" />
           <h2 className="text-lg font-semibold">All Products</h2>
           {!loading && (
             <span className="text-sm text-muted-foreground">
@@ -138,87 +145,100 @@ export function ProductSalesTable({ storeId }: ProductSalesTableProps) {
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
-            <input
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
+            <Input
               type="text"
               placeholder="Search products..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="rounded-lg border border-input bg-background py-1.5 pl-8 pr-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 w-52"
+              className="h-8 w-52 pl-8 text-sm"
             />
           </div>
-          <Button variant="ghost" size="sm" onClick={fetchData} className="gap-1.5 text-xs">
-            <RefreshCw className="h-3.5 w-3.5" />
+          <Button variant="ghost" size="sm" onClick={fetchData} className="text-xs">
+            <RefreshCw data-icon="inline-start" />
             Refresh
           </Button>
         </div>
       </div>
 
-      {/* Summary row */}
       {!loading && !error && products.length > 0 && (
         <div className="flex flex-wrap gap-4 text-sm">
-          <div className="rounded-lg border bg-card px-4 py-2.5">
-            <span className="text-muted-foreground">Total Revenue: </span>
-            <span className="font-semibold">{fmt(totalRevenue)}</span>
-          </div>
-          <div className="rounded-lg border bg-card px-4 py-2.5">
-            <span className="text-muted-foreground">Total Units Sold: </span>
-            <span className="font-semibold">{totalSold.toLocaleString()}</span>
-          </div>
+          <Card className="gap-0 py-2.5">
+            <CardContent className="px-4">
+              <span className="text-muted-foreground">Total Revenue: </span>
+              <span className="font-semibold">{fmt(totalRevenue)}</span>
+            </CardContent>
+          </Card>
+          <Card className="gap-0 py-2.5">
+            <CardContent className="px-4">
+              <span className="text-muted-foreground">Total Units Sold: </span>
+              <span className="font-semibold">{totalSold.toLocaleString()}</span>
+            </CardContent>
+          </Card>
         </div>
       )}
 
       {loading ? (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           {Array.from({ length: 8 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full rounded-lg" />
           ))}
         </div>
       ) : error ? (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : products.length === 0 ? (
-        <div className="rounded-xl border bg-card py-12 text-center">
-          <Package className="mx-auto mb-2 h-8 w-8 text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground">No products in this store yet</p>
-        </div>
+        <Empty className="border bg-card">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Package />
+            </EmptyMedia>
+            <EmptyDescription>No products in this store yet</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
-        <div className="rounded-lg border bg-card overflow-hidden">
-          <div className="max-h-[600px] overflow-y-auto">
+        <Card className="gap-0 overflow-hidden py-0">
+          <CardContent className="max-h-150 overflow-y-auto px-0">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+              <thead className="sticky top-0 z-10 bg-muted">
                 <tr className="border-b">
                   <th className="w-10 px-4 py-3 text-right font-medium text-muted-foreground">#</th>
                   <th className="px-4 py-3 text-left">
-                    <button onClick={() => handleSort('name')} className="flex items-center gap-1.5 font-medium text-muted-foreground hover:text-foreground transition-colors">
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => handleSort('name')}
+                      className="-ml-2 text-muted-foreground hover:text-foreground"
+                    >
                       Product <SortIcon col="name" />
-                    </button>
+                    </Button>
                   </th>
                   <th className="px-4 py-3 text-right">
-                    <button onClick={() => handleSort('totalSold')} className="ml-auto flex items-center gap-1.5 font-medium text-muted-foreground hover:text-foreground transition-colors">
+                    <Button variant="ghost" size="xs" onClick={() => handleSort('totalSold')} className={sortHeadButtonClass}>
                       Units Sold <SortIcon col="totalSold" />
-                    </button>
+                    </Button>
                   </th>
                   <th className="px-4 py-3 text-right">
-                    <button onClick={() => handleSort('totalRevenue')} className="ml-auto flex items-center gap-1.5 font-medium text-muted-foreground hover:text-foreground transition-colors">
+                    <Button variant="ghost" size="xs" onClick={() => handleSort('totalRevenue')} className={sortHeadButtonClass}>
                       Revenue <SortIcon col="totalRevenue" />
-                    </button>
+                    </Button>
                   </th>
                   <th className="px-4 py-3 text-right">
-                    <button onClick={() => handleSort('sellingPrice')} className="ml-auto flex items-center gap-1.5 font-medium text-muted-foreground hover:text-foreground transition-colors">
+                    <Button variant="ghost" size="xs" onClick={() => handleSort('sellingPrice')} className={sortHeadButtonClass}>
                       Price <SortIcon col="sellingPrice" />
-                    </button>
+                    </Button>
                   </th>
                   <th className="px-4 py-3 text-right">
-                    <button onClick={() => handleSort('costPrice')} className="ml-auto flex items-center gap-1.5 font-medium text-muted-foreground hover:text-foreground transition-colors">
+                    <Button variant="ghost" size="xs" onClick={() => handleSort('costPrice')} className={sortHeadButtonClass}>
                       Cost <SortIcon col="costPrice" />
-                    </button>
+                    </Button>
                   </th>
                   <th className="px-4 py-3 text-right">
-                    <button onClick={() => handleSort('stockQuantity')} className="ml-auto flex items-center gap-1.5 font-medium text-muted-foreground hover:text-foreground transition-colors">
+                    <Button variant="ghost" size="xs" onClick={() => handleSort('stockQuantity')} className={sortHeadButtonClass}>
                       Stock <SortIcon col="stockQuantity" />
-                    </button>
+                    </Button>
                   </th>
                   <th className="px-4 py-3 w-36">
                     <span className="font-medium text-muted-foreground">Sales</span>
@@ -257,31 +277,25 @@ export function ProductSalesTable({ storeId }: ProductSalesTableProps) {
                           <span
                             className={`inline-flex items-center gap-1 text-xs font-medium ${
                               product.stockQuantity === 0
-                                ? 'text-red-600'
+                                ? 'text-error'
                                 : product.stockQuantity < 10
-                                ? 'text-amber-600'
-                                : 'text-muted-foreground'
+                                ? 'text-warning'
+                                : 'text-operational'
                             }`}
                           >
-                            <span
-                              className={`h-1.5 w-1.5 rounded-full ${
-                                product.stockQuantity === 0
-                                  ? 'bg-red-500'
-                                  : product.stockQuantity < 10
-                                  ? 'bg-amber-500'
-                                  : 'bg-green-500'
-                              }`}
-                            />
+                            {product.stockQuantity === 0 ? (
+                              <PackageX className="size-3.5" />
+                            ) : product.stockQuantity < 10 ? (
+                              <AlertTriangle className="size-3.5" />
+                            ) : (
+                              <PackageCheck className="size-3.5" />
+                            )}
                             {product.stockQuantity}
+                            {product.stockQuantity === 0 ? ' · Out' : product.stockQuantity < 10 ? ' · Low' : ''}
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                            <div
-                              className="absolute inset-y-0 left-0 rounded-full bg-primary/70 transition-all"
-                              style={{ width: `${barWidth}%` }}
-                            />
-                          </div>
+                          <Progress value={barWidth} className="h-1.5" />
                         </td>
                       </tr>
                     );
@@ -289,8 +303,8 @@ export function ProductSalesTable({ storeId }: ProductSalesTableProps) {
                 )}
               </tbody>
             </table>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

@@ -1,18 +1,25 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
+  AlertCircle,
   ArrowUpRight,
   CalendarDays,
   DollarSign,
-  Loader2,
   Package,
   Receipt,
   Store,
   TrendingUp,
   WrenchIcon,
 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from '@/components/ui/empty';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CustomerFeedback } from './CustomerFeedback';
 import { CustomerInteractions } from './CustomerInteractions';
@@ -197,7 +204,7 @@ export function StoreReports({ storeId }: StoreReportsProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {/* Header with store controls */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -206,42 +213,24 @@ export function StoreReports({ storeId }: StoreReportsProps) {
         </div>
 
         {!storeStateLoading && (
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 shadow-sm">
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                storeState.isMaintenance
-                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-                  : storeState.isOpen
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
-              }`}
+          <Card className="flex-row items-center gap-2 px-4 py-2.5">
+            <Badge
+              variant={storeState.isMaintenance ? 'warning' : storeState.isOpen ? 'success' : 'destructive'}
+              className="gap-1.5 px-2.5 py-1 font-semibold"
             >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  storeState.isMaintenance
-                    ? 'bg-amber-500'
-                    : storeState.isOpen
-                    ? 'bg-green-500'
-                    : 'bg-red-500'
-                }`}
-              />
+              <span className="size-1.5 rounded-full bg-current" />
               {storeState.isMaintenance ? 'Maintenance' : storeState.isOpen ? 'Open' : 'Closed'}
-            </span>
+            </Badge>
 
-            <div className="h-4 w-px bg-border" />
+            <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
 
             <Button
               variant={storeState.isOpen ? 'destructive' : 'default'}
               size="sm"
               onClick={handleToggleOpen}
               disabled={togglingOpen || togglingMaintenance}
-              className="gap-1.5"
             >
-              {togglingOpen ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Store className="h-3.5 w-3.5" />
-              )}
+              {togglingOpen ? <Spinner data-icon="inline-start" /> : <Store data-icon="inline-start" />}
               {storeState.isOpen ? 'Close Store' : 'Open Store'}
             </Button>
 
@@ -250,16 +239,15 @@ export function StoreReports({ storeId }: StoreReportsProps) {
               size="sm"
               onClick={handleToggleMaintenance}
               disabled={togglingOpen || togglingMaintenance}
-              className="gap-1.5"
             >
               {togglingMaintenance ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Spinner data-icon="inline-start" />
               ) : (
-                <WrenchIcon className="h-3.5 w-3.5" />
+                <WrenchIcon data-icon="inline-start" />
               )}
               {storeState.isMaintenance ? 'Disable Maintenance' : 'Maintenance'}
             </Button>
-          </div>
+          </Card>
         )}
       </div>
 
@@ -275,37 +263,44 @@ export function StoreReports({ storeId }: StoreReportsProps) {
 
         {/* Overview Tab */}
         <TabsContent value="overview">
-          <div className="space-y-8">
+          <div className="flex flex-col gap-8">
             {/* All-time Financial Summary */}
             {summaryLoading ? (
-              <div className="space-y-6">
+              <div className="flex flex-col gap-6">
                 <Skeleton className="h-6 w-40" />
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="rounded-xl border bg-card p-4 space-y-2">
-                      <Skeleton className="h-3.5 w-24" />
-                      <Skeleton className="h-7 w-3/4" />
-                    </div>
+                    <Card key={i} className="gap-2 py-4">
+                      <CardHeader className="px-4">
+                        <Skeleton className="h-3.5 w-24" />
+                      </CardHeader>
+                      <CardContent className="px-4">
+                        <Skeleton className="h-7 w-3/4" />
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
                 <Skeleton className="h-40 w-full rounded-lg" />
               </div>
             ) : summaryError ? (
-              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-                {summaryError}
-              </div>
+              <Alert variant="destructive">
+                <AlertCircle />
+                <AlertDescription>{summaryError}</AlertDescription>
+              </Alert>
             ) : summary ? (
-              <div className="space-y-6">
+              <div className="flex flex-col gap-6">
                 <h2 className="text-lg font-semibold">Financial Summary</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   <StatCard label="Total Sales" value={fmt(summary.totalSales)} />
                   <StatCard label="COGS" value={fmt(summary.totalCOGS)} className="text-muted-foreground" />
-                  <StatCard label="Gross Profit" value={fmt(summary.grossProfit)} className="text-green-600" />
+                  <StatCard label="Gross Profit" value={fmt(summary.grossProfit)} className="text-success" />
                   <StatCard label="Transactions" value={String(summary.transactionCount)} />
                 </div>
-                <div className="rounded-lg border bg-card p-6">
-                  <h3 className="mb-4 text-base font-semibold">Profit Breakdown</h3>
-                  <div className="space-y-3 text-sm">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Profit Breakdown</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-3 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Total Sales</span>
                       <span className="font-medium">{fmt(summary.totalSales)}</span>
@@ -314,33 +309,34 @@ export function StoreReports({ storeId }: StoreReportsProps) {
                       <span className="text-muted-foreground">Cost of Goods Sold</span>
                       <span className="font-medium text-destructive">- {fmt(summary.totalCOGS)}</span>
                     </div>
-                    <div className="flex justify-between border-t pt-3">
+                    <Separator />
+                    <div className="flex justify-between">
                       <span className="font-semibold">Gross Profit</span>
                       <span
-                        className={`font-bold ${summary.grossProfit >= 0 ? 'text-green-600' : 'text-destructive'}`}
+                        className={`font-bold ${summary.grossProfit >= 0 ? 'text-success' : 'text-destructive'}`}
                       >
                         {fmt(summary.grossProfit)}
                       </span>
                     </div>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               </div>
             ) : null}
 
             {/* Daily Financial Summary */}
-            <div className="space-y-5">
+            <div className="flex flex-col gap-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <CalendarDays className="h-5 w-5 text-primary" />
+                  <CalendarDays className="size-5 text-muted-foreground" />
                   <h2 className="text-lg font-semibold">Daily Financial Summary</h2>
                 </div>
                 <div className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="date"
                     value={dailyDate}
                     max={getTodayEST()}
                     onChange={(e) => setDailyDate(e.target.value)}
-                    className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    className="w-auto"
                   />
                   {dailyDate !== getTodayEST() && (
                     <Button
@@ -356,42 +352,49 @@ export function StoreReports({ storeId }: StoreReportsProps) {
               </div>
 
               {dailyLoading ? (
-                <div className="space-y-3">
+                <div className="flex flex-col gap-3">
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     {Array.from({ length: 4 }).map((_, i) => (
-                      <div key={i} className="rounded-xl border bg-card p-4 space-y-2">
-                        <Skeleton className="h-3.5 w-24" />
-                        <Skeleton className="h-7 w-3/4" />
-                      </div>
+                      <Card key={i} className="gap-2 py-4">
+                        <CardHeader className="px-4">
+                          <Skeleton className="h-3.5 w-24" />
+                        </CardHeader>
+                        <CardContent className="px-4">
+                          <Skeleton className="h-7 w-3/4" />
+                        </CardContent>
+                      </Card>
                     ))}
                   </div>
                   <Skeleton className="h-48 w-full rounded-lg" />
                 </div>
               ) : dailyError ? (
-                <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-                  {dailyError}
-                </div>
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertDescription>{dailyError}</AlertDescription>
+                </Alert>
               ) : dailyReport ? (
-                <div className="space-y-5">
+                <div className="flex flex-col gap-5">
                   {/* Stat cards */}
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                    <StatCard label="Revenue" value={fmt(dailyReport.totals.revenue)} icon={<DollarSign className="h-4 w-4" />} />
-                    <StatCard label="COGS" value={fmt(dailyReport.totals.cost)} className="text-muted-foreground" icon={<TrendingUp className="h-4 w-4" />} />
+                    <StatCard label="Revenue" value={fmt(dailyReport.totals.revenue)} icon={<DollarSign className="size-4" />} />
+                    <StatCard label="COGS" value={fmt(dailyReport.totals.cost)} className="text-muted-foreground" icon={<TrendingUp className="size-4" />} />
                     <StatCard
                       label="Profit"
                       value={fmt(dailyReport.totals.profit)}
-                      className={dailyReport.totals.profit >= 0 ? 'text-green-600' : 'text-destructive'}
-                      icon={<TrendingUp className="h-4 w-4" />}
+                      className={dailyReport.totals.profit >= 0 ? 'text-success' : 'text-destructive'}
+                      icon={<TrendingUp className="size-4" />}
                     />
-                    <StatCard label="Transactions" value={String(dailyReport.transactionCount)} icon={<Receipt className="h-4 w-4" />} />
-                    <StatCard label="Units Sold" value={String(dailyReport.totals.unitsSold)} icon={<Package className="h-4 w-4" />} />
+                    <StatCard label="Transactions" value={String(dailyReport.transactionCount)} icon={<Receipt className="size-4" />} />
+                    <StatCard label="Units Sold" value={String(dailyReport.totals.unitsSold)} icon={<Package className="size-4" />} />
                   </div>
 
                   {/* Daily profit breakdown */}
                   {dailyReport.totals.revenue > 0 && (
-                    <div className="rounded-lg border bg-card p-6">
-                      <h3 className="mb-4 text-base font-semibold">Daily Profit Breakdown</h3>
-                      <div className="space-y-3 text-sm">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">Daily Profit Breakdown</CardTitle>
+                      </CardHeader>
+                      <CardContent className="flex flex-col gap-3 text-sm">
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Revenue</span>
                           <span className="font-medium">{fmt(dailyReport.totals.revenue)}</span>
@@ -400,32 +403,34 @@ export function StoreReports({ storeId }: StoreReportsProps) {
                           <span className="text-muted-foreground">Cost of Goods Sold</span>
                           <span className="font-medium text-destructive">- {fmt(dailyReport.totals.cost)}</span>
                         </div>
-                        <div className="flex justify-between border-t pt-3">
+                        <Separator />
+                        <div className="flex justify-between">
                           <span className="font-semibold">Gross Profit</span>
-                          <span className={`font-bold ${dailyReport.totals.profit >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                          <span className={`font-bold ${dailyReport.totals.profit >= 0 ? 'text-success' : 'text-destructive'}`}>
                             {fmt(dailyReport.totals.profit)}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Margin</span>
-                          <span className={`text-xs font-medium ${dailyReport.totals.profit >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                            <ArrowUpRight className="mr-0.5 inline h-3 w-3" />
+                          <span className={`text-xs font-medium ${dailyReport.totals.profit >= 0 ? 'text-success' : 'text-destructive'}`}>
+                            <ArrowUpRight className="mr-0.5 inline size-3" />
                             {((dailyReport.totals.profit / dailyReport.totals.revenue) * 100).toFixed(1)}%
                           </span>
                         </div>
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   )}
 
                   {/* Top sold items for the day */}
                   {dailyReport.soldItems.length > 0 && (
-                    <div className="rounded-lg border bg-card overflow-hidden">
-                      <div className="px-6 py-4 border-b">
-                        <h3 className="text-base font-semibold">Products Sold Today</h3>
-                      </div>
-                      <div className="max-h-72 overflow-y-auto">
+                    <Card className="gap-0 overflow-hidden py-0">
+                      <CardHeader className="px-6 py-4">
+                        <CardTitle className="text-base">Products Sold Today</CardTitle>
+                      </CardHeader>
+                      <Separator />
+                      <CardContent className="max-h-72 overflow-y-auto px-0">
                         <table className="w-full text-sm">
-                          <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm">
+                          <thead className="sticky top-0 bg-muted">
                             <tr className="border-b">
                               <th className="px-6 py-2.5 text-left font-medium text-muted-foreground">Product</th>
                               <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Units</th>
@@ -443,28 +448,35 @@ export function StoreReports({ storeId }: StoreReportsProps) {
                                 <td className="px-4 py-2.5 text-right">{item.unitsSold}</td>
                                 <td className="px-4 py-2.5 text-right">{fmt(item.revenue)}</td>
                                 <td className="px-4 py-2.5 text-right text-muted-foreground">{fmt(item.cost)}</td>
-                                <td className={`px-6 py-2.5 text-right font-medium ${item.profit >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                                <td className={`px-6 py-2.5 text-right font-medium ${item.profit >= 0 ? 'text-success' : 'text-destructive'}`}>
                                   {fmt(item.profit)}
                                 </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   )}
 
                   {dailyReport.transactionCount === 0 && (
-                    <p className="py-4 text-center text-sm text-muted-foreground">
-                      No paid transactions recorded for{' '}
-                      {new Date(dailyDate + 'T00:00:00').toLocaleDateString('en-PH', {
-                        weekday: 'long',
-                        month: 'long',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                      .
-                    </p>
+                    <Empty className="p-4 md:p-4">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <Receipt />
+                        </EmptyMedia>
+                        <EmptyDescription>
+                          No paid transactions recorded for{' '}
+                          {new Date(dailyDate + 'T00:00:00').toLocaleDateString('en-PH', {
+                            weekday: 'long',
+                            month: 'long',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
+                          .
+                        </EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
                   )}
                 </div>
               ) : null}
@@ -498,12 +510,16 @@ export function StoreReports({ storeId }: StoreReportsProps) {
 
 function StatCard({ label, value, className, icon }: { label: string; value: string; className?: string; icon?: React.ReactNode }) {
   return (
-    <div className="rounded-lg border bg-card p-5">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        {icon}
-        {label}
-      </div>
-      <p className={`mt-1 text-2xl font-bold ${className ?? ''}`}>{value}</p>
-    </div>
+    <Card className="gap-1 py-5">
+      <CardHeader className="px-5">
+        <CardDescription className="flex items-center gap-2">
+          {icon}
+          {label}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="px-5">
+        <p className={`text-2xl font-bold ${className ?? ''}`}>{value}</p>
+      </CardContent>
+    </Card>
   );
 }

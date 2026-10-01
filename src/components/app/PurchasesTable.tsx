@@ -3,6 +3,9 @@ import { Fragment } from 'react';
 import { ChevronDown, ChevronRight, Receipt } from 'lucide-react';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 
 interface PurchaseItem {
   productId?: string;
@@ -46,7 +49,8 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden flex flex-col">
+    <Card className="gap-0 overflow-hidden py-0">
+      <CardContent className="flex flex-1 flex-col p-0">
       <div className="data-table-scroll-wrapper purchases-table-scroll flex-1 min-h-[320px]">
         <table className="data-table purchases-table">
           <thead>
@@ -63,9 +67,13 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
             {purchases.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
-                  <Receipt className="mx-auto h-10 w-10 opacity-40 mb-2" />
-                  <p className="font-medium">No purchases yet</p>
-                  <p className="text-sm mt-1">Your order history will appear here.</p>
+                  <Empty className="border-0 p-4 md:p-4">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon"><Receipt /></EmptyMedia>
+                      <EmptyTitle>No purchases yet</EmptyTitle>
+                      <EmptyDescription>Your order history will appear here.</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
                 </td>
               </tr>
             ) : (
@@ -86,18 +94,14 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                            className="size-8 p-0 text-muted-foreground hover:text-foreground"
                             aria-expanded={isExpanded}
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleExpanded(tx._id);
                             }}
                           >
-                            {isExpanded ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
+                            {isExpanded ? <ChevronDown /> : <ChevronRight />}
                           </Button>
                         ) : (
                           <span className="inline-block w-8" />
@@ -108,15 +112,9 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
                       <td className="px-4 py-3 text-right font-semibold tabular-nums">{fmt(tx.totalAmount)}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">{new Date(tx.createdAt).toLocaleString()}</td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            isActive
-                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                              : 'bg-muted text-muted-foreground'
-                          }`}
-                        >
+                        <Badge variant={isActive ? 'success' : 'secondary'}>
                           {tx.orderStatus ?? 'active'}
-                        </span>
+                        </Badge>
                       </td>
                     </tr>
                     {isExpanded && hasItems && (
@@ -145,13 +143,14 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
                                     <td className="px-4 py-2.5 text-right font-medium tabular-nums">{fmt(item.subtotal)}</td>
                                     <td className="px-4 py-2.5 text-center">
                                       {item.productId ? (
-                                        <a
-                                          href={`/products/${item.productId}/rate`}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                                        >
-                                          Rate
-                                        </a>
+                                        <Button asChild variant="outline" size="xs">
+                                          <a
+                                            href={`/products/${item.productId}/rate`}
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            Rate
+                                          </a>
+                                        </Button>
                                       ) : (
                                         <span className="text-xs text-muted-foreground/40">—</span>
                                       )}
@@ -171,16 +170,17 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
           </tbody>
         </table>
       </div>
+      </CardContent>
       {purchases.length > 0 && (
-        <div className="border-t border-border bg-muted/20">
+        <CardFooter className="block bg-muted/20 p-0">
           <TablePagination
             currentPage={page}
             totalItems={purchases.length}
             onPageChange={setPage}
             label="purchases"
           />
-        </div>
+        </CardFooter>
       )}
-    </div>
+    </Card>
   );
 }

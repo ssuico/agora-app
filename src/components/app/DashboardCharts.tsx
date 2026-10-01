@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  AlertCircle,
   AlertTriangle,
   ArrowUpRight,
   BarChart3,
   Box,
   CalendarDays,
   DollarSign,
-  Loader2,
   Package,
   Receipt,
   RefreshCw,
@@ -15,8 +15,18 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from '@/components/ui/empty';
+import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ChartContainer,
@@ -152,21 +162,28 @@ const shortDate = (d: string) => {
   return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
 };
 
-// Theme-aware palette extending the 5 ShadCN chart vars
+// Series colors come from the Agora palette via --chart-1..10 (see global.css).
 const PALETTE = [
   'var(--chart-1)',
   'var(--chart-2)',
-  'var(--chart-5)',
+  'var(--chart-3)',
   'var(--chart-4)',
-  '#2563eb',
-  '#0891b2',
-  '#7c3aed',
-  '#db2777',
-  '#059669',
-  '#d97706',
+  'var(--chart-5)',
+  'var(--chart-6)',
+  'var(--chart-7)',
+  'var(--chart-8)',
+  'var(--chart-9)',
+  'var(--chart-10)',
 ];
 
-const STAR_COLORS = ['#dc2626', '#ea580c', '#d97706', '#65a30d', '#16a34a'];
+// 1 star (poor) to 5 stars (excellent): status tokens, not brand colors.
+const STAR_COLORS = [
+  'var(--error)',
+  'var(--warning)',
+  'var(--rating)',
+  'color-mix(in srgb, var(--success) 60%, white)',
+  'var(--success)',
+];
 
 type DateRange = '7' | '14' | '30' | '60' | '90';
 
@@ -180,8 +197,8 @@ const salesChartConfig = {
 } satisfies ChartConfig;
 
 const inventoryBreakdownConfig = {
-  perishable: { label: 'Perishable', color: '#d97706' },
-  nonPerishable: { label: 'Non-perishable', color: '#2563eb' },
+  perishable: { label: 'Perishable', color: 'var(--warning)' },
+  nonPerishable: { label: 'Non-perishable', color: 'var(--operational)' },
 } satisfies ChartConfig;
 
 const restockConfig = {
@@ -272,36 +289,44 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
 
   if (loading) {
     return (
-      <div className="space-y-8">
+      <div className="flex flex-col gap-8">
         {/* Header skeleton */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Skeleton className="h-5 w-5 rounded" />
+            <Skeleton className="size-5 rounded" />
             <Skeleton className="h-6 w-24" />
           </div>
           <div className="flex items-center gap-2">
             <Skeleton className="h-8 w-48 rounded-lg" />
-            <Skeleton className="h-8 w-8 rounded-md" />
+            <Skeleton className="size-8 rounded-md" />
           </div>
         </div>
         {/* KPI tiles skeleton — 6 cols */}
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="rounded-xl border bg-card p-4 space-y-2">
-              <Skeleton className="h-4 w-4 rounded" />
-              <Skeleton className="h-5 w-3/4" />
-              <Skeleton className="h-3 w-1/2" />
-            </div>
+            <Card key={i} className="gap-2 py-4">
+              <CardHeader className="px-4">
+                <Skeleton className="size-4 rounded" />
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2 px-4">
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </CardContent>
+            </Card>
           ))}
         </div>
         {/* Second KPI row — 4 cols */}
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="rounded-xl border bg-card p-4 space-y-2">
-              <Skeleton className="h-4 w-4 rounded" />
-              <Skeleton className="h-5 w-3/4" />
-              <Skeleton className="h-3 w-1/2" />
-            </div>
+            <Card key={i} className="gap-2 py-4">
+              <CardHeader className="px-4">
+                <Skeleton className="size-4 rounded" />
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2 px-4">
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </CardContent>
+            </Card>
           ))}
         </div>
         {/* Chart skeleton */}
@@ -316,9 +341,10 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-        {error}
-      </div>
+      <Alert variant="destructive">
+        <AlertCircle />
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
     );
   }
 
@@ -327,11 +353,11 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
   const { kpis } = data;
 
   return (
-    <div className="space-y-8">
+    <div className="flex flex-col gap-8">
       {/* Date range selector + refresh */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 text-primary" />
+          <CalendarDays className="size-5 text-muted-foreground" />
           <h2 className="text-lg font-semibold">Analytics</h2>
         </div>
         <div className="flex items-center gap-2">
@@ -343,51 +369,49 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
               { value: '60' as DateRange, label: '60D' },
               { value: '90' as DateRange, label: '90D' },
             ]).map((opt) => (
-              <button
+              <Button
                 key={opt.value}
+                variant={dateRange === opt.value ? 'default' : 'ghost'}
+                size="sm"
                 onClick={() => setDateRange(opt.value)}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  dateRange === opt.value
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-transparent text-muted-foreground hover:bg-muted'
-                }`}
+                className="rounded-none text-xs"
               >
                 {opt.label}
-              </button>
+              </Button>
             ))}
           </div>
-          <Button variant="ghost" size="sm" onClick={fetchData} className="gap-1.5 text-xs">
-            <RefreshCw className="h-3.5 w-3.5" />
+          <Button variant="ghost" size="icon-sm" onClick={fetchData} aria-label="Refresh">
+            <RefreshCw />
           </Button>
         </div>
       </div>
 
       {/* ===== KPI TILES ===== */}
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-        <KpiTile icon={<DollarSign className="h-4 w-4" />} label="Today's Revenue" value={fmt(kpis.todayRevenue)} />
-        <KpiTile icon={<TrendingUp className="h-4 w-4" />} label="This Week" value={fmtCompact(kpis.weekRevenue)} sub={`${kpis.weekTransactions} txns`} />
-        <KpiTile icon={<BarChart3 className="h-4 w-4" />} label={`${dateRange}-Day Revenue`} value={fmtCompact(kpis.monthRevenue)} sub={`${kpis.monthTransactions} txns`} />
-        <KpiTile icon={<Receipt className="h-4 w-4" />} label="Avg Order Value" value={fmt(kpis.avgOrderValue)} />
-        <KpiTile icon={<ShoppingCart className="h-4 w-4" />} label="Top Product" value={kpis.topProduct?.name ?? '—'} sub={kpis.topProduct ? `${kpis.topProduct.unitsSold} sold` : undefined} className="truncate" />
-        <KpiTile icon={<Users className="h-4 w-4" />} label="Reservations (24h)" value={String(kpis.reservationsLast24h)} />
+        <KpiTile icon={<DollarSign className="size-4" />} label="Today's Revenue" value={fmt(kpis.todayRevenue)} />
+        <KpiTile icon={<TrendingUp className="size-4" />} label="This Week" value={fmtCompact(kpis.weekRevenue)} sub={`${kpis.weekTransactions} txns`} />
+        <KpiTile icon={<BarChart3 className="size-4" />} label={`${dateRange}-Day Revenue`} value={fmtCompact(kpis.monthRevenue)} sub={`${kpis.monthTransactions} txns`} />
+        <KpiTile icon={<Receipt className="size-4" />} label="Avg Order Value" value={fmt(kpis.avgOrderValue)} />
+        <KpiTile icon={<ShoppingCart className="size-4" />} label="Top Product" value={kpis.topProduct?.name ?? '—'} sub={kpis.topProduct ? `${kpis.topProduct.unitsSold} sold` : undefined} className="truncate" />
+        <KpiTile icon={<Users className="size-4" />} label="Reservations (24h)" value={String(kpis.reservationsLast24h)} />
       </div>
 
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
-        <KpiTile icon={<Box className="h-4 w-4" />} label="Inventory Items" value={kpis.totalInventoryItems.toLocaleString()} />
+        <KpiTile icon={<Box className="size-4" />} label="Inventory Items" value={kpis.totalInventoryItems.toLocaleString()} />
         <KpiTile
-          icon={<AlertTriangle className="h-4 w-4" />}
+          icon={<AlertTriangle className="size-4" />}
           label="Low Stock"
           value={String(kpis.lowStockCount)}
-          className={kpis.lowStockCount > 0 ? 'text-amber-600' : ''}
+          className={kpis.lowStockCount > 0 ? 'text-warning' : ''}
         />
         <KpiTile
-          icon={<Package className="h-4 w-4" />}
+          icon={<Package className="size-4" />}
           label="Out of Stock"
           value={String(kpis.outOfStockCount)}
-          className={kpis.outOfStockCount > 0 ? 'text-red-600' : ''}
+          className={kpis.outOfStockCount > 0 ? 'text-error' : ''}
         />
         <KpiTile
-          icon={<Star className="h-4 w-4" />}
+          icon={<Star className="size-4" />}
           label="Store Rating"
           value={kpis.totalStoreRatings > 0 ? `${kpis.avgStoreRating.toFixed(1)} ★` : 'No ratings'}
           sub={kpis.totalStoreRatings > 0 ? `${kpis.totalStoreRatings} reviews` : undefined}
@@ -395,7 +419,7 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
       </div>
 
       {/* ===== SECTION 1: SALES & REVENUE ===== */}
-      <SectionTitle icon={<TrendingUp className="h-5 w-5" />} title="Sales & Revenue" />
+      <SectionTitle icon={<TrendingUp className="size-5" />} title="Sales & Revenue" />
 
       <Card>
         <CardHeader className="pb-2">
@@ -530,7 +554,7 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
                 <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 px-2">
                   {revenuePieData.map((item) => (
                     <div key={item.name} className="flex items-center gap-1.5 text-xs">
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: item.fill }} />
+                      <span className="size-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: item.fill }} />
                       <span className="text-muted-foreground">{item.name}</span>
                     </div>
                   ))}
@@ -542,7 +566,7 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
       </div>
 
       {/* ===== SECTION 2: INVENTORY & STOCK ===== */}
-      <SectionTitle icon={<Package className="h-5 w-5" />} title="Inventory & Stock" />
+      <SectionTitle icon={<Package className="size-5" />} title="Inventory & Stock" />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Current stock per product */}
@@ -564,7 +588,7 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Bar dataKey="stockQuantity" name="Stock" radius={[0, 6, 6, 0]}>
                     {data.inventorySnapshot.slice(0, 15).map((item, i) => (
-                      <Cell key={i} fill={item.stockQuantity === 0 ? '#dc2626' : item.stockQuantity < 10 ? '#d97706' : '#16a34a'} />
+                      <Cell key={i} fill={item.stockQuantity === 0 ? 'var(--error)' : item.stockQuantity < 10 ? 'var(--warning)' : 'var(--operational)'} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -585,8 +609,8 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Pie
                     data={[
-                      { name: 'perishable', value: inventoryBreakdown.perishable, fill: '#d97706' },
-                      { name: 'nonPerishable', value: inventoryBreakdown.nonPerishable, fill: '#2563eb' },
+                      { name: 'perishable', value: inventoryBreakdown.perishable, fill: 'var(--warning)' },
+                      { name: 'nonPerishable', value: inventoryBreakdown.nonPerishable, fill: 'var(--operational)' },
                     ]}
                     cx="50%"
                     cy="50%"
@@ -619,8 +643,8 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
                 </PieChart>
               </ChartContainer>
               <div className="flex justify-center gap-5 text-xs">
-                <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-[2px] bg-amber-600" /> Perishable: {inventoryBreakdown.perishable}</span>
-                <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-[2px] bg-blue-600" /> Non-perishable: {inventoryBreakdown.nonPerishable}</span>
+                <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-[2px] bg-warning" /> Perishable: {inventoryBreakdown.perishable}</span>
+                <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-[2px] bg-operational" /> Non-perishable: {inventoryBreakdown.nonPerishable}</span>
               </div>
             </div>
           </CardContent>
@@ -648,7 +672,7 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
       )}
 
       {/* ===== SECTION 3: CUSTOMER ACTIVITY ===== */}
-      <SectionTitle icon={<Users className="h-5 w-5" />} title="Customer Activity & Engagement" />
+      <SectionTitle icon={<Users className="size-5" />} title="Customer Activity & Engagement" />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -683,7 +707,7 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
           </CardHeader>
           <CardContent>
             {data.ratingDistribution.some((v) => v > 0) ? (
-              <div className="space-y-4">
+              <div className="flex flex-col gap-4">
                 <ChartContainer config={ratingConfig} className="h-[200px] w-full">
                   <BarChart
                     data={data.ratingDistribution.map((count, i) => ({ stars: `${i + 1}★`, count }))}
@@ -700,9 +724,9 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
                     </Bar>
                   </BarChart>
                 </ChartContainer>
-                <div className="flex justify-center gap-4 text-sm text-muted-foreground">
+                <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
                   <span>Store: {kpis.avgStoreRating > 0 ? `${kpis.avgStoreRating.toFixed(1)}★ (${kpis.totalStoreRatings})` : 'None'}</span>
-                  <span className="text-border">|</span>
+                  <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
                   <span>Products: {kpis.avgProductRating > 0 ? `${kpis.avgProductRating.toFixed(1)}★ (${kpis.totalProductRatings})` : 'None'}</span>
                 </div>
               </div>
@@ -712,7 +736,7 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
       </div>
 
       {/* ===== SECTION 4: PRODUCT PERFORMANCE ===== */}
-      <SectionTitle icon={<BarChart3 className="h-5 w-5" />} title="Product Performance" />
+      <SectionTitle icon={<BarChart3 className="size-5" />} title="Product Performance" />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Top products sold (bar) */}
@@ -743,7 +767,7 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">Revenue vs Rating</CardTitle>
-            <p className="text-xs text-muted-foreground">Identifies high-revenue but low-satisfaction products</p>
+            <CardDescription className="text-xs">Identifies high-revenue but low-satisfaction products</CardDescription>
           </CardHeader>
           <CardContent>
             {data.productPerformance.filter((p) => p.ratingCount > 0 && p.revenue > 0).length > 0 ? (
@@ -785,30 +809,42 @@ export function DashboardCharts({ storeId }: DashboardChartsProps) {
           {(() => {
             const mostProfitable = [...data.productPerformance].sort((a, b) => b.profit - a.profit)[0];
             return mostProfitable ? (
-              <Card className="p-5">
-                <p className="text-xs text-muted-foreground flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5" /> Most Profitable</p>
-                <p className="mt-1 text-lg font-bold truncate">{mostProfitable.name}</p>
-                <p className="text-sm text-green-600 font-medium">{fmt(mostProfitable.profit)} profit</p>
+              <Card className="gap-1 py-5">
+                <CardHeader className="px-5">
+                  <CardDescription className="flex items-center gap-1.5 text-xs"><DollarSign className="size-3.5" /> Most Profitable</CardDescription>
+                </CardHeader>
+                <CardContent className="px-5">
+                  <p className="truncate text-lg font-bold">{mostProfitable.name}</p>
+                  <p className="text-sm font-medium text-success">{fmt(mostProfitable.profit)} profit</p>
+                </CardContent>
               </Card>
             ) : null;
           })()}
           {(() => {
             const highestRated = [...data.productPerformance].filter((p) => p.ratingCount > 0).sort((a, b) => b.avgRating - a.avgRating)[0];
             return highestRated ? (
-              <Card className="p-5">
-                <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Star className="h-3.5 w-3.5" /> Highest Rated</p>
-                <p className="mt-1 text-lg font-bold truncate">{highestRated.name}</p>
-                <p className="text-sm text-amber-600 font-medium">{highestRated.avgRating.toFixed(1)}★ ({highestRated.ratingCount} reviews)</p>
+              <Card className="gap-1 py-5">
+                <CardHeader className="px-5">
+                  <CardDescription className="flex items-center gap-1.5 text-xs"><Star className="size-3.5" /> Highest Rated</CardDescription>
+                </CardHeader>
+                <CardContent className="px-5">
+                  <p className="truncate text-lg font-bold">{highestRated.name}</p>
+                  <p className="text-sm font-medium text-warning">{highestRated.avgRating.toFixed(1)}★ ({highestRated.ratingCount} reviews)</p>
+                </CardContent>
               </Card>
             ) : null;
           })()}
           {(() => {
             const bestSeller = [...data.productPerformance].sort((a, b) => b.unitsSold - a.unitsSold)[0];
             return bestSeller ? (
-              <Card className="p-5">
-                <p className="text-xs text-muted-foreground flex items-center gap-1.5"><ArrowUpRight className="h-3.5 w-3.5" /> Best Seller</p>
-                <p className="mt-1 text-lg font-bold truncate">{bestSeller.name}</p>
-                <p className="text-sm font-medium" style={{ color: 'var(--chart-1)' }}>{bestSeller.unitsSold.toLocaleString()} units sold</p>
+              <Card className="gap-1 py-5">
+                <CardHeader className="px-5">
+                  <CardDescription className="flex items-center gap-1.5 text-xs"><ArrowUpRight className="size-3.5" /> Best Seller</CardDescription>
+                </CardHeader>
+                <CardContent className="px-5">
+                  <p className="truncate text-lg font-bold">{bestSeller.name}</p>
+                  <p className="text-sm font-medium" style={{ color: 'var(--chart-1)' }}>{bestSeller.unitsSold.toLocaleString()} units sold</p>
+                </CardContent>
               </Card>
             ) : null;
           })()}
@@ -830,13 +866,19 @@ function KpiTile({ icon, label, value, sub, className }: {
   className?: string;
 }) {
   return (
-    <Card className="p-4">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {icon}
-        {label}
-      </div>
-      <p className={`mt-1 text-xl font-bold ${className ?? ''}`}>{value}</p>
-      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+    <Card className="gap-1 py-4">
+      <CardHeader className="px-4">
+        <CardDescription className="flex items-center gap-1.5 text-xs">
+          {icon}
+          {label}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="px-4">
+        <p className={`text-xl font-bold ${className ?? ''}`}>{value}</p>
+      </CardContent>
+      {sub && (
+        <CardFooter className="px-4 text-xs text-muted-foreground">{sub}</CardFooter>
+      )}
     </Card>
   );
 }
@@ -844,7 +886,7 @@ function KpiTile({ icon, label, value, sub, className }: {
 function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
     <div className="flex items-center gap-2 pt-2">
-      <span className="text-primary">{icon}</span>
+      <span className="text-muted-foreground">{icon}</span>
       <h2 className="text-lg font-semibold">{title}</h2>
     </div>
   );
@@ -852,8 +894,13 @@ function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string })
 
 function EmptyChart({ message = 'No data available' }: { message?: string }) {
   return (
-    <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-      {message}
-    </div>
+    <Empty className="p-6 md:p-6">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <BarChart3 />
+        </EmptyMedia>
+        <EmptyDescription>{message}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }

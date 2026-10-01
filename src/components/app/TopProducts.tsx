@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Package, RefreshCw, Trophy } from 'lucide-react';
+import { AlertCircle, Package, RefreshCw, Trophy } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from '@/components/ui/empty';
+import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface ProductStat {
@@ -22,9 +25,9 @@ const fmt = (n: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
 
 const MEDAL_COLORS = [
-  'bg-amber-400 text-amber-950',
-  'bg-slate-300 text-slate-700',
-  'bg-orange-400 text-orange-950',
+  'bg-rating text-foreground',
+  'bg-border text-foreground',
+  'bg-warning-soft text-warning-ink',
 ];
 
 export function TopProducts({ storeId, hideRevenue = false, defaultLimit = 10 }: TopProductsProps) {
@@ -55,55 +58,55 @@ export function TopProducts({ storeId, hideRevenue = false, defaultLimit = 10 }:
 
   return (
     <div className="shop-widget">
-      {/* Header */}
       <div className="shop-widget-header flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-500/15">
-            <Trophy className="h-3.5 w-3.5 text-amber-500" />
+          <div className="flex size-6 items-center justify-center rounded-lg bg-warning-soft">
+            <Trophy className="size-3.5 text-warning" />
           </div>
           <h2 className="text-sm font-semibold">Top Products</h2>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="flex rounded-md border overflow-hidden">
+          <div className="flex overflow-hidden rounded-md border">
             {([5, 10] as const).map((n) => (
-              <button
+              <Button
                 key={n}
+                variant="ghost"
+                size="xs"
                 onClick={() => setLimit(n)}
-                className={`px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
-                  limit === n
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-transparent text-muted-foreground hover:bg-muted'
-                }`}
+                aria-pressed={limit === n}
+                className={`rounded-none text-[11px] ${limit === n ? 'bg-primary-subtle font-semibold text-foreground hover:bg-primary-subtle' : 'text-muted-foreground'}`}
               >
                 Top {n}
-              </button>
+              </Button>
             ))}
           </div>
-          <Button variant="ghost" size="icon" onClick={fetchData} className="h-6 w-6">
-            <RefreshCw className="h-3 w-3" />
+          <Button variant="ghost" size="icon-xs" onClick={fetchData}>
+            <RefreshCw />
           </Button>
         </div>
       </div>
 
-      {/* Content */}
       <div className="p-2">
         {loading ? (
-          <div className="space-y-2 p-2">
+          <div className="flex flex-col gap-2 p-2">
             {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className="h-14 w-full rounded-lg" />
             ))}
           </div>
         ) : error ? (
-          <div className="m-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive">
-            {error}
-          </div>
+          <Alert variant="destructive" className="m-3 w-auto">
+            <AlertCircle />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : products.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-              <Package className="h-5 w-5 text-muted-foreground/30" />
-            </div>
-            <p className="text-xs text-muted-foreground">No sales data yet</p>
-          </div>
+          <Empty className="py-10 md:py-10">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Package />
+              </EmptyMedia>
+              <EmptyDescription className="text-xs">No sales data yet</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <div className="divide-y divide-border/50">
             {products.map((product, index) => {
@@ -112,14 +115,12 @@ export function TopProducts({ storeId, hideRevenue = false, defaultLimit = 10 }:
 
               return (
                 <div key={product.productId} className="flex items-center gap-3 px-2 py-3 rounded-lg transition-colors hover:bg-muted/20">
-                  {/* Rank badge */}
                   <div
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold shadow-sm ${rankClass}`}
+                    className={`flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold shadow-sm ${rankClass}`}
                   >
                     {index + 1}
                   </div>
 
-                  {/* Product info + bar */}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2 mb-1">
                       <p className="truncate text-xs font-medium">{product.name}</p>
@@ -127,12 +128,7 @@ export function TopProducts({ storeId, hideRevenue = false, defaultLimit = 10 }:
                         {product.totalSold.toLocaleString()} sold
                       </span>
                     </div>
-                    <div className="relative h-1 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="absolute inset-y-0 left-0 rounded-full bg-primary/60 transition-all duration-500"
-                        style={{ width: `${barWidth}%` }}
-                      />
-                    </div>
+                    <Progress value={barWidth} className="h-1" />
                     {!hideRevenue && (
                       <p className="mt-0.5 text-[10px] text-muted-foreground">
                         {fmt(product.totalRevenue)} revenue

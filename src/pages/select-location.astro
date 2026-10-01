@@ -1,6 +1,9 @@
 ---
 import CustomerLayout from '../layouts/CustomerLayout.astro';
 import { createApiClient } from '../lib/api';
+import { Card, CardContent } from '../components/ui/card';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from '../components/ui/empty';
+import { MapPin } from 'lucide-react';
 
 const token = Astro.cookies.get('agora_token')?.value ?? '';
 const api = createApiClient(token);
@@ -19,7 +22,7 @@ try {
 ---
 
 <CustomerLayout title="Select Location">
-  <div class="mx-auto max-w-3xl space-y-6">
+  <div class="mx-auto flex max-w-3xl flex-col gap-6">
     <div class="text-center">
       <h1 class="text-2xl font-bold tracking-tight">Select Your Location</h1>
       <p class="text-sm text-muted-foreground">
@@ -29,25 +32,28 @@ try {
 
     {
       locations.length === 0 ? (
-        <p class="text-center text-muted-foreground py-12">
-          No locations available yet. Please check back later.
-        </p>
+        <Empty className="py-12">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <MapPin />
+            </EmptyMedia>
+            <EmptyDescription>
+              No locations available yet. Please check back later.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {locations.map((loc) => (
-            <a
-              href={`/select-store?locationId=${loc._id}`}
-              class="group rounded-lg border bg-card p-6 shadow-sm transition-all hover:border-primary hover:shadow-md"
-            >
-              <div class="flex items-center gap-3">
-                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-                    <circle cx="12" cy="10" r="3" />
-                  </svg>
-                </div>
-                <p class="text-lg font-semibold group-hover:text-primary">{loc.name}</p>
-              </div>
+            <a href={`/select-store?locationId=${loc._id}`} class="group">
+              <Card className="transition-all group-hover:border-operational group-hover:shadow-md">
+                <CardContent className="flex items-center gap-3">
+                  <div class="flex size-10 items-center justify-center rounded-full bg-operational-subtle text-operational">
+                    <MapPin className="size-5" />
+                  </div>
+                  <p class="text-lg font-semibold group-hover:text-operational">{loc.name}</p>
+                </CardContent>
+              </Card>
             </a>
           ))}
         </div>

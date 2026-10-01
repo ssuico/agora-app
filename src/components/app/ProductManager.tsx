@@ -1,4 +1,8 @@
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -7,22 +11,29 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Spinner } from '@/components/ui/spinner';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Activity, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Loader2, Lock, LockOpen, NotepadText, Package, Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
+import { Activity, AlertCircle, AlertTriangle, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Lock, LockOpen, NotepadText, Package, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -153,7 +164,7 @@ function ProductImage({ src, className }: { src?: string; className?: string }) 
   if (!src || failed) {
     return (
       <div className={`flex items-center justify-center bg-muted rounded ${className}`}>
-        <ImageIcon className="h-5 w-5 text-muted-foreground/40" />
+        <ImageIcon className="size-5 text-muted-foreground/40" />
       </div>
     );
   }
@@ -169,17 +180,10 @@ function ProductImage({ src, className }: { src?: string; className?: string }) 
 
 function StockBadge({ value }: { value: number }) {
   return (
-    <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-        value === 0
-          ? 'bg-destructive/15 text-destructive'
-          : value < 10
-            ? 'bg-secondary text-secondary-foreground'
-            : 'bg-primary/20 text-primary'
-      }`}
-    >
+    <Badge variant={value === 0 ? 'error' : value < 10 ? 'warning' : 'operational'} className="tabular-nums">
+      {value === 0 ? <PackageX /> : value < 10 ? <AlertTriangle /> : <PackageCheck />}
       {value}
-    </span>
+    </Badge>
   );
 }
 
@@ -250,13 +254,15 @@ function InventoryReportHistory({ storeId }: { storeId: string }) {
 
   if (loading) {
     return (
-      <div className="space-y-2">
+      <div className="flex flex-col gap-2">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-4 rounded-lg border bg-card px-4 py-3">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-4 w-20 ml-auto" />
-          </div>
+          <Card key={i} className="gap-0 rounded-lg py-3">
+            <CardContent className="flex items-center gap-4 px-4">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-20 ml-auto" />
+            </CardContent>
+          </Card>
         ))}
       </div>
     );
@@ -266,7 +272,8 @@ function InventoryReportHistory({ storeId }: { storeId: string }) {
 
   return (
     <>
-      <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col">
+      <Card className="gap-0 overflow-hidden rounded-lg py-0">
+        <CardContent className="flex flex-col px-0">
         <div className="data-table-scroll-wrapper flex-1 min-h-0">
           <table className="data-table">
             <thead>
@@ -301,7 +308,7 @@ function InventoryReportHistory({ storeId }: { storeId: string }) {
                         size="sm"
                         onClick={() => handleDownload(r._id, r.fileName)}
                       >
-                        <Download className="mr-1 h-3.5 w-3.5" />
+                        <Download data-icon="inline-start" />
                         Download
                       </Button>
                       <Button
@@ -310,7 +317,7 @@ function InventoryReportHistory({ storeId }: { storeId: string }) {
                         onClick={() => setDeleteTarget(r)}
                         className="text-destructive hover:text-destructive"
                       >
-                        <Trash2 className="mr-1 h-3.5 w-3.5" />
+                        <Trash2 data-icon="inline-start" />
                         Delete
                       </Button>
                     </div>
@@ -329,7 +336,8 @@ function InventoryReportHistory({ storeId }: { storeId: string }) {
             label="reports"
           />
         )}
-      </div>
+        </CardContent>
+      </Card>
 
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <DialogContent>
@@ -340,7 +348,7 @@ function InventoryReportHistory({ storeId }: { storeId: string }) {
             </DialogDescription>
           </DialogHeader>
           {deleteTarget && (
-            <div className="rounded-md border px-4 py-3 text-sm space-y-1">
+            <div className="flex flex-col gap-1 rounded-md border px-4 py-3 text-sm">
               <p><span className="text-muted-foreground">Report Date:</span> <span className="font-mono">{deleteTarget.reportDate}</span></p>
               <p><span className="text-muted-foreground">Generated By:</span> {deleteTarget.generatedBy?.name ?? 'Unknown'}</p>
             </div>
@@ -380,9 +388,11 @@ function ProductManagerInventoryReport({
 }) {
   if (!storeId) {
     return (
-      <p className="rounded-lg border bg-muted/50 px-4 py-8 text-center text-sm text-muted-foreground">
-        Select a store above to view the inventory report.
-      </p>
+      <Empty className="border bg-muted/50 py-8 md:py-8">
+        <EmptyHeader>
+          <EmptyDescription>Select a store above to view the inventory report.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
@@ -404,11 +414,11 @@ function ProductManagerInventoryReport({
   }, [invData?.date]);
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Date</Label>
-          <Input type="date" value={invDate} onChange={(e) => onInvDateChange(e.target.value)} className="w-40" />
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="inv-report-date" className="text-xs text-muted-foreground">Date</Label>
+          <Input id="inv-report-date" type="date" value={invDate} onChange={(e) => onInvDateChange(e.target.value)} className="w-40" />
         </div>
         <Button onClick={onFetch} disabled={invLoading}>{invLoading ? 'Loading...' : 'Load Report'}</Button>
         {onGenerateAndSave && (
@@ -418,23 +428,31 @@ function ProductManagerInventoryReport({
         )}
         {onDownloadExcel && (
           <Button variant="outline" onClick={onDownloadExcel} disabled={invLoading || !invData}>
-            <Download className="mr-1 h-3.5 w-3.5" />
+            <Download data-icon="inline-start" />
             Download Excel
           </Button>
         )}
       </div>
 
       {invError && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">{invError}</div>
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertDescription>{invError}</AlertDescription>
+        </Alert>
       )}
 
       {!invLoading && invData && (
-        <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col">
-          <div className="border-b border-border px-4 py-3">
-            <h3 className="text-sm font-semibold">Inventory Report — {invData.date}</h3>
-          </div>
+        <Card className="gap-0 overflow-hidden rounded-lg py-0">
+          <CardHeader className="px-4 py-3">
+            <CardTitle className="text-sm">Inventory Report — {invData.date}</CardTitle>
+          </CardHeader>
+          <Separator />
           {invData.products.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">No inventory records for this date.</p>
+            <Empty className="py-8 md:py-8">
+              <EmptyHeader>
+                <EmptyDescription>No inventory records for this date.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <>
               <div className="data-table-scroll-wrapper flex-1 min-h-0">
@@ -467,7 +485,7 @@ function ProductManagerInventoryReport({
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span className="cursor-help inline-flex">
-                                <NotepadText className="h-4 w-4 text-muted-foreground" />
+                                <NotepadText className="size-4 text-muted-foreground" />
                               </span>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="max-w-xs whitespace-pre-wrap">
@@ -480,9 +498,9 @@ function ProductManagerInventoryReport({
                       )}
                     </td>
                     <td className="px-4 py-2.5">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${p.isPerishable ? 'bg-secondary text-secondary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                      <Badge variant={p.isPerishable ? 'secondary' : 'outline'}>
                         {p.isPerishable ? 'Perishable' : 'Non-perishable'}
-                      </span>
+                      </Badge>
                     </td>
                     <td className="px-4 py-2.5">{fmt(p.costPrice)}</td>
                     <td className="px-4 py-2.5">{fmt(p.sellingPrice)}</td>
@@ -491,10 +509,10 @@ function ProductManagerInventoryReport({
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{p.displayInitialStock}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">
-                      {p.restock > 0 ? <span className="text-primary font-medium">+{p.restock}</span> : <span className="text-muted-foreground">0</span>}
+                      {p.restock > 0 ? <span className="text-operational font-medium">+{p.restock}</span> : <span className="text-muted-foreground">0</span>}
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">
-                      {p.sold > 0 ? <span className="text-primary font-medium">{p.sold}</span> : <span className="text-muted-foreground">0</span>}
+                      {p.sold > 0 ? <span className="text-operational font-medium">{p.sold}</span> : <span className="text-muted-foreground">0</span>}
                     </td>
                     <td className="text-right"><StockBadge value={p.currentStock} /></td>
                   </tr>
@@ -503,13 +521,16 @@ function ProductManagerInventoryReport({
                 </table>
               </div>
               {totals && (
-                <div className="border-t border-border px-4 py-2 flex flex-wrap items-center gap-4 text-sm font-semibold bg-muted/50">
-                  <span>Total</span>
-                  <span className="tabular-nums">Initial: {totals.initialStock}</span>
-                  <span className="tabular-nums text-primary">Restock: +{totals.restock}</span>
-                  <span className="tabular-nums text-primary">Sold: {totals.sold}</span>
-                  <span className="tabular-nums">Current: <StockBadge value={totals.currentStock} /></span>
-                </div>
+                <>
+                  <Separator />
+                  <div className="flex flex-wrap items-center gap-4 bg-muted/50 px-4 py-2 text-sm font-semibold">
+                    <span>Total</span>
+                    <span className="tabular-nums">Initial: {totals.initialStock}</span>
+                    <span className="tabular-nums text-operational">Restock: +{totals.restock}</span>
+                    <span className="tabular-nums text-operational">Sold: {totals.sold}</span>
+                    <span className="tabular-nums">Current: <StockBadge value={totals.currentStock} /></span>
+                  </div>
+                </>
               )}
               <TablePagination
                 currentPage={invPage}
@@ -519,11 +540,15 @@ function ProductManagerInventoryReport({
               />
             </>
           )}
-        </div>
+        </Card>
       )}
 
       {!invLoading && !invData && !invError && (
-        <p className="py-8 text-center text-muted-foreground">Select a date and click &quot;Generate Report&quot; to view inventory data.</p>
+        <Empty className="py-8 md:py-8">
+          <EmptyHeader>
+            <EmptyDescription>Select a date and click &quot;Generate Report&quot; to view inventory data.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
     </div>
   );
@@ -548,7 +573,7 @@ function RealtimeStocksImage({ src, className }: { src?: string; className?: str
   if (!src || failed) {
     return (
       <div className={`flex items-center justify-center bg-muted ${className}`}>
-        <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
+        <ImageIcon className="size-8 text-muted-foreground/30" />
       </div>
     );
   }
@@ -676,7 +701,7 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
 
   if (loading) {
     return (
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <Skeleton className="h-9 w-64 rounded-lg" />
           <Skeleton className="h-9 w-28 rounded-lg" />
@@ -684,12 +709,14 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className="rounded-xl border bg-card p-3 space-y-2">
-              <Skeleton className="aspect-square w-full rounded-lg" />
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-3.5 w-1/2" />
-              <Skeleton className="h-3 w-2/3" />
-            </div>
+            <Card key={i} className="gap-0 py-3">
+              <CardContent className="flex flex-col gap-2 px-3">
+                <Skeleton className="aspect-square w-full rounded-lg" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3.5 w-1/2" />
+                <Skeleton className="h-3 w-2/3" />
+              </CardContent>
+            </Card>
           ))}
         </div>
       </div>
@@ -697,37 +724,34 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Controls */}
+    <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
-          <input
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/50" />
+          <Input
             type="text"
             placeholder="Search products..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/30 transition-all"
+            className="pl-9 text-sm"
           />
         </div>
         <div className="flex items-center gap-1 rounded-lg border bg-muted/50 p-1">
           {([3, 6, 9] as GridCols[]).map((n) => {
             const Icon = n === 3 ? LayoutGrid : n === 6 ? Grid3x3 : Grid2x2;
             return (
-              <button
+              <Button
                 key={n}
                 type="button"
+                variant={cols === n ? 'outline' : 'ghost'}
+                size="sm"
                 onClick={() => setCols(n)}
-                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                  cols === n
-                    ? 'bg-background shadow-sm text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
+                className="h-7 px-2.5 text-xs"
                 title={`${n} columns`}
               >
-                <Icon className="h-3.5 w-3.5" />
+                <Icon data-icon="inline-start" />
                 {n}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -736,14 +760,17 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
         </span>
       </div>
 
-      {/* Product grid */}
       {filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3">
-          <Package className="h-10 w-10 text-muted-foreground/30" />
-          <p className="text-muted-foreground">
-            {search ? 'No products match your search.' : 'No products in this store.'}
-          </p>
-        </div>
+        <Empty className="py-16 md:py-16">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Package />
+            </EmptyMedia>
+            <EmptyDescription>
+              {search ? 'No products match your search.' : 'No products in this store.'}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className={`grid gap-3 ${gridClass}`}>
           {filtered.map((product) => {
@@ -752,54 +779,44 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
             const isFlashing = flashSet.current.has(product._id);
 
             return (
-              <div
+              <Card
                 key={product._id}
-                className={`relative rounded-xl border bg-card overflow-hidden flex flex-col transition-all duration-300 ${
+                className={`relative gap-0 overflow-hidden py-0 transition-all duration-300 ${
                   isOOS ? 'opacity-50 border-border/40' : 'border-border/60'
-                } ${isFlashing ? 'ring-2 ring-primary/60 shadow-lg shadow-primary/10' : ''}`}
+                } ${isFlashing ? 'ring-2 ring-operational/60 shadow-lg shadow-operational/10' : ''}`}
               >
                 <div className="relative aspect-square overflow-hidden bg-muted">
                   <RealtimeStocksImage
                     src={product.images?.[0]}
-                    className="h-full w-full"
+                    className="size-full"
                   />
                   {isOOS && (
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                      <span className="bg-destructive text-destructive-foreground text-[10px] font-semibold px-2.5 py-1 rounded-full">
+                      <Badge variant="destructive" className="text-[10px]">
                         Out of Stock
-                      </span>
+                      </Badge>
                     </div>
                   )}
                   {isLow && (
                     <div className="absolute top-1.5 right-1.5">
-                      <span className="bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">
+                      <Badge variant="warning" className="text-[9px] font-bold shadow-sm">
                         Low
-                      </span>
+                      </Badge>
                     </div>
                   )}
                   {isFlashing && (
-                    <div className="absolute inset-0 bg-primary/10 animate-pulse pointer-events-none" />
+                    <div className="absolute inset-0 bg-operational/10 animate-pulse pointer-events-none" />
                   )}
                 </div>
-                <div className="p-3 flex flex-col gap-1 flex-1">
+                <CardContent className="flex flex-1 flex-col gap-1 p-3">
                   <p className="text-sm font-semibold leading-tight line-clamp-2">{product.name}</p>
-                  <p className="text-sm font-bold text-primary">{fmt(product.sellingPrice)}</p>
+                  <p className="text-sm font-bold text-foreground">{fmt(product.sellingPrice)}</p>
                   <div className="mt-auto pt-1.5 flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">Stock</span>
-                    <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
-                          isOOS
-                            ? 'bg-destructive/15 text-destructive'
-                            : isLow
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-primary/15 text-primary'
-                        }`}
-                      >
-                        {product.stockQuantity}
-                      </span>
-                    </div>
+                    <StockBadge value={product.stockQuantity} />
                   </div>
-                </div>
+                </CardContent>
+              </Card>
             );
           })}
         </div>
@@ -835,9 +852,11 @@ function ListingHistoryPanel({
 }) {
   if (!storeId) {
     return (
-      <p className="rounded-lg border bg-muted/50 px-4 py-8 text-center text-sm text-muted-foreground">
-        Select a store above to view listing history.
-      </p>
+      <Empty className="border bg-muted/50 py-8 md:py-8">
+        <EmptyHeader>
+          <EmptyDescription>Select a store above to view listing history.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
@@ -856,10 +875,10 @@ function ListingHistoryPanel({
   );
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search by name or seller..."
             value={historySearch}
@@ -874,16 +893,21 @@ function ListingHistoryPanel({
 
       {historyLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <Spinner className="size-5 text-muted-foreground" />
         </div>
       ) : filtered.length === 0 ? (
-        <p className="rounded-lg border bg-muted/50 px-4 py-8 text-center text-sm text-muted-foreground">
-          {historyProducts.length === 0
-            ? 'All products are already listed in today\u2019s inventory.'
-            : 'No products match your search.'}
-        </p>
+        <Empty className="border bg-muted/50 py-8 md:py-8">
+          <EmptyHeader>
+            <EmptyDescription>
+              {historyProducts.length === 0
+                ? 'All products are already listed in today\u2019s inventory.'
+                : 'No products match your search.'}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <Card className="gap-0 overflow-hidden rounded-lg py-0">
+          <CardContent className="px-0">
           <div className="data-table-scroll-wrapper">
             <table className="data-table">
               <thead>
@@ -908,11 +932,11 @@ function ListingHistoryPanel({
                           <img
                             src={p.images[0]}
                             alt=""
-                            className="h-8 w-8 rounded object-cover"
+                            className="size-8 rounded object-cover"
                           />
                         ) : (
-                          <div className="flex h-8 w-8 items-center justify-center rounded bg-muted">
-                            <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                          <div className="flex size-8 items-center justify-center rounded bg-muted">
+                            <ImageIcon className="size-4 text-muted-foreground" />
                           </div>
                         )}
                         <span className="font-medium">{p.name}</span>
@@ -922,15 +946,9 @@ function ListingHistoryPanel({
                       {p.sellerName || '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                          p.isPerishable
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}
-                      >
+                      <Badge variant={p.isPerishable ? 'warning' : 'info'}>
                         {p.isPerishable ? 'Perishable' : 'Non-perishable'}
-                      </span>
+                      </Badge>
                     </td>
                     <td className="px-4 py-3 text-sm">{fmt(p.costPrice)}</td>
                     <td className="px-4 py-3 text-sm">{fmt(p.sellingPrice)}</td>
@@ -956,7 +974,7 @@ function ListingHistoryPanel({
                           variant="default"
                           onClick={() => onRelist(p)}
                         >
-                          <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                          <RotateCcw data-icon="inline-start" />
                           Relist
                         </Button>
                         <Button
@@ -966,7 +984,7 @@ function ListingHistoryPanel({
                           className="text-destructive hover:text-destructive"
                           title="Delete permanently"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 />
                         </Button>
                       </div>
                     </td>
@@ -983,7 +1001,8 @@ function ListingHistoryPanel({
               label="products"
             />
           )}
-        </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
@@ -1775,67 +1794,66 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
 
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
             <p className="text-sm text-muted-foreground">Manage daily inventory and product catalog</p>
           </div>
         </div>
-        {/* Tab skeleton */}
         <div className="flex gap-1 border-b pb-0">
           <Skeleton className="h-9 w-28 rounded-t-lg" />
           <Skeleton className="h-9 w-28 rounded-t-lg" />
           <Skeleton className="h-9 w-36 rounded-t-lg" />
         </div>
-        {/* Toolbar skeleton */}
         <div className="flex flex-wrap items-center gap-3">
           <Skeleton className="h-9 w-40 rounded-lg" />
           <Skeleton className="h-9 w-32 rounded-lg" />
           <Skeleton className="h-9 w-24 ml-auto rounded-lg" />
         </div>
-        {/* Table skeleton */}
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <table className="data-table w-full">
-            <thead>
-              <tr>
-                {Array.from({ length: 7 }).map((_, i) => (
-                  <th key={i}><Skeleton className="h-3.5 w-16" /></th>
+        <Card className="gap-0 overflow-hidden rounded-lg py-0">
+          <CardContent className="px-0">
+            <Table className="w-full">
+              <TableHeader>
+                <TableRow>
+                  {Array.from({ length: 7 }).map((_, i) => (
+                    <TableHead key={i}><Skeleton className="h-3.5 w-16" /></TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="size-10 rounded-md shrink-0" />
+                        <Skeleton className="h-4 w-32" />
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-4 w-16" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-4 w-16" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-4 w-12" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-4 w-12" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-5 w-14 rounded-full" /></TableCell>
+                    <TableCell className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Skeleton className="size-7 rounded-md" />
+                        <Skeleton className="size-7 rounded-md" />
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: 6 }).map((_, i) => (
-                <tr key={i}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Skeleton className="h-10 w-10 rounded-md shrink-0" />
-                      <Skeleton className="h-4 w-32" />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3"><Skeleton className="h-4 w-16" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-4 w-16" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-5 w-14 rounded-full" /></td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Skeleton className="h-7 w-7 rounded-md" />
-                      <Skeleton className="h-7 w-7 rounded-md" />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
     <TooltipProvider>
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
@@ -1848,51 +1866,34 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 variant={closingStatus ? 'outline' : 'default'}
                 onClick={openCloseStore}
               >
-                <Lock className="mr-1 h-4 w-4" />
+                <Lock data-icon="inline-start" />
                 {closingStatus ? 'Edit Close' : 'Close Store'}
               </Button>
             )}
             <Button onClick={openCreate}>
-              <Plus className="mr-1 h-4 w-4" />Add Product
+              <Plus data-icon="inline-start" />Add Product
             </Button>
           </div>
         )}
       </div>
 
-      {/* Main tabs: Inventory | Realtime Stocks | Inventory Report */}
-      <div className="flex gap-1 rounded-lg border bg-muted/50 p-1 w-fit">
-        <button
-          type="button"
-          onClick={() => setMainTab('products')}
-          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${mainTab === 'products' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          Inventory
-        </button>
-        <button
-          type="button"
-          onClick={() => setMainTab('realtime-stocks')}
-          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${mainTab === 'realtime-stocks' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          <Activity className="h-3.5 w-3.5" />
-          Realtime Stocks
-        </button>
-        <button
-          type="button"
-          onClick={() => setMainTab('inventory-report')}
-          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${mainTab === 'inventory-report' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          <Package className="h-3.5 w-3.5" />
-          Inventory Report
-        </button>
-        <button
-          type="button"
-          onClick={() => setMainTab('listing-history')}
-          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${mainTab === 'listing-history' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          <History className="h-3.5 w-3.5" />
-          Listing History
-        </button>
-      </div>
+      <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as MainTab)}>
+        <TabsList>
+          <TabsTrigger value="products">Inventory</TabsTrigger>
+          <TabsTrigger value="realtime-stocks">
+            <Activity />
+            Realtime Stocks
+          </TabsTrigger>
+          <TabsTrigger value="inventory-report">
+            <Package />
+            Inventory Report
+          </TabsTrigger>
+          <TabsTrigger value="listing-history">
+            <History />
+            Listing History
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {mainTab === 'listing-history' ? (
         <ListingHistoryPanel
@@ -1916,30 +1917,26 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         effectiveStoreId ? (
           <RealtimeStocks storeId={effectiveStoreId} />
         ) : (
-          <p className="rounded-lg border bg-muted/50 px-4 py-8 text-center text-sm text-muted-foreground">
-            Select a store above to view realtime stocks.
-          </p>
+          <Empty className="border bg-muted/50 py-8 md:py-8">
+            <EmptyHeader>
+              <EmptyDescription>Select a store above to view realtime stocks.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         )
       ) : mainTab === 'inventory-report' ? (
-        <div className="space-y-4">
-          <div className="flex gap-1 rounded-lg border bg-muted/50 p-1 w-fit">
-            <button
-              type="button"
-              onClick={() => setInvReportSubTab('report')}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${invReportSubTab === 'report' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              <Package className="h-3.5 w-3.5" />
-              Report
-            </button>
-            <button
-              type="button"
-              onClick={() => setInvReportSubTab('history')}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${invReportSubTab === 'history' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              <History className="h-3.5 w-3.5" />
-              Report History
-            </button>
-          </div>
+        <div className="flex flex-col gap-4">
+          <Tabs value={invReportSubTab} onValueChange={(v) => setInvReportSubTab(v as InvReportSubTab)}>
+            <TabsList>
+              <TabsTrigger value="report">
+                <Package />
+                Report
+              </TabsTrigger>
+              <TabsTrigger value="history">
+                <History />
+                Report History
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
           {invReportSubTab === 'report' ? (
             <ProductManagerInventoryReport
               storeId={effectiveStoreId}
@@ -1955,14 +1952,15 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           ) : effectiveStoreId ? (
             <InventoryReportHistory key={invReportHistoryKey} storeId={effectiveStoreId} />
           ) : (
-            <p className="rounded-lg border bg-muted/50 px-4 py-8 text-center text-sm text-muted-foreground">
-              Select a store above to view report history.
-            </p>
+            <Empty className="border bg-muted/50 py-8 md:py-8">
+              <EmptyHeader>
+                <EmptyDescription>Select a store above to view report history.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           )}
         </div>
       ) : (
         <>
-      {/* Filters row */}
       <div className="flex flex-wrap items-center gap-4">
         {!isScoped && stores.length > 0 && (
           <div className="flex items-center gap-2">
@@ -1970,10 +1968,12 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             <Select value={filterStoreId} onValueChange={setFilterStoreId}>
               <SelectTrigger className="w-48"><SelectValue placeholder="All Stores" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Stores</SelectItem>
-                {stores.map((store) => (
-                  <SelectItem key={store._id} value={store._id}>{store.name}</SelectItem>
-                ))}
+                <SelectGroup>
+                  <SelectItem value="all">All Stores</SelectItem>
+                  {stores.map((store) => (
+                    <SelectItem key={store._id} value={store._id}>{store.name}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
@@ -1994,22 +1994,24 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           <Select value={inventoryTypeFilter} onValueChange={(v: 'all' | 'perishable' | 'non-perishable') => setInventoryTypeFilter(v)}>
             <SelectTrigger className="w-36 h-9"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="perishable">Perishable</SelectItem>
-              <SelectItem value="non-perishable">Non-perishable</SelectItem>
+              <SelectGroup>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="perishable">Perishable</SelectItem>
+                <SelectItem value="non-perishable">Non-perishable</SelectItem>
+              </SelectGroup>
             </SelectContent>
           </Select>
         </div>
 
         <div className="flex items-center gap-1 ml-auto">
           <Button variant="ghost" size="sm" onClick={() => shiftDate(-1)} title="Previous day">
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft />
           </Button>
           <div className="rounded-md border bg-muted/50 px-3 py-1.5 text-sm font-medium tabular-nums w-32 text-center">
             {selectedDate}
           </div>
           <Button variant="ghost" size="sm" onClick={() => shiftDate(1)} title="Next day">
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight />
           </Button>
           {selectedDate !== todayStr && (
             <Button variant="outline" size="sm" className="ml-1 text-xs" onClick={() => setSelectedDate(todayStr)}>
@@ -2020,33 +2022,38 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       </div>
 
       {!isEditable && (
-        <div className="rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-          Viewing inventory for <strong className="text-foreground">{selectedDate}</strong> (read-only).
-        </div>
+        <Alert>
+          <Info />
+          <AlertDescription>
+            Viewing inventory for <strong className="text-foreground">{selectedDate}</strong> (read-only).
+          </AlertDescription>
+        </Alert>
       )}
       {closingStatus && (
-        <div className="flex items-center gap-2 rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-sm text-foreground">
-          <Check className="h-4 w-4 shrink-0 text-primary" />
-          <span className="flex-1">
-            Store closed for <strong>{selectedDate}</strong>. Selected products have been carried over to the next day&apos;s inventory.
-          </span>
-          {isEditable && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="ml-auto border-primary text-primary hover:bg-primary/15"
-              onClick={handleReopenStore}
-              disabled={reopenSubmitting}
-            >
-              <LockOpen className="mr-1 h-3.5 w-3.5" />
-              {reopenSubmitting ? 'Reopening...' : 'Reopen Store'}
-            </Button>
-          )}
-        </div>
+        <Alert>
+          <Check />
+          <AlertDescription className="flex w-full items-center gap-2">
+            <span className="flex-1">
+              Store closed for <strong>{selectedDate}</strong>. Selected products have been carried over to the next day&apos;s inventory.
+            </span>
+            {isEditable && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                onClick={handleReopenStore}
+                disabled={reopenSubmitting}
+              >
+                <LockOpen data-icon="inline-start" />
+                {reopenSubmitting ? 'Reopening...' : 'Reopen Store'}
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
       )}
 
-      {/* Table */}
-      <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col">
+      <Card className="gap-0 overflow-hidden rounded-lg py-0">
+        <CardContent className="flex flex-col px-0">
         <div className="data-table-scroll-wrapper flex-1 min-h-0">
           <table className="data-table">
             <thead>
@@ -2091,7 +2098,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                   .map(({ product, displayInitialStock, restock, sold, currentStock, isCarriedOver, carriedOverQty }) => (
                 <tr key={product._id}>
                   <td className="px-4 py-2">
-                    <ProductImage src={product.images?.[0]} className="h-10 w-10" />
+                    <ProductImage src={product.images?.[0]} className="size-10" />
                   </td>
                   <td className="px-4 py-3 font-medium">{product.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{product.sellerName || '-'}</td>
@@ -2100,7 +2107,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="cursor-help inline-flex">
-                            <NotepadText className="h-4 w-4 text-muted-foreground" />
+                            <NotepadText className="size-4 text-muted-foreground" />
                           </span>
                         </TooltipTrigger>
                         <TooltipContent side="top" className="max-w-xs whitespace-pre-wrap">
@@ -2112,9 +2119,9 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${product.isPerishable ? 'bg-secondary text-secondary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                    <Badge variant={product.isPerishable ? 'secondary' : 'outline'}>
                       {product.isPerishable ? 'Perishable' : 'Non-perishable'}
-                    </span>
+                    </Badge>
                   </td>
                   {!isScoped && (
                     <td className="px-4 py-3 text-muted-foreground">{storeMap.get(product.storeId) ?? '-'}</td>
@@ -2131,7 +2138,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span className="cursor-help inline-flex">
-                              <Info className="h-3.5 w-3.5 text-blue-500" />
+                              <Info className="size-3.5 text-info" />
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="top">
@@ -2143,14 +2150,14 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     {restock > 0 ? (
-                      <span className="text-primary font-medium">+{restock}</span>
+                      <span className="text-operational font-medium">+{restock}</span>
                     ) : (
                       <span className="text-muted-foreground">0</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     {sold > 0 ? (
-                      <span className="text-primary font-medium">{sold}</span>
+                      <span className="text-operational font-medium">{sold}</span>
                     ) : (
                       <span className="text-muted-foreground">0</span>
                     )}
@@ -2162,7 +2169,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button variant="ghost" size="sm" onClick={() => openEdit(product)}>
-                          <Pencil className="h-3.5 w-3.5" />
+                          <Pencil />
                         </Button>
                         <Button
                           variant="ghost"
@@ -2170,7 +2177,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                           className="text-destructive hover:text-destructive"
                           onClick={() => openDelete(product)}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 />
                         </Button>
                       </div>
                     </td>
@@ -2189,7 +2196,8 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             label="products"
           />
         )}
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Create / Edit dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -2202,21 +2210,23 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 : 'Fill in the details to add a new product.'}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {!isScoped && (
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="product-store">Store</Label>
                 <Select value={form.storeId} onValueChange={(val) => updateField('storeId', val)}>
                   <SelectTrigger id="product-store" className="w-full"><SelectValue placeholder="Select a store" /></SelectTrigger>
                   <SelectContent>
-                    {stores.map((store) => (
-                      <SelectItem key={store._id} value={store._id}>{store.name}</SelectItem>
-                    ))}
+                    <SelectGroup>
+                      {stores.map((store) => (
+                        <SelectItem key={store._id} value={store._id}>{store.name}</SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               </div>
             )}
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="product-name">Product Name</Label>
               <Input
                 id="product-name"
@@ -2227,7 +2237,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Product Type</Label>
               <Select
                 value={form.isPerishable ? 'perishable' : 'non-perishable'}
@@ -2235,8 +2245,10 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               >
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="non-perishable">Non-perishable</SelectItem>
-                  <SelectItem value="perishable">Perishable</SelectItem>
+                  <SelectGroup>
+                    <SelectItem value="non-perishable">Non-perishable</SelectItem>
+                    <SelectItem value="perishable">Perishable</SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
@@ -2244,7 +2256,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               </p>
             </div>
 
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="product-seller">Seller Name</Label>
               <Input
                 id="product-seller"
@@ -2254,11 +2266,11 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="product-notes">Additional Notes</Label>
-              <textarea
+              <Textarea
                 id="product-notes"
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                className="min-h-20"
                 placeholder="Any additional notes about this product..."
                 value={form.notes}
                 onChange={(e) => updateField('notes', e.target.value)}
@@ -2266,20 +2278,22 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             </div>
 
             {/* Images */}
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Product Images</Label>
               {form.images.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {form.images.map((url, i) => (
                     <div key={i} className="relative group">
-                      <ProductImage src={url} className="h-16 w-16 border" />
-                      <button
+                      <ProductImage src={url} className="size-16 border" />
+                      <Button
                         type="button"
+                        variant="destructive"
+                        size="icon-xs"
                         onClick={() => removeImage(i)}
-                        className="absolute -right-1.5 -top-1.5 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs"
+                        className="absolute -right-1.5 -top-1.5 hidden size-5 rounded-full group-hover:flex"
                       >
-                        <X className="h-3 w-3" />
-                      </button>
+                        <X />
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -2294,14 +2308,14 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                   }}
                 />
                 <Button type="button" variant="outline" size="sm" onClick={addImage} disabled={!newImageUrl.trim()}>
-                  <Plus className="h-4 w-4" />
+                  <Plus />
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">Add image URLs one at a time. The first image will be used as the thumbnail.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="product-cost">Cost Price (PHP)</Label>
                 <Input
                   id="product-cost"
@@ -2314,7 +2328,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                   required
                 />
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="product-selling">Selling Price (PHP)</Label>
                 <Input
                   id="product-selling"
@@ -2328,7 +2342,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 />
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="product-discount">Discount Price (PHP)</Label>
               <div className="flex items-center gap-2">
                 <Input
@@ -2359,8 +2373,8 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             </div>
 
             {editingProduct ? (
-              <div className="space-y-4">
-                <div className="space-y-2">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
                   <Label htmlFor="product-restock">Restock Quantity</Label>
                   <Input
                     id="product-restock"
@@ -2375,7 +2389,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                     Enter the number of units to add to current stock. Leave at 0 if no restock.
                   </p>
                 </div>
-                <div className="space-y-2">
+                <div className="flex flex-col gap-2">
                   <Label htmlFor="product-reduce">Reduce / Remove Stock</Label>
                   <Input
                     id="product-reduce"
@@ -2403,7 +2417,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 </div>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="product-stock">Initial Stock Quantity</Label>
                 <Input
                   id="product-stock"
@@ -2422,7 +2436,10 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             )}
 
             {error && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+              <Alert variant="destructive">
+                <AlertCircle />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
@@ -2444,7 +2461,10 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             </DialogDescription>
           </DialogHeader>
           {error && (
-            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
@@ -2469,8 +2489,8 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               Remove or reduce quantity for <strong>{reduceDialogProduct?.name}</strong>. Use for withdrawn, lost, damaged, or expired items. Current stock: <strong>{reduceDialogProduct?.stockQuantity ?? 0}</strong>. Quantity is capped at current stock.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="reduce-dialog-qty">Quantity to reduce</Label>
               <Input
                 id="reduce-dialog-qty"
@@ -2514,7 +2534,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               Select which products should carry over their stock to tomorrow. Non-perishable items are checked by default; perishable items are unchecked by default. Previously saved selections are preserved.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-1">
+          <div className="flex flex-col gap-1">
             {displayRows.map(({ product, currentStock }) => {
               const checked = closeSelections.get(product._id) ?? !product.isPerishable;
               return (
@@ -2522,14 +2542,12 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                   key={product._id}
                   className="flex items-center gap-3 rounded-md border px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
                 >
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300"
+                  <Checkbox
                     checked={checked}
-                    onChange={(e) => {
+                    onCheckedChange={(value) => {
                       setCloseSelections((prev) => {
                         const next = new Map(prev);
-                        next.set(product._id, e.target.checked);
+                        next.set(product._id, value === true);
                         return next;
                       });
                     }}
@@ -2537,9 +2555,9 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm truncate">{product.name}</span>
-                      <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${product.isPerishable ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
+                      <Badge variant={product.isPerishable ? 'warning' : 'secondary'} className="text-[10px]">
                         {product.isPerishable ? 'Perishable' : 'Non-perishable'}
-                      </span>
+                      </Badge>
                     </div>
                   </div>
                   <div className="text-right text-sm tabular-nums">
@@ -2550,7 +2568,11 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             })}
           </div>
           {displayRows.length === 0 && (
-            <p className="py-4 text-center text-sm text-muted-foreground">No products to close.</p>
+            <Empty className="py-4 md:py-4">
+              <EmptyHeader>
+                <EmptyDescription>No products to close.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setCloseDialogOpen(false)}>Cancel</Button>
@@ -2568,25 +2590,26 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Info className="h-5 w-5 text-amber-500" />
+              <Info className="size-5 text-warning" />
               Duplicate Product Name
             </DialogTitle>
             <DialogDescription>
               A product named <strong>&quot;{dupPendingPayload?.name as string}&quot;</strong> already exists in this store. Choose how to proceed:
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             {dupPromptProducts.map((p) => (
-              <div key={p._id} className="rounded-lg border p-3 space-y-3">
+              <Card key={p._id} className="gap-3 rounded-lg py-3 shadow-none">
+                <CardContent className="flex flex-col gap-3 px-3">
                 <div className="flex items-start gap-3">
                   {p.images.length > 0 ? (
-                    <img src={p.images[0]} alt="" className="h-10 w-10 rounded object-cover shrink-0" />
+                    <img src={p.images[0]} alt="" className="size-10 rounded object-cover shrink-0" />
                   ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded bg-muted shrink-0">
-                      <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                    <div className="flex size-10 items-center justify-center rounded bg-muted shrink-0">
+                      <ImageIcon className="size-5 text-muted-foreground" />
                     </div>
                   )}
-                  <div className="flex-1 min-w-0 space-y-0.5">
+                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                     <div className="font-medium text-sm">{p.name}</div>
                     <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5">
                       <span>Cost: {fmt(p.costPrice)}</span>
@@ -2602,15 +2625,16 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 </div>
                 <div className="flex gap-2">
                   <Button size="sm" onClick={() => handleDupRelist(p)} className="flex-1">
-                    <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                    <RotateCcw data-icon="inline-start" />
                     Relist This Product
                   </Button>
                   <Button size="sm" variant="destructive" onClick={() => handleDupDeleteAndCreate(p)} disabled={submitting} className="flex-1">
-                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    <Trash2 data-icon="inline-start" />
                     {submitting ? 'Deleting...' : 'Delete & Create New'}
                   </Button>
                 </div>
-              </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
           <DialogFooter>
@@ -2631,7 +2655,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             </DialogDescription>
           </DialogHeader>
           {historyDeleteTarget && (
-            <div className="rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+            <div className="flex flex-col gap-0.5 rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
               <div>Cost: <span className="font-medium">{fmt(historyDeleteTarget.costPrice)}</span> &middot; Price: <span className="font-medium">{fmt(historyDeleteTarget.sellingPrice)}</span></div>
               {historyDeleteTarget.sellerName && <div>Seller: <span className="font-medium">{historyDeleteTarget.sellerName}</span></div>}
               {historyDeleteTarget.timesListed > 0 && <div>Listed <span className="font-medium">{historyDeleteTarget.timesListed}</span> time{historyDeleteTarget.timesListed !== 1 ? 's' : ''}</div>}
@@ -2642,12 +2666,12 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             <Button variant="destructive" onClick={handleHistoryDelete} disabled={historyDeleting}>
               {historyDeleting ? (
                 <>
-                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  <Spinner data-icon="inline-start" />
                   Deleting...
                 </>
               ) : (
                 <>
-                  <Trash2 className="mr-1 h-3.5 w-3.5" />
+                  <Trash2 data-icon="inline-start" />
                   Delete Permanently
                 </>
               )}
@@ -2666,14 +2690,14 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             </DialogDescription>
           </DialogHeader>
           {relistTarget && (
-            <div className="rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+            <div className="flex flex-col gap-0.5 rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
               <div>Type: <span className="font-medium">{relistTarget.isPerishable ? 'Perishable' : 'Non-perishable'}</span></div>
               {relistTarget.sellerName && <div>Seller: <span className="font-medium">{relistTarget.sellerName}</span></div>}
               {relistTarget.notes && <div>Notes: <span className="font-medium">{relistTarget.notes}</span></div>}
             </div>
           )}
-          <div className="space-y-4">
-            <div className="space-y-2">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
               <Label>Quantity <span className="text-destructive">*</span></Label>
               <Input
                 type="number"
@@ -2684,7 +2708,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label>Cost Price (PHP)</Label>
                 <Input
                   type="number"
@@ -2697,7 +2721,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                   Last: {relistTarget ? fmt(relistTarget.costPrice) : '—'}
                 </p>
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label>Selling Price (PHP)</Label>
                 <Input
                   type="number"
@@ -2711,7 +2735,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 </p>
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Discount Price (PHP, optional)</Label>
               <Input
                 type="number"
@@ -2733,12 +2757,12 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             <Button onClick={handleRelist} disabled={relistSubmitting || !relistQty.trim()}>
               {relistSubmitting ? (
                 <>
-                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  <Spinner data-icon="inline-start" />
                   Relisting...
                 </>
               ) : (
                 <>
-                  <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                  <RotateCcw data-icon="inline-start" />
                   Relist
                 </>
               )}

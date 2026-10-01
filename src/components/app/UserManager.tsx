@@ -1,3 +1,14 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -7,19 +18,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
-import { Loader2, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { AlertCircle, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 
@@ -46,10 +60,10 @@ const ROLE_LABELS: Record<string, string> = {
   customer: 'Customer',
 };
 
-const ROLE_COLORS: Record<string, string> = {
-  admin: 'border border-primary/35 bg-primary/10 text-primary',
-  store_manager: 'border border-accent/40 bg-accent/10 text-accent',
-  customer: 'border border-secondary/60 bg-secondary/35 text-foreground',
+const ROLE_VARIANTS: Record<string, React.ComponentProps<typeof Badge>['variant']> = {
+  admin: 'default',
+  store_manager: 'info',
+  customer: 'secondary',
 };
 
 export function UserManager() {
@@ -216,7 +230,7 @@ export function UserManager() {
   })();
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Users</h1>
@@ -225,13 +239,13 @@ export function UserManager() {
           </p>
         </div>
         <Button onClick={openCreate} disabled={loading}>
-          <Plus className="mr-1 h-4 w-4" />
+          <Plus data-icon="inline-start" />
           Add User
         </Button>
       </div>
 
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
         <Input
           type="search"
           placeholder="Search by name or email..."
@@ -267,16 +281,25 @@ export function UserManager() {
                     <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Skeleton className="h-7 w-7 rounded-md" />
-                        <Skeleton className="h-7 w-7 rounded-md" />
+                        <Skeleton className="size-7 rounded-md" />
+                        <Skeleton className="size-7 rounded-md" />
                       </div>
                     </td>
                   </tr>
                 ))
               ) : filteredAndSortedUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                    {users.length === 0 ? 'No users found.' : 'No users match your search.'}
+                  <td colSpan={5} className="px-4 py-8">
+                    <Empty className="md:p-6">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <Users />
+                        </EmptyMedia>
+                        <EmptyTitle>
+                          {users.length === 0 ? 'No users found.' : 'No users match your search.'}
+                        </EmptyTitle>
+                      </EmptyHeader>
+                    </Empty>
                   </td>
                 </tr>
               ) : (
@@ -287,10 +310,7 @@ export function UserManager() {
                   <td className="px-4 py-3 font-medium">{user.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
                   <td className="px-4 py-3">
-                    <Badge
-                      variant="outline"
-                      className={`text-xs ${ROLE_COLORS[user.role] ?? ''}`}
-                    >
+                    <Badge variant={ROLE_VARIANTS[user.role] ?? 'outline'}>
                       {ROLE_LABELS[user.role] ?? user.role}
                     </Badge>
                   </td>
@@ -301,19 +321,19 @@ export function UserManager() {
                     <div className="flex items-center justify-end gap-1">
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon-sm"
                         onClick={() => openEdit(user)}
                         title="Edit name and role"
                       >
-                        <Pencil className="h-3.5 w-3.5" />
+                        <Pencil />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon-sm"
                         className="text-destructive hover:text-destructive"
                         onClick={() => openDelete(user)}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 />
                       </Button>
                     </div>
                   </td>
@@ -340,70 +360,75 @@ export function UserManager() {
             <DialogTitle>Add User</DialogTitle>
             <DialogDescription>Create a new user account.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="user-name">Name</Label>
-              <Input
-                id="user-name"
-                placeholder="Full name"
-                value={form.name}
-                onChange={(e) => updateField('name', e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="user-email">Email</Label>
-              <Input
-                id="user-email"
-                type="email"
-                placeholder="user@example.com"
-                value={form.email}
-                onChange={(e) => updateField('email', e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="user-password">Password</Label>
-              <Input
-                id="user-password"
-                type="password"
-                placeholder="Min 6 characters"
-                value={form.password}
-                onChange={(e) => updateField('password', e.target.value)}
-                required
-                minLength={6}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Role</Label>
-              <Select value={form.role} onValueChange={(v) => updateField('role', v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="store_manager">Store Manager</SelectItem>
-                  <SelectItem value="customer">Customer</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {error && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </p>
-            )}
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? (
-                  <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Creating...</>
-                ) : (
-                  'Create User'
-                )}
-              </Button>
-            </DialogFooter>
+          <form onSubmit={handleSubmit}>
+            <FieldGroup className="gap-4">
+              <Field className="gap-2">
+                <FieldLabel htmlFor="user-name">Name</FieldLabel>
+                <Input
+                  id="user-name"
+                  placeholder="Full name"
+                  value={form.name}
+                  onChange={(e) => updateField('name', e.target.value)}
+                  required
+                />
+              </Field>
+              <Field className="gap-2">
+                <FieldLabel htmlFor="user-email">Email</FieldLabel>
+                <Input
+                  id="user-email"
+                  type="email"
+                  placeholder="user@example.com"
+                  value={form.email}
+                  onChange={(e) => updateField('email', e.target.value)}
+                  required
+                />
+              </Field>
+              <Field className="gap-2">
+                <FieldLabel htmlFor="user-password">Password</FieldLabel>
+                <Input
+                  id="user-password"
+                  type="password"
+                  placeholder="Min 6 characters"
+                  value={form.password}
+                  onChange={(e) => updateField('password', e.target.value)}
+                  required
+                  minLength={6}
+                />
+              </Field>
+              <Field className="gap-2">
+                <FieldLabel htmlFor="user-role">Role</FieldLabel>
+                <Select value={form.role} onValueChange={(v) => updateField('role', v)}>
+                  <SelectTrigger id="user-role">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="store_manager">Store Manager</SelectItem>
+                      <SelectItem value="customer">Customer</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? (
+                    <><Spinner data-icon="inline-start" />Creating...</>
+                  ) : (
+                    'Create User'
+                  )}
+                </Button>
+              </DialogFooter>
+            </FieldGroup>
           </form>
         </DialogContent>
       </Dialog>
@@ -417,80 +442,91 @@ export function UserManager() {
               Update name and role for {editingUser?.email}.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleEditSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-user-name">Name</Label>
-              <Input
-                id="edit-user-name"
-                placeholder="Full name"
-                value={editForm.name}
-                onChange={(e) => updateEditField('name', e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Role</Label>
-              <Select value={editForm.role} onValueChange={(v) => updateEditField('role', v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="store_manager">Store Manager</SelectItem>
-                  <SelectItem value="customer">Customer</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {error && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </p>
-            )}
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? (
-                  <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Saving...</>
-                ) : (
-                  'Save changes'
-                )}
-              </Button>
-            </DialogFooter>
+          <form onSubmit={handleEditSubmit}>
+            <FieldGroup className="gap-4">
+              <Field className="gap-2">
+                <FieldLabel htmlFor="edit-user-name">Name</FieldLabel>
+                <Input
+                  id="edit-user-name"
+                  placeholder="Full name"
+                  value={editForm.name}
+                  onChange={(e) => updateEditField('name', e.target.value)}
+                  required
+                />
+              </Field>
+              <Field className="gap-2">
+                <FieldLabel htmlFor="edit-user-role">Role</FieldLabel>
+                <Select value={editForm.role} onValueChange={(v) => updateEditField('role', v)}>
+                  <SelectTrigger id="edit-user-role">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="store_manager">Store Manager</SelectItem>
+                      <SelectItem value="customer">Customer</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? (
+                    <><Spinner data-icon="inline-start" />Saving...</>
+                  ) : (
+                    'Save changes'
+                  )}
+                </Button>
+              </DialogFooter>
+            </FieldGroup>
           </form>
         </DialogContent>
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete User</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete User</AlertDialogTitle>
+            <AlertDialogDescription>
               Are you sure you want to delete <strong>{deletingUser?.name}</strong> (
               {deletingUser?.email})? This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
           {error && (
-            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setDeleteDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={submitting}>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={submitting}
+              onClick={(e) => {
+                e.preventDefault();
+                handleDelete();
+              }}
+            >
               {submitting ? (
-                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Deleting...</>
+                <><Spinner data-icon="inline-start" />Deleting...</>
               ) : (
                 'Delete User'
               )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

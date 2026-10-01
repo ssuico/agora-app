@@ -3,14 +3,27 @@ import {
   ArrowLeft,
   CheckCircle,
   CircleDollarSign,
-  Loader2,
   MessageSquare,
   ShoppingBag,
   Sparkles,
   Star,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
+import { Textarea } from '@/components/ui/textarea';
 
 interface ProductInfo {
   _id: string;
@@ -68,8 +81,8 @@ function StarPicker({ value, onChange }: { value: number; onChange: (v: number) 
             aria-label={`Rate ${s} star${s > 1 ? 's' : ''}`}
           >
             <Star
-              className={`h-11 w-11 transition-colors ${
-                s <= (hovered || value) ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/20'
+              className={`size-11 transition-colors ${
+                s <= (hovered || value) ? 'fill-rating text-rating' : 'text-muted-foreground/20'
               }`}
             />
           </button>
@@ -137,185 +150,217 @@ export function ProductRatingPage({ productId, product, isEligible, existingRati
 
   return (
     <div className="mx-auto w-full max-w-6xl px-2 py-4 sm:px-4 sm:py-8">
-      <button
+      <Button
         type="button"
+        variant="outline"
         onClick={() => history.back()}
-        className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
+        className="rounded-full font-semibold"
       >
-        <ArrowLeft className="h-4 w-4" />
+        <ArrowLeft data-icon="inline-start" />
         Return to store
-      </button>
+      </Button>
 
       <div className="mt-4 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="space-y-6">
-          <div className="rounded-2xl border bg-card p-4 sm:p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-muted flex items-center justify-center">
-                {product.images.length > 0 && !imgError ? (
-                  <img
-                    src={product.images[0]}
-                    alt={product.name}
-                    className="h-full w-full object-cover"
-                    onError={() => setImgError(true)}
-                  />
-                ) : (
-                  <ShoppingBag className="h-9 w-9 text-muted-foreground/30" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Product to rate</p>
-                <h2 className="mt-1 text-xl font-semibold leading-tight">{product.name}</h2>
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="text-base font-semibold text-primary">{fmt(effectivePrice)}</span>
-                  {hasDiscount && (
-                    <span className="text-sm text-muted-foreground line-through">{fmt(product.sellingPrice)}</span>
+        <section className="flex flex-col gap-6">
+          <Card className="gap-0 rounded-2xl py-4 sm:py-5">
+            <CardContent className="px-4 sm:px-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
+                  {product.images.length > 0 && !imgError ? (
+                    <img
+                      src={product.images[0]}
+                      alt={product.name}
+                      className="size-full object-cover"
+                      onError={() => setImgError(true)}
+                    />
+                  ) : (
+                    <ShoppingBag className="size-9 text-muted-foreground/30" />
                   )}
                 </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Product to rate</p>
+                  <h2 className="mt-1 text-xl font-semibold leading-tight">{product.name}</h2>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-base font-semibold text-foreground">{fmt(effectivePrice)}</span>
+                    {hasDiscount && (
+                      <span className="text-sm text-muted-foreground line-through">{fmt(product.sellingPrice)}</span>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {currentRating && (
-            <div className="rounded-2xl border bg-card p-4 sm:p-5 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Your current rating</h3>
+            <Card className="gap-3 rounded-2xl py-4 sm:py-5">
+              <CardHeader className="px-4 sm:px-5">
+                <CardTitle className="text-sm uppercase tracking-wide">Your current rating</CardTitle>
                 {currentRating.ratedAt && (
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(currentRating.ratedAt).toLocaleDateString('en-PH', {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </span>
+                  <CardAction>
+                    <CardDescription className="text-xs">
+                      {new Date(currentRating.ratedAt).toLocaleDateString('en-PH', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </CardDescription>
+                  </CardAction>
                 )}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="flex items-center gap-0.5">
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Star
-                      key={s}
-                      className={`h-5 w-5 ${s <= currentRating.stars ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/20'}`}
-                    />
-                  ))}
-                </span>
-                <span className="text-sm font-semibold">{currentRating.stars}/5</span>
-                <span className="text-xs text-muted-foreground">- {LABELS[currentRating.stars]}</span>
-              </div>
-              {currentRating.comment ? (
-                <div className="flex items-start gap-2 rounded-lg bg-muted/40 px-3 py-2.5">
-                  <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <p className="text-sm text-foreground">{currentRating.comment}</p>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 px-4 sm:px-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="flex items-center gap-0.5">
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star
+                        key={s}
+                        className={`size-5 ${s <= currentRating.stars ? 'fill-rating text-rating' : 'text-muted-foreground/20'}`}
+                      />
+                    ))}
+                  </span>
+                  <span className="text-sm font-semibold">{currentRating.stars}/5</span>
+                  <span className="text-xs text-muted-foreground">- {LABELS[currentRating.stars]}</span>
                 </div>
-              ) : (
-                <p className="text-xs italic text-muted-foreground">No comment left.</p>
-              )}
-            </div>
+                {currentRating.comment ? (
+                  <div className="flex items-start gap-2 rounded-lg bg-muted/40 px-3 py-2.5">
+                    <MessageSquare className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                    <p className="text-sm text-foreground">{currentRating.comment}</p>
+                  </div>
+                ) : (
+                  <p className="text-xs italic text-muted-foreground">No comment left.</p>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           {!isEligible && (
-            <div className="rounded-2xl border bg-muted/30 p-6 text-center space-y-3">
-              <ShoppingBag className="mx-auto h-10 w-10 text-muted-foreground/40" />
-              <p className="font-medium">Purchase required</p>
-              <p className="text-sm text-muted-foreground">
-                You can only rate products you have purchased or reserved.
-              </p>
-              <Button variant="outline" onClick={() => history.back()}>
-                Go back
-              </Button>
-            </div>
+            <Empty className="rounded-2xl border bg-muted/30">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <ShoppingBag />
+                </EmptyMedia>
+                <EmptyTitle className="text-base">Purchase required</EmptyTitle>
+                <EmptyDescription>
+                  You can only rate products you have purchased or reserved.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button variant="outline" onClick={() => history.back()}>
+                  Go back
+                </Button>
+              </EmptyContent>
+            </Empty>
           )}
 
           {isEligible && submitted && (
-            <div className="rounded-2xl border bg-card p-8 text-center space-y-3">
-              <CheckCircle className="mx-auto h-12 w-12 text-green-500" />
-              <p className="text-lg font-semibold">Rating saved</p>
-              <p className="text-sm text-muted-foreground">Your review is now included in customer feedback.</p>
-              <div className="flex flex-wrap justify-center gap-2 pt-2">
-                <Button variant="outline" onClick={() => history.back()}>
-                  Back to previous page
-                </Button>
-                <Button onClick={() => setSubmitted(false)}>Edit rating</Button>
-              </div>
-            </div>
+            <Empty className="rounded-2xl border bg-card p-8">
+              <EmptyHeader>
+                <EmptyMedia>
+                  <CheckCircle className="size-12 text-success" />
+                </EmptyMedia>
+                <EmptyTitle>Rating saved</EmptyTitle>
+                <EmptyDescription>Your review is now included in customer feedback.</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button variant="outline" onClick={() => history.back()}>
+                    Back to previous page
+                  </Button>
+                  <Button onClick={() => setSubmitted(false)}>Edit rating</Button>
+                </div>
+              </EmptyContent>
+            </Empty>
           )}
 
           {isEligible && !submitted && (
-            <div className="rounded-2xl border bg-card p-5 sm:p-6 space-y-6">
-              <div className="text-center">
-                <h3 className="text-lg font-semibold">{currentRating ? 'Update your rating' : 'Rate this product'}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
+            <Card className="rounded-2xl py-5 sm:py-6">
+              <CardHeader className="px-5 text-center sm:px-6">
+                <CardTitle className="text-lg">{currentRating ? 'Update your rating' : 'Rate this product'}</CardTitle>
+                <CardDescription>
                   {currentRating
                     ? 'Submitting will overwrite your previous rating.'
                     : 'Your feedback helps other customers choose better.'}
-                </p>
-              </div>
+                </CardDescription>
+              </CardHeader>
 
-              <StarPicker value={stars} onChange={setStars} />
+              <CardContent className="flex flex-col gap-6 px-5 sm:px-6">
+                <StarPicker value={stars} onChange={setStars} />
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-muted-foreground">
-                  Comment <span className="font-normal">(optional)</span>
-                </label>
-                <textarea
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="Share your experience with this product..."
-                  maxLength={500}
-                  rows={5}
-                  className="w-full resize-none rounded-xl border bg-muted/20 px-3 py-2.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
-                <p className="text-right text-xs text-muted-foreground">{comment.length}/500</p>
-              </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="product-rating-comment" className="text-muted-foreground">
+                    Comment <span className="font-normal">(optional)</span>
+                  </Label>
+                  <Textarea
+                    id="product-rating-comment"
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    placeholder="Share your experience with this product..."
+                    maxLength={500}
+                    rows={5}
+                    className="resize-none"
+                  />
+                  <p className="text-right text-xs text-muted-foreground">{comment.length}/500</p>
+                </div>
+              </CardContent>
 
-              <Button className="w-full gap-2" onClick={handleSubmit} disabled={submitting}>
-                {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                {currentRating ? 'Update rating' : 'Submit rating'}
-              </Button>
-            </div>
+              <CardFooter className="px-5 sm:px-6">
+                <Button className="w-full" onClick={handleSubmit} disabled={submitting}>
+                  {submitting && <Spinner data-icon="inline-start" />}
+                  {currentRating ? 'Update rating' : 'Submit rating'}
+                </Button>
+              </CardFooter>
+            </Card>
           )}
         </section>
 
-        <aside className="space-y-4">
-          <div className="rounded-2xl border bg-card p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <CircleDollarSign className="h-4 w-4 text-primary" />
-              <p className="text-sm font-semibold">Quick summary</p>
-            </div>
-            <div className="space-y-2 text-sm">
+        <aside className="flex flex-col gap-4">
+          <Card className="gap-3 rounded-2xl py-4">
+            <CardHeader className="px-4">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <CircleDollarSign className="size-4 text-muted-foreground" />
+                Quick summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2 px-4 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">Current price</span>
                 <span className="font-medium">{fmt(effectivePrice)}</span>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">Rating status</span>
-                <span className={`font-medium ${isEligible ? 'text-emerald-600' : 'text-amber-600'}`}>
+                <Badge variant={isEligible ? 'success' : 'warning'}>
                   {isEligible ? 'Eligible' : 'Not eligible'}
-                </span>
+                </Badge>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">Your score</span>
                 <span className="font-medium">{currentRating ? `${currentRating.stars}/5` : 'Not rated yet'}</span>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
-          <div className="rounded-2xl border bg-card p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <p className="text-sm font-semibold">Helpful review tips</p>
-            </div>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              {RATING_TIPS.map((tip) => (
-                <li key={tip} className="rounded-lg bg-muted/30 px-3 py-2 leading-relaxed">
-                  {tip}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <Card className="gap-3 rounded-2xl py-4">
+            <CardHeader className="px-4">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Sparkles className="size-4 text-muted-foreground" />
+                Helpful review tips
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4">
+              <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
+                {RATING_TIPS.map((tip) => (
+                  <li key={tip} className="rounded-lg bg-muted/30 px-3 py-2 leading-relaxed">
+                    {tip}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
 
-          <div className="rounded-2xl border bg-muted/20 p-4 text-xs leading-relaxed text-muted-foreground">
-            Reviews should reflect your real product experience. Avoid sharing private information in comments.
-          </div>
+          <Card className="rounded-2xl bg-muted/20 py-4 shadow-none">
+            <CardContent className="px-4 text-xs leading-relaxed text-muted-foreground">
+              Reviews should reflect your real product experience. Avoid sharing private information in comments.
+            </CardContent>
+          </Card>
         </aside>
       </div>
     </div>
