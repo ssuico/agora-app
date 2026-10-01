@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Separator } from '@/components/ui/separator';
 import { ChevronDown, Clock, LogOut, User } from 'lucide-react';
 
 interface TopbarProps {
@@ -23,9 +26,9 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const ROLE_COLORS: Record<string, string> = {
-  admin: 'border-primary/35 bg-primary/10 text-primary',
-  store_manager: 'border-accent/40 bg-accent/10 text-accent',
-  customer: 'border-secondary/65 bg-secondary/35 text-foreground',
+  admin: 'border-primary/30 bg-primary-subtle text-foreground',
+  store_manager: 'border-operational/30 bg-operational-subtle text-operational',
+  customer: 'border-border bg-muted text-foreground',
 };
 
 const EST_TIMEZONE = 'America/New_York';
@@ -114,38 +117,39 @@ export function Topbar({ name, role, avatar: initialAvatar }: TopbarProps) {
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border/70 bg-background/55 px-4 backdrop-blur-sm sm:px-6">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-card px-4 sm:px-6">
       <div className="flex items-center gap-2.5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-[0_12px_28px_-16px_rgba(38,42,86,0.95)]">
-          <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] text-primary-foreground" fill="currentColor">
+        <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
+          <svg viewBox="0 0 24 24" className="size-4.5 text-primary-foreground" fill="currentColor">
             <path d="M12 2L3 9h18zM3 9h18v2H3zM5 11h2v8H5zM11 11h2v8h-2zM17 11h2v8h-2zM3 19h18v2H3z" />
           </svg>
         </div>
         <span className="text-lg font-bold tracking-tight text-foreground">Agora</span>
       </div>
       <div className="flex items-center gap-3 sm:gap-4">
-        <div className="hidden items-center gap-2 rounded-xl border border-border/70 bg-card/70 px-3 py-1.5 text-foreground/75 sm:flex">
-          <Clock className="h-4 w-4" />
+        <div className="hidden items-center gap-2 rounded-xl border border-border bg-card px-3 py-1.5 text-muted-foreground sm:flex">
+          <Clock className="size-4" />
           <div className="text-sm leading-tight text-right">
-            <p className="font-medium tabular-nums">{time}</p>
-            <p className="text-xs text-foreground/60">{date}</p>
+            <p className="font-medium tabular-nums text-foreground">{time}</p>
+            <p className="text-xs">{date}</p>
           </div>
         </div>
-        <div className="hidden h-8 w-px bg-border/80 sm:block" />
+        <Separator orientation="vertical" className="hidden data-[orientation=vertical]:h-8 sm:block" />
         <DropdownMenu>
-        <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-border/70 bg-card/70 px-2 py-1.5 outline-none transition hover:bg-primary/8">
-          <div className="h-8 w-8 shrink-0 rounded-full ring-2 ring-primary/20 overflow-hidden flex items-center justify-center bg-secondary/50 text-xs font-semibold text-foreground">
-            {showAvatarImage ? (
-              <img
+        <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-border bg-card px-2 py-1.5 outline-none transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
+          <Avatar>
+            {showAvatarImage && (
+              <AvatarImage
                 src={avatar}
                 alt=""
-                className="h-full w-full object-cover"
-                onError={() => setAvatarError(true)}
+                className="object-cover"
+                onLoadingStatusChange={(status) => {
+                  if (status === 'error') setAvatarError(true);
+                }}
               />
-            ) : (
-              initials
             )}
-          </div>
+            <AvatarFallback className="bg-muted text-xs font-semibold text-foreground">{initials}</AvatarFallback>
+          </Avatar>
           <div className="hidden text-left sm:block">
             <p className="text-sm font-medium leading-none">{name}</p>
             <Badge
@@ -155,20 +159,24 @@ export function Topbar({ name, role, avatar: initialAvatar }: TopbarProps) {
               {ROLE_LABELS[role] ?? role}
             </Badge>
           </div>
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          <ChevronDown className="size-4 text-muted-foreground" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52 border-border/70 bg-background/90 backdrop-blur-sm">
-          <DropdownMenuItem asChild>
-            <a href="/profile" className="cursor-pointer">
-              <User className="mr-2 h-4 w-4" />
-              Profile
-            </a>
-          </DropdownMenuItem>
+        <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuGroup>
+            <DropdownMenuItem asChild>
+              <a href="/profile" className="cursor-pointer">
+                <User />
+                Profile
+              </a>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive">
-            <LogOut className="mr-2 h-4 w-4" />
-            Sign out
-          </DropdownMenuItem>
+          <DropdownMenuGroup>
+            <DropdownMenuItem onClick={handleLogout} variant="destructive" className="cursor-pointer">
+              <LogOut />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
         </DropdownMenu>
       </div>

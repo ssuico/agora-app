@@ -3,6 +3,8 @@
 @import "shadcn/tailwind.css";
 @import url("https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap");
 
+/* No dark theme ships. Keeping the variant bound to a class that is never set
+   stops any leftover `dark:` utility from following the OS preference. */
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -15,19 +17,39 @@
     --radius-4xl: calc(var(--radius) + 16px);
     --color-background: var(--background);
     --color-foreground: var(--foreground);
+    --color-canvas: var(--canvas);
     --color-card: var(--card);
     --color-card-foreground: var(--card-foreground);
     --color-popover: var(--popover);
     --color-popover-foreground: var(--popover-foreground);
     --color-primary: var(--primary);
     --color-primary-foreground: var(--primary-foreground);
+    --color-primary-hover: var(--primary-hover);
+    --color-primary-subtle: var(--primary-subtle);
     --color-secondary: var(--secondary);
     --color-secondary-foreground: var(--secondary-foreground);
     --color-muted: var(--muted);
     --color-muted-foreground: var(--muted-foreground);
     --color-accent: var(--accent);
     --color-accent-foreground: var(--accent-foreground);
+    --color-operational: var(--operational);
+    --color-operational-foreground: var(--operational-foreground);
+    --color-operational-soft: var(--operational-soft);
+    --color-operational-subtle: var(--operational-subtle);
     --color-destructive: var(--destructive);
+    --color-success: var(--success);
+    --color-success-soft: var(--success-soft);
+    --color-success-ink: var(--success-ink);
+    --color-warning: var(--warning);
+    --color-warning-soft: var(--warning-soft);
+    --color-warning-ink: var(--warning-ink);
+    --color-error: var(--error);
+    --color-error-soft: var(--error-soft);
+    --color-error-ink: var(--error-ink);
+    --color-info: var(--info);
+    --color-info-soft: var(--info-soft);
+    --color-info-ink: var(--info-ink);
+    --color-rating: var(--rating);
     --color-border: var(--border);
     --color-input: var(--input);
     --color-ring: var(--ring);
@@ -46,97 +68,127 @@
     --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* Palette: #000000, #262A56, #B8621B, #E3CCAE */
+/*
+ * Agora POS color system. See design-log/2026-10-01-agora-pos-color-system.md.
+ *
+ * Layer 1: base palette (never referenced directly by components).
+ * Layer 2: semantic roles. The shadcn names (--primary, --background, ...) are the
+ *          semantic layer, so existing components follow without edits.
+ *
+ * Red  = what should I do?      Teal = what do I need to know?      Neutral = structure.
+ * --accent stays a neutral hover/selected surface (shadcn meaning). Teal is --operational.
+ */
 :root {
+    --primary-100: #de283b;
+    --primary-200: #ff6366;
+    --primary-300: #ffccc4;
+
+    --accent-100: #25b1bf;
+    --accent-200: #005461;
+
+    --text-100: #1a1a1a;
+    --text-200: #404040;
+
+    --bg-100: #ffffff;
+    --bg-200: #f5f5f5;
+    --bg-300: #cccccc;
+
     --radius: 0.625rem;
-    --background: #f4ede1;
-    --foreground: #14120f;
-    --card: #ead8bd;
-    --card-foreground: #191611;
-    --popover: #ead8bd;
-    --popover-foreground: #191611;
-    --primary: #262a56;
-    --primary-foreground: #f4ede1;
-    --secondary: #d9be99;
-    --secondary-foreground: #201911;
-    --muted: #e6d3b5;
-    --muted-foreground: #5f5140;
-    --accent: #b8621b;
-    --accent-foreground: #fff7ee;
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: #cdb08b;
-    --input: #cdb08b;
-    --ring: #b8621b;
-    --chart-1: #262a56;
-    --chart-2: #b8621b;
-    --chart-3: #e3ccae;
-    --chart-4: #8c4a17;
-    --chart-5: #4b4f7e;
-    --sidebar: #e1ccaf;
-    --sidebar-foreground: #1a1712;
-    --sidebar-primary: #262a56;
-    --sidebar-primary-foreground: #f4ede1;
-    --sidebar-accent: #b8621b;
-    --sidebar-accent-foreground: #fff7ee;
-    --sidebar-border: #bea988;
-    --sidebar-ring: #b8621b;
-    --app-grad-start: #efe2cf;
-    --app-grad-mid: #e6cfb2;
-    --app-grad-end: #dcc19f;
-}
-.dark {
-    --background: #10112a;
-    --foreground: #e3ccae;
-    --card: #1a1d3f;
-    --card-foreground: #ebd8bf;
-    --popover: #1a1d3f;
-    --popover-foreground: #ebd8bf;
-    --primary: #e3ccae;
-    --primary-foreground: #1a1d3f;
-    --secondary: #2c305f;
-    --secondary-foreground: #ebd8bf;
-    --muted: #23274d;
-    --muted-foreground: #c9b79f;
-    --accent: #b8621b;
-    --accent-foreground: #fff4e8;
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: #383d6e;
-    --input: #383d6e;
-    --ring: #b8621b;
-    --chart-1: #e3ccae;
-    --chart-2: #b8621b;
-    --chart-3: #7f84bb;
-    --chart-4: #4a4f86;
-    --chart-5: #f0dec8;
-    --sidebar: #151738;
-    --sidebar-foreground: #e8d4ba;
-    --sidebar-primary: #e3ccae;
-    --sidebar-primary-foreground: #151738;
-    --sidebar-accent: #b8621b;
-    --sidebar-accent-foreground: #fff4e8;
-    --sidebar-border: #363b69;
-    --sidebar-ring: #b8621b;
+
+    --canvas: var(--bg-200);
+    --background: var(--bg-100);
+    --foreground: var(--text-100);
+    --card: var(--bg-100);
+    --card-foreground: var(--text-100);
+    --popover: var(--bg-100);
+    --popover-foreground: var(--text-100);
+
+    /* White on primary-100 is 4.7:1. primary-200 is only 2.9:1 with white, so hover
+       darkens primary-100 (6.1:1) and primary-200 is kept for text-free emphasis. */
+    --primary: var(--primary-100);
+    --primary-foreground: var(--bg-100);
+    --primary-hover: color-mix(in srgb, var(--primary-100) 85%, black);
+    --primary-subtle: var(--primary-300);
+
+    --secondary: var(--bg-200);
+    --secondary-foreground: var(--text-100);
+    --muted: var(--bg-200);
+    --muted-foreground: var(--text-200);
+    --accent: var(--bg-200);
+    --accent-foreground: var(--text-100);
+
+    /* Operational teal. accent-200 carries white text (8.6:1). accent-100 is 2.6:1
+       with white, so it only appears as a tint, a graphic, or behind dark text. */
+    --operational: var(--accent-200);
+    --operational-foreground: var(--bg-100);
+    --operational-soft: var(--accent-100);
+    --operational-subtle: color-mix(in srgb, var(--accent-100) 14%, white);
+
+    --border: var(--bg-300);
+    /* bg-300 is 1.6:1 on white, too faint to identify a control (needs 3:1). */
+    --input: color-mix(in srgb, var(--bg-300) 50%, var(--text-200));
+    --ring: var(--primary-100);
+
+    /* Status. Separate from the brand red so "Complete sale" and "Payment failed"
+       do not share a swatch. Each *-ink on its *-soft is above 7.5:1. */
+    --success: #15803d;
+    --success-soft: #e7f4ec;
+    --success-ink: #14532d;
+    --warning: #b45309;
+    --warning-soft: #fdf1d8;
+    --warning-ink: #7a3b05;
+    --error: #b42318;
+    --error-soft: #fcebe9;
+    --error-ink: #8a1c13;
+    --destructive: var(--error);
+    --info: var(--accent-200);
+    --info-soft: var(--operational-subtle);
+    --info-ink: var(--accent-200);
+
+    /* Star ratings are graphics, not text. */
+    --rating: #f5a623;
+
+    --chart-1: var(--primary-100);
+    --chart-2: var(--accent-200);
+    --chart-3: var(--accent-100);
+    --chart-4: var(--primary-200);
+    --chart-5: var(--text-200);
+    /* Extra series for charts that need more than five hues; all derived from the palette. */
+    --chart-6: color-mix(in srgb, var(--accent-200) 50%, white);
+    --chart-7: color-mix(in srgb, var(--primary-100) 60%, black);
+    --chart-8: color-mix(in srgb, var(--primary-200) 50%, white);
+    --chart-9: color-mix(in srgb, var(--text-200) 50%, white);
+    --chart-10: color-mix(in srgb, var(--accent-100) 45%, var(--text-200));
+
+    --sidebar: var(--bg-100);
+    --sidebar-foreground: var(--text-100);
+    --sidebar-primary: var(--primary-100);
+    --sidebar-primary-foreground: var(--bg-100);
+    --sidebar-accent: var(--bg-200);
+    --sidebar-accent-foreground: var(--text-100);
+    --sidebar-border: var(--bg-300);
+    --sidebar-ring: var(--primary-100);
 }
 
-/* Scrollable table wrapper – use with .data-table for fixed header and body scroll only */
+/* ── Tables ───────────────────────────────────────────────────────────────── */
+
+/* Header bg-200, body bg-100, borders bg-300, hover bg-200. Color only marks state. */
 .data-table-scroll-wrapper {
   max-height: min(65vh, 520px);
   overflow-y: auto;
   overflow-x: auto;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
-  background: color-mix(in oklch, var(--card) 78%, white 22%);
-  box-shadow: 0 20px 50px -36px color-mix(in oklch, var(--primary) 55%, black 45%);
+  background: var(--card);
 }
 .data-table-scroll-wrapper .data-table thead th {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: color-mix(in oklch, var(--muted) 85%, white 15%);
+  background: var(--muted);
   box-shadow: 0 1px 0 0 var(--border);
 }
 
-/* Uniform data table style – use class "data-table" on <table> for consistent look */
 .data-table {
   @apply w-full text-sm;
 }
@@ -147,11 +199,9 @@
 .data-table thead th {
   @apply px-4 py-3 text-left font-medium text-muted-foreground align-middle whitespace-nowrap;
 }
-/* Transactions table: center header text */
 .data-table.transactions-table thead th {
   @apply text-center;
 }
-/* Stores table: align headers with column content */
 .data-table.stores-table thead th:nth-child(4),
 .data-table.stores-table thead th:nth-child(5) {
   @apply text-center;
@@ -159,138 +209,85 @@
 .data-table.stores-table thead th:nth-child(6) {
   @apply text-right;
 }
-/* Purchases table: cleaner, less noisy row treatment */
-.data-table.purchases-table tbody tr:nth-child(odd),
-.data-table.purchases-table tbody tr:nth-child(even) {
-  background: color-mix(in oklch, var(--background) 94%, white 6%);
-}
-.data-table.purchases-table tbody tr:hover {
-  background: color-mix(in oklch, var(--accent) 14%, var(--background));
-}
-.data-table.purchases-table tbody td {
-  @apply py-2.5;
-}
-.data-table-scroll-wrapper.purchases-table-scroll {
-  background: var(--card);
-  box-shadow: none;
-}
-.data-table-scroll-wrapper .data-table.purchases-table thead th {
-  background: color-mix(in oklch, var(--muted) 78%, white 22%);
-}
 .data-table tbody tr {
   border-bottom: 1px solid var(--border);
+  background: var(--card);
   transition: background-color 0.15s ease;
 }
-.data-table tbody tr:nth-child(odd) {
-  background: color-mix(in oklch, var(--background) 88%, white 12%);
-}
-.data-table tbody tr:nth-child(even) {
-  background: color-mix(in oklch, var(--card) 90%, white 10%);
-}
 .data-table tbody tr:hover {
-  background: color-mix(in oklch, var(--accent) 25%, var(--background));
+  background: var(--muted);
 }
 .data-table tbody td {
   @apply px-4 py-3 align-middle whitespace-nowrap;
 }
-/* Cancelled / disabled row variant */
+
+/* Cancelled / disabled row */
 .data-table tbody tr.row-muted {
   opacity: 0.7;
   background: var(--muted) !important;
 }
-.data-table tbody tr.row-muted:hover {
-  background: color-mix(in oklch, var(--muted) 90%, var(--accent) 15%) !important;
-}
-/* Expanded detail row (e.g. nested content) */
+/* Expanded detail row */
 .data-table tbody tr.row-sub {
-  background: color-mix(in oklch, var(--muted) 50%, var(--background)) !important;
-}
-.data-table tbody tr.row-sub:hover {
-  background: color-mix(in oklch, var(--muted) 60%, var(--accent) 10%) !important;
+  background: var(--muted) !important;
 }
 /* Summary/total row */
-.data-table tbody tr.row-total {
+.data-table tbody tr.row-total,
+.data-table tbody tr.row-total:hover {
   background: var(--muted) !important;
   font-weight: 600;
 }
-.data-table tbody tr.row-total:hover {
-  background: var(--muted) !important;
-}
 
-/* Purchases table final overrides (declared after generic table styles) */
-.data-table.purchases-table tbody tr:nth-child(odd),
-.data-table.purchases-table tbody tr:nth-child(even) {
-  background: color-mix(in oklch, var(--background) 95%, white 5%) !important;
-}
-.data-table.purchases-table tbody tr:hover {
-  background: color-mix(in oklch, var(--accent) 12%, var(--background)) !important;
+/* Purchases: denser rows, selected row uses the soft primary tint */
+.data-table.purchases-table tbody td {
+  @apply py-2.5;
 }
 .data-table.purchases-table tbody tr.purchases-row-active {
-  background: color-mix(in oklch, var(--accent) 18%, var(--background)) !important;
+  background: color-mix(in srgb, var(--primary-300) 40%, var(--card)) !important;
 }
 .data-table.purchases-table tbody tr.purchases-row-expanded,
 .data-table.purchases-table tbody tr.purchases-row-expanded:hover {
-  background: color-mix(in oklch, var(--muted) 52%, var(--background)) !important;
+  background: var(--muted) !important;
 }
 .data-table.purchases-table tbody tr.purchases-row-expanded td {
   white-space: normal;
 }
-.data-table.purchases-table tbody td {
-  @apply py-2.5;
-}
-.data-table-scroll-wrapper.purchases-table-scroll {
-  background: var(--card);
-  box-shadow: none;
-}
-.data-table-scroll-wrapper .data-table.purchases-table thead th {
-  background: color-mix(in oklch, var(--muted) 80%, white 20%);
-}
 .purchases-items-table thead tr,
 .purchases-items-table thead tr:hover {
-  background: color-mix(in oklch, var(--muted) 78%, white 22%) !important;
+  background: var(--muted) !important;
 }
 .purchases-items-table tbody tr,
 .purchases-items-table tbody tr:hover {
-  background: color-mix(in oklch, var(--card) 94%, white 6%) !important;
+  background: var(--card) !important;
 }
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background: var(--canvas);
     font-family: "Sora", "Segoe UI", "Helvetica Neue", sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
-    background-image:
-      radial-gradient(circle at 15% 15%, color-mix(in oklch, var(--accent) 28%, transparent), transparent 34%),
-      radial-gradient(circle at 85% 80%, color-mix(in oklch, var(--primary) 20%, transparent), transparent 36%),
-      linear-gradient(130deg, var(--app-grad-start) 0%, var(--app-grad-mid) 55%, var(--app-grad-end) 100%);
-    background-attachment: fixed;
+    touch-action: manipulation;
+  }
+  html {
+    color-scheme: light;
   }
 }
 
+/* ── App shell ────────────────────────────────────────────────────────────── */
+
 .app-shell-bg {
-  background-image:
-    radial-gradient(circle at 12% 14%, color-mix(in oklch, var(--accent) 24%, transparent), transparent 36%),
-    radial-gradient(circle at 88% 82%, color-mix(in oklch, var(--primary) 18%, transparent), transparent 34%);
+  background: var(--canvas);
 }
 
 .app-surface {
-  border: 1px solid color-mix(in oklch, var(--border) 70%, white 30%);
-  background: color-mix(in oklch, var(--card) 74%, white 26%);
-  box-shadow: 0 22px 55px -44px color-mix(in oklch, var(--primary) 58%, black 42%);
-  backdrop-filter: blur(9px);
-}
-
-.product-card-surface {
-  border: 1px solid color-mix(in oklch, var(--primary) 16%, var(--border) 84%);
-  background: color-mix(in oklch, var(--card) 62%, white 38%);
-  box-shadow: 0 18px 40px -34px color-mix(in oklch, var(--primary) 52%, black 48%);
-}
-
-.product-card-surface:hover {
-  border-color: color-mix(in oklch, var(--primary) 24%, var(--border) 76%);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-100) 8%, transparent);
 }
 
 @keyframes auth-float {
@@ -312,26 +309,238 @@
   animation-direction: reverse;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .auth-orb,
+  .auth-orb-alt {
+    animation: none;
+  }
+}
+
+/* ── Auth ─────────────────────────────────────────────────────────────────── */
+
+.auth-skip {
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  z-index: 20;
+  transform: translateY(-150%);
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  padding: 0.5rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.auth-skip:focus {
+  transform: translateY(0);
+  outline: 2px solid var(--text-100);
+  outline-offset: 3px;
+}
+
+/* Photo backdrop. The scrim keeps the card and the credit pill legible over a busy image. */
+.auth-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--text-100);
+  background-position: center 45%;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.auth-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--text-100) 30%, transparent),
+    color-mix(in srgb, var(--text-100) 50%, transparent)
+  );
+}
+
+.auth-frame {
+  display: grid;
+  width: 100%;
+  max-width: 64rem;
+  overflow: hidden;
+  border-radius: 2rem;
+  border: 2px solid rgb(255 255 255 / 0.85);
+  box-shadow: 0 30px 80px -30px color-mix(in srgb, black 70%, transparent);
+}
+
+/* Transparent side: the photo shows through. Any copy on it is white over the scrim. */
+.auth-board {
+  display: none;
+  position: relative;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 2.25rem;
+  background: transparent;
+  -webkit-backdrop-filter: blur(1.5px);
+  backdrop-filter: blur(1.5px);
+  color: #fff;
+  padding: 2.75rem 2.5rem;
+}
+
+.auth-board--logo {
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-logo {
+  width: min(15rem, 70%);
+  height: auto;
+  border-radius: 22%;
+  box-shadow: 0 24px 50px -20px color-mix(in srgb, black 70%, transparent);
+}
+
+.auth-kicker {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.85);
+}
+
+.auth-wordmark,
+.auth-mobile-mark {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 0.85;
+  text-transform: uppercase;
+}
+
+.auth-wordmark {
+  margin-top: 0.85rem;
+  font-size: 5.4rem;
+  color: var(--primary);
+}
+
+.auth-board .auth-wordmark {
+  color: #fff;
+}
+
+.auth-ticket .auth-wordmark {
+  margin-top: 0;
+  font-size: 4.75rem;
+}
+
+.auth-headline {
+  max-width: 18rem;
+  margin-top: 1.25rem;
+  font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+
+.auth-lede {
+  max-width: 20rem;
+  margin-top: 0.75rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: rgb(255 255 255 / 0.85);
+}
+
+.auth-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.auth-notices li {
+  border-top: 1px solid rgb(255 255 255 / 0.3);
+  padding-top: 0.8rem;
+}
+
+.auth-notice-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.auth-notice-detail {
+  margin-top: 0.15rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: rgb(255 255 255 / 0.8);
+}
+
+.auth-ticket {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  background: var(--card);
+  padding: 1.75rem 1.25rem;
+}
+
+.auth-mobile-mark {
+  margin-bottom: 0.75rem;
+  text-align: center;
+  font-size: 2.4rem;
+  color: var(--primary);
+}
+
+.auth-credit {
+  display: flex;
+  justify-content: center;
+  padding-top: 0.75rem;
+}
+
+.auth-credit p {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 0.4rem 0.9rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--foreground);
+}
+
+@media (min-width: 1024px) {
+  .auth-frame {
+    grid-template-columns: 1fr 1fr;
+    min-height: 36rem;
+    border-radius: 3rem;
+  }
+
+  .auth-board {
+    display: flex;
+  }
+
+  .auth-ticket {
+    padding: 2.5rem;
+  }
+
+  .auth-mobile-mark {
+    display: none;
+  }
+}
+
 /* ── Shop page layout ─────────────────────────────────────────────────────── */
 
 /* Sidebar widget container */
 .shop-widget {
   position: relative;
   border-radius: var(--radius-xl);
-  border: 1px solid color-mix(in oklch, var(--primary) 18%, var(--border) 82%);
-  background: color-mix(in oklch, var(--card) 74%, white 26%);
-  box-shadow:
-    0 0 0 1px color-mix(in oklch, white 38%, transparent) inset,
-    0 18px 40px -22px color-mix(in oklch, var(--primary) 40%, black 60%);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-100) 6%, transparent);
   overflow: hidden;
 }
 
-/* Widget header band */
 .shop-widget-header {
   position: relative;
   padding: 0.7rem 1rem;
-  background: var(--card);
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 60%, transparent 40%);
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
 }
 
 /* Soft fade at the bottom of scroll areas */
@@ -345,29 +554,23 @@
   left: 0;
   right: 0;
   height: 36px;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    color-mix(in oklch, var(--card) 78%, white 22%)
-  );
+  background: linear-gradient(to bottom, transparent, var(--card));
   pointer-events: none;
   z-index: 2;
 }
 
-/* Product section wrapper */
+/* Product section wrapper: grouping surface, neutral */
 .shop-products-section {
   position: relative;
   border-radius: var(--radius-2xl);
-  border: 1px solid color-mix(in oklch, var(--border) 48%, transparent 52%);
-  background: color-mix(in oklch, var(--background) 42%, transparent 58%);
-  backdrop-filter: blur(3px);
+  border: 1px solid var(--border);
+  background: var(--muted);
   padding: 1.25rem;
   overflow: hidden;
   isolation: isolate;
 }
 
-/* No decorative background — keep layer div in DOM for future use */
+/* Layer div kept in DOM for future use */
 .shop-products-bg {
   display: none;
 }
-
