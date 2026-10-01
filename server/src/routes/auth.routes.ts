@@ -12,6 +12,7 @@ import {
   sendPasswordResetCode,
   sendSignupCode,
   signup,
+  switchRole,
   updateProfile,
 } from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.js';
@@ -39,4 +40,5 @@ authRoutes.post('/forgot-password/confirm', sensitiveAuthLimiter, confirmPasswor
 authRoutes.post('/register', sensitiveAuthLimiter, authenticate, authorize(UserRole.ADMIN), register);
 authRoutes.get('/me', authenticate, getMe);
 authRoutes.patch('/me', authenticate, updateProfile);
+authRoutes.post('/switch-role', authenticate, switchRole);
 authRoutes.post('/reset-password', sensitiveAuthLimiter, authenticate, resetPassword);

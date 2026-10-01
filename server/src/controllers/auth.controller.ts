@@ -16,17 +16,22 @@ import {
   type CodePurpose,
 } from '../services/emailCode.js';
 import { isMailConfigured, sendVerificationEmail } from '../services/mailer.js';
+import { grantedRoles } from '../services/roles.js';
 import { UserRole } from '../types/index.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-async function issueSession(user: IUser) {
-  let storeIds: string[] | undefined;
-  if (user.role === UserRole.STORE_MANAGER) {
-    const assignments = await StoreManagerAssignment.find({ userId: user._id });
-    storeIds = assignments.map((a) => a.storeId.toString());
-  }
+async function assignedStoreIds(user: IUser): Promise<string[]> {
+  const assignments = await StoreManagerAssignment.find({ userId: user._id });
+  return assignments.map((a) => a.storeId.toString());
+}
+
+async function issueSession(user: IUser, requestedRole?: UserRole) {
+  const roles = grantedRoles(user);
+  const role = requestedRole && roles.includes(requestedRole) ? requestedRole : user.role;
+
+  const storeIds = role === UserRole.STORE_MANAGER ? await assignedStoreIds(user) : undefined;
 
   const jwtOptions: SignOptions = {
     expiresIn: (process.env.JWT_EXPIRES_IN ?? '7d') as SignOptions['expiresIn'],
@@ -35,7 +40,8 @@ async function issueSession(user: IUser) {
     {
       userId: user._id,
       name: user.name,
-      role: user.role,
+      role,
+      roles,
       storeIds,
       avatar: user.avatar ?? '',
     },
@@ -43,7 +49,7 @@ async function issueSession(user: IUser) {
     jwtOptions
   );
 
-  return { token, role: user.role, name: user.name, storeIds };
+  return { token, role, roles, name: user.name, storeIds };
 }
 
 function setAuthCookie(res: Response, token: string) {
@@ -459,15 +465,34 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    let storeIds: string[] | undefined;
-    if (user.role === UserRole.STORE_MANAGER) {
-      const assignments = await StoreManagerAssignment.find({ userId: user._id });
-      storeIds = assignments.map((a) => a.storeId.toString());
-    }
+    const roles = grantedRoles(user);
+    const storeIds = roles.includes(UserRole.STORE_MANAGER) ? await assignedStoreIds(user) : undefined;
 
-    res.json({ ...user.toObject(), storeIds });
+    res.json({ ...user.toObject(), roles, activeRole: req.user!.role, storeIds });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
+export const switchRole = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const requested = (req.body as { role?: unknown })?.role;
+    const user = await User.findById(req.user!.userId);
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    const roles = grantedRoles(user);
+    if (typeof requested !== 'string' || !roles.includes(requested as UserRole)) {
+      res.status(403).json({ message: 'This account does not have that role' });
+      return;
+    }
+    const session = await issueSession(user, requested as UserRole);
+    setAuthCookie(res, session.token);
+    res.json(session);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -486,12 +511,9 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       res.status(404).json({ message: 'User not found' });
       return;
     }
-    let storeIds: string[] | undefined;
-    if (user.role === UserRole.STORE_MANAGER) {
-      const assignments = await StoreManagerAssignment.find({ userId: user._id });
-      storeIds = assignments.map((a) => a.storeId.toString());
-    }
-    res.json({ ...user.toObject(), storeIds });
+    const roles = grantedRoles(user);
+    const storeIds = roles.includes(UserRole.STORE_MANAGER) ? await assignedStoreIds(user) : undefined;
+    res.json({ ...user.toObject(), roles, activeRole: req.user!.role, storeIds });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
   }

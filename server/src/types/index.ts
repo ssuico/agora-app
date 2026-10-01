@@ -8,6 +8,7 @@ export interface JwtPayload {
   userId: string;
   name: string;
   role: UserRole;
+  roles?: UserRole[];
   storeIds?: string[];
   avatar?: string;
 }

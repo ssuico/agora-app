@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Store } from '../models/Store.js';
 import { StoreManagerAssignment } from '../models/StoreManagerAssignment.js';
 import { User } from '../models/User.js';
+import { grantedRoles } from '../services/roles.js';
 import { getIO } from '../socket.js';
 import { UserRole } from '../types/index.js';
 
@@ -146,7 +147,7 @@ export const assignManager = async (req: Request, res: Response): Promise<void> 
     const storeId = req.params.id;
 
     const user = await User.findById(userId);
-    if (!user || user.role !== UserRole.STORE_MANAGER) {
+    if (!user || !grantedRoles(user).includes(UserRole.STORE_MANAGER)) {
       res.status(400).json({ message: 'User not found or is not a store manager' });
       return;
     }
