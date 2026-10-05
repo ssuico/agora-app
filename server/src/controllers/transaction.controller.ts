@@ -133,6 +133,8 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         ? body.customerNotes.trim()
         : null;
 
+    const now = new Date();
+
     const [transaction] = await Transaction.create(
       [{
         storeId,
@@ -144,6 +146,8 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         claimStatus,
         paymentStatus,
         amountPaid,
+        claimedAt: claimStatus === 'claimed' ? now : null,
+        paidAt: paymentStatus === 'paid' ? now : null,
         notes,
         customerNotes,
       }],
@@ -279,27 +283,37 @@ export const updateTransactionStatus = async (req: Request, res: Response): Prom
     const { claimStatus, paymentStatus, amountPaid: bodyAmountPaid } = req.body;
     const update: Record<string, unknown> = {};
 
+    const existing = await Transaction.findById(req.params.id)
+      .select('totalAmount claimStatus paymentStatus claimedAt paidAt')
+      .lean();
+    if (!existing) {
+      res.status(404).json({ message: 'Transaction not found' });
+      return;
+    }
+
     if (claimStatus && ['unclaimed', 'claimed'].includes(claimStatus)) {
       update.claimStatus = claimStatus;
+      if (claimStatus === 'claimed') {
+        if (existing.claimStatus !== 'claimed' || !existing.claimedAt) update.claimedAt = new Date();
+      } else {
+        update.claimedAt = null;
+      }
     }
     if (paymentStatus && ['unpaid', 'paid', 'partial'].includes(paymentStatus)) {
       update.paymentStatus = paymentStatus;
       if (paymentStatus === 'paid') {
-        const tx = await Transaction.findById(req.params.id).select('totalAmount').lean();
-        if (tx) update.amountPaid = tx.totalAmount;
-      } else if (paymentStatus === 'unpaid') {
-        update.amountPaid = 0;
-      } else if (paymentStatus === 'partial' && typeof bodyAmountPaid === 'number') {
-        const tx = await Transaction.findById(req.params.id).select('totalAmount').lean();
-        if (!tx) {
-          res.status(404).json({ message: 'Transaction not found' });
-          return;
+        update.amountPaid = existing.totalAmount;
+        if (existing.paymentStatus !== 'paid' || !existing.paidAt) update.paidAt = new Date();
+      } else {
+        update.paidAt = null;
+        if (paymentStatus === 'unpaid') {
+          update.amountPaid = 0;
+        } else if (typeof bodyAmountPaid === 'number') {
+          const totalAmount = existing.totalAmount as number;
+          update.amountPaid = Number.isFinite(bodyAmountPaid)
+            ? Math.max(0, Math.min(bodyAmountPaid, totalAmount - 0.01))
+            : 0;
         }
-        const totalAmount = tx.totalAmount as number;
-        const amountPaid = Number.isFinite(bodyAmountPaid)
-          ? Math.max(0, Math.min(bodyAmountPaid, totalAmount - 0.01))
-          : 0;
-        update.amountPaid = amountPaid;
       }
     }
 

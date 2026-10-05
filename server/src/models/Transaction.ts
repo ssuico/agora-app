@@ -17,6 +17,10 @@ export interface ITransaction extends Document {
   /** Amount paid so far; used when paymentStatus === 'partial'. */
   amountPaid: number;
   orderStatus: OrderStatus;
+  /** When the order became fully paid; null while unpaid or partial. */
+  paidAt?: Date | null;
+  /** When the order was marked claimed; null while unclaimed. */
+  claimedAt?: Date | null;
   /** Optional notes for the transaction (store manager). */
   notes?: string | null;
   /** Optional notes from the customer when placing the reservation. */
@@ -37,6 +41,8 @@ const transactionSchema = new Schema<ITransaction>(
     paymentStatus: { type: String, enum: ['unpaid', 'paid', 'partial'], default: 'unpaid' },
     amountPaid: { type: Number, default: 0, min: 0 },
     orderStatus: { type: String, enum: ['active', 'cancelled'], default: 'active' },
+    paidAt: { type: Date, default: null },
+    claimedAt: { type: Date, default: null },
     notes: { type: String, default: null },
     customerNotes: { type: String, default: null },
   },
