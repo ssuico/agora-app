@@ -623,19 +623,17 @@
 }
 
 /* Soft fade at the bottom of scroll areas */
-.shop-widget-scroll {
-  position: relative;
-}
+/* Bottom fade. Sticky (not absolute) so it stays pinned to the visible edge while
+   the list scrolls; an absolute overlay scrolls with the content and smears rows. */
 .shop-widget-scroll::after {
   content: '';
-  position: absolute;
+  display: block;
+  position: sticky;
   bottom: 0;
-  left: 0;
-  right: 0;
   height: 36px;
+  margin-top: -36px;
   background: linear-gradient(to bottom, transparent, var(--card));
   pointer-events: none;
-  z-index: 2;
 }
 
 /* Product section wrapper: grouping surface, neutral */

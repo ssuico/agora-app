@@ -192,7 +192,7 @@ export function ActivityFeed({ storeId }: ActivityFeedProps) {
             </EmptyHeader>
           </Empty>
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-border pb-9">
             {entries.map((entry, idx) => (
               <li
                 key={entry._id}
