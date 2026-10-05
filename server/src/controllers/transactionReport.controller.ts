@@ -78,7 +78,12 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
       { header: 'Order Status', key: 'orderStatus', width: 14 },
       { header: 'Claim Status', key: 'claimStatus', width: 14 },
       { header: 'Payment Status', key: 'paymentStatus', width: 14 },
+      { header: 'Date Claimed', key: 'claimedAt', width: 20 },
+      { header: 'Date Paid', key: 'paidAt', width: 20 },
     ];
+
+    const fmtDateTime = (d?: Date | null) =>
+      d ? new Date(d).toLocaleString('en-US', { timeZone: APP_TIMEZONE }) : '';
 
     const headerRow = sheet.getRow(1);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -114,6 +119,8 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
           orderStatus: tx.orderStatus,
           claimStatus: tx.claimStatus,
           paymentStatus: tx.paymentStatus,
+          claimedAt: fmtDateTime(tx.claimedAt),
+          paidAt: fmtDateTime(tx.paidAt),
         });
       } else {
         for (let i = 0; i < items.length; i++) {
@@ -139,6 +146,8 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
             orderStatus: i === 0 ? tx.orderStatus : '',
             claimStatus: i === 0 ? tx.claimStatus : '',
             paymentStatus: i === 0 ? tx.paymentStatus : '',
+            claimedAt: i === 0 ? fmtDateTime(tx.claimedAt) : '',
+            paidAt: i === 0 ? fmtDateTime(tx.paidAt) : '',
           });
         }
       }
