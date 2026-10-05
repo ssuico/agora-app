@@ -89,7 +89,7 @@ if (storeId) {
         client:load
       />
       <div class="app-surface ml-3 flex flex-1 flex-col overflow-hidden rounded-2xl">
-        <Topbar name={userName} role={userRole} roles={userRoles} avatar={userAvatar} client:load />
+        <Topbar name={userName} role={userRole} roles={userRoles} avatar={userAvatar} showBrand={false} client:load />
         <main class="flex-1 overflow-y-auto p-4 sm:p-6">
           <slot />
         </main>

@@ -20,6 +20,8 @@ interface TopbarProps {
   role: string;
   roles?: string[];
   avatar?: string;
+  /** Hidden when the sidebar already shows the mark, as in the store manager shell. */
+  showBrand?: boolean;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -74,7 +76,7 @@ const PROFILE_UPDATED_EVENT = 'profile-updated';
 
 const ROLE_ORDER = ['admin', 'store_manager', 'customer'];
 
-export function Topbar({ name, role, roles = [], avatar: initialAvatar }: TopbarProps) {
+export function Topbar({ name, role, roles = [], avatar: initialAvatar, showBrand = true }: TopbarProps) {
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   const switchableRoles = ROLE_ORDER.filter((r) => roles.includes(r));
   const [avatar, setAvatar] = useState(initialAvatar ?? '');
@@ -146,15 +148,13 @@ export function Topbar({ name, role, roles = [], avatar: initialAvatar }: Topbar
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-card px-4 sm:px-6">
-      <div className="flex items-center gap-2.5">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
-          <svg viewBox="0 0 24 24" className="size-4.5 text-primary-foreground" fill="currentColor">
-            <path d="M12 2L3 9h18zM3 9h18v2H3zM5 11h2v8H5zM11 11h2v8h-2zM17 11h2v8h-2zM3 19h18v2H3z" />
-          </svg>
+    <header className={`flex h-16 shrink-0 items-center border-b border-border bg-card px-4 sm:px-6 ${showBrand ? 'justify-between' : 'justify-end'}`}>
+      {showBrand && (
+        <div className="flex items-center gap-2.5">
+          <img src="/logo.svg" alt="" width="32" height="32" className="size-8 shrink-0 rounded-lg" />
+          <span className="text-lg font-bold tracking-tight text-foreground">Agora</span>
         </div>
-        <span className="text-lg font-bold tracking-tight text-foreground">Agora</span>
-      </div>
+      )}
       <div className="flex items-center gap-3 sm:gap-4">
         <div className="hidden items-center gap-2 rounded-xl border border-border bg-card px-3 py-1.5 text-muted-foreground sm:flex">
           <Clock className="size-4" />

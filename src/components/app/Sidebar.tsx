@@ -4,7 +4,6 @@ import {
   MapPin,
   Package,
   QrCode,
-  Receipt,
   ShoppingCart,
   Store,
   Users,
@@ -111,9 +110,7 @@ export function Sidebar({ role, currentPath, storeId, storeName, storeLocation, 
   return (
     <aside className="app-surface flex h-full w-60 shrink-0 flex-col rounded-2xl">
       <div className="flex h-16 items-center gap-2.5 border-b border-border/70 px-5">
-        <div className="inline-flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <Receipt className="size-4" />
-        </div>
+        <img src="/logo.svg" alt="" width="32" height="32" className="size-8 shrink-0 rounded-lg" />
         <span className="text-lg font-bold tracking-tight text-foreground">Agora</span>
       </div>
 
