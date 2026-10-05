@@ -35,7 +35,8 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AlertCircle, AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Clock, Coins, Download, FileSpreadsheet, History, ImageIcon, NotepadText, Package, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { AlertCircle, AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Clock, Coins, Download, FileSpreadsheet, History, ImageIcon, Info, NotepadText, Package, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -58,6 +59,8 @@ interface Transaction {
   paymentStatus: PaymentStatus;
   amountPaid?: number;
   orderStatus: OrderStatus;
+  paidAt?: string | null;
+  claimedAt?: string | null;
   notes?: string | null;
   customerNotes?: string | null;
   createdAt: string;
@@ -132,6 +135,45 @@ function PaymentBadge({ status, totalAmount, amountPaid }: { status: PaymentStat
     <Badge variant="error">
       <AlertTriangle />Unpaid
     </Badge>
+  );
+}
+
+/** Info icon whose tooltip shows when a status was reached (hover or keyboard focus). */
+function StatusDateInfo({
+  label,
+  date,
+  active,
+  emptyText,
+}: {
+  label: string;
+  date?: string | null;
+  active: boolean;
+  emptyText: string;
+}) {
+  const text = date
+    ? fmtDate(new Date(date))
+    : active
+      ? 'Date not recorded'
+      : emptyText;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={`${label}: ${text}`}
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Info className="size-3.5" aria-hidden="true" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="whitespace-nowrap">
+          <span className="text-muted-foreground">{label}: </span>
+          <span className="font-medium">{text}</span>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -1851,8 +1893,36 @@ function TransactionRow({
         <td className={`px-4 py-3 font-medium ${isCancelled ? 'line-through text-muted-foreground' : ''}`}>{fmt(tx.totalAmount)}</td>
         <td className={`px-4 py-3 font-medium ${isCancelled ? 'line-through text-muted-foreground' : ''}`}>{fmt(tx.grossProfit)}</td>
         <td className="px-4 py-3"><OrderBadge status={tx.orderStatus ?? 'active'} /></td>
-        <td className="px-4 py-3">{isCancelled ? <span className="text-xs text-muted-foreground">—</span> : <ClaimBadge status={tx.claimStatus} />}</td>
-        <td className="px-4 py-3">{isCancelled ? <span className="text-xs text-muted-foreground">—</span> : <PaymentBadge status={tx.paymentStatus} totalAmount={tx.totalAmount} amountPaid={tx.amountPaid} />}</td>
+        <td className="px-4 py-3">
+          {isCancelled ? (
+            <span className="text-xs text-muted-foreground">—</span>
+          ) : (
+            <div className="flex items-center gap-1">
+              <ClaimBadge status={tx.claimStatus} />
+              <StatusDateInfo
+                label="Date claimed"
+                date={tx.claimedAt}
+                active={tx.claimStatus === 'claimed'}
+                emptyText="Not yet claimed"
+              />
+            </div>
+          )}
+        </td>
+        <td className="px-4 py-3">
+          {isCancelled ? (
+            <span className="text-xs text-muted-foreground">—</span>
+          ) : (
+            <div className="flex items-center gap-1">
+              <PaymentBadge status={tx.paymentStatus} totalAmount={tx.totalAmount} amountPaid={tx.amountPaid} />
+              <StatusDateInfo
+                label="Date paid"
+                date={tx.paidAt}
+                active={tx.paymentStatus === 'paid'}
+                emptyText={tx.paymentStatus === 'partial' ? 'Not fully paid yet' : 'Not yet paid'}
+              />
+            </div>
+          )}
+        </td>
         <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{fmtDate(new Date(tx.createdAt))}</td>
         <td className="px-4 py-3 text-right">
           {isCancelled ? (
