@@ -79,6 +79,7 @@ interface ReportRecord {
   transactionDate: string;
   fileName: string;
   generatedBy: { _id: string; name: string } | null;
+  generatedAt: string;
   createdAt: string;
 }
 
@@ -93,6 +94,14 @@ const fmt = (n: number) =>
 const EST_TIMEZONE = 'America/New_York';
 const fmtDate = (date: Date) =>
   date.toLocaleString('en-US', { timeZone: EST_TIMEZONE });
+
+/** "Oct 6, 2026 at 3:42 PM" in the app timezone. */
+const fmtGeneratedAt = (iso: string) => {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString('en-US', { timeZone: EST_TIMEZONE, month: 'short', day: 'numeric', year: 'numeric' });
+  const time = d.toLocaleTimeString('en-US', { timeZone: EST_TIMEZONE, hour: 'numeric', minute: '2-digit' });
+  return `${date} at ${time}`;
+};
 
 /** Today's date (YYYY-MM-DD) in EST for default date filter. */
 function todayInEST(): string {
@@ -370,7 +379,7 @@ function ReportHistory({ storeId }: { storeId: string }) {
                 paginatedReports.map((r) => (
                   <tr key={r._id}>
                     <td className="whitespace-nowrap">
-                      {fmtDate(new Date(r.createdAt))}
+                      {fmtGeneratedAt(r.generatedAt ?? r.createdAt)}
                     </td>
                     <td>
                       {r.generatedBy?.name ?? <span className="text-muted-foreground italic">Unknown</span>}
@@ -505,6 +514,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
   const [generating, setGenerating] = useState(false);
   const [reportHistoryKey, setReportHistoryKey] = useState(0);
+  const [existingReport, setExistingReport] = useState<ReportRecord | null>(null);
 
   const [newTxOpen, setNewTxOpen] = useState(false);
   const [newTxProducts, setNewTxProducts] = useState<Array<{ _id: string; name: string; sellingPrice: number; costPrice: number; stockQuantity: number; images?: string[] }>>([]);
@@ -972,26 +982,40 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     }
   };
 
-  const handleGenerateReport = async () => {
+  const handleGenerateReport = async (overwrite = false) => {
     setGenerating(true);
     try {
       const params = new URLSearchParams({ storeId });
       if (filterDateFrom) params.set('dateFrom', filterDateFrom);
       if (filterDateTo) params.set('dateTo', filterDateTo);
+      if (overwrite) params.set('overwrite', 'true');
       const res = await fetch(`/api/transaction-reports/generate?${params}`, {
         method: 'POST',
       });
       if (res.ok) {
         setReportHistoryKey((k) => k + 1);
-        toast.success('Report generated');
+        toast.success(overwrite ? 'Report updated' : 'Report generated');
+      } else if (res.status === 409) {
+        const data = (await res.json()) as { code?: string; report?: ReportRecord };
+        if (data.code === 'REPORT_EXISTS' && data.report) {
+          setExistingReport(data.report);
+        } else {
+          toast.error('Failed to generate report');
+        }
       } else {
-        toast.error('Failed to generate report');
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        toast.error(data.message ?? 'Failed to generate report');
       }
     } catch {
       toast.error('Failed to generate report');
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handleConfirmUpdateReport = async () => {
+    setExistingReport(null);
+    await handleGenerateReport(true);
   };
 
   if (loading) {
@@ -1171,7 +1195,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleGenerateReport}
+                onClick={() => handleGenerateReport()}
                 disabled={generating}
               >
                 {generating ? (
@@ -1549,6 +1573,31 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Existing report confirmation dialog */}
+      <AlertDialog open={!!existingReport} onOpenChange={(open) => { if (!open) setExistingReport(null); }}>
+        <AlertDialogContent className="data-[size=default]:sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Report Already Exists</AlertDialogTitle>
+            <AlertDialogDescription>
+              {existingReport?.transactionDate === todayInEST()
+                ? "You already generated today's report."
+                : `You already generated a report for ${existingReport?.transactionDate.replace('_to_', ' to ')}.`}{' '}
+              Do you want to update it with the latest transactions?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {existingReport && (
+            <div className="flex flex-col gap-1 rounded-md border px-4 py-3 text-sm">
+              <p><span className="text-muted-foreground">Report Date:</span> <span className="font-mono">{existingReport.transactionDate}</span></p>
+              <p><span className="text-muted-foreground">Generated:</span> {fmtGeneratedAt(existingReport.generatedAt ?? existingReport.createdAt)}</p>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Existing</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmUpdateReport}>Update Report</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Cancel confirmation dialog */}
       <AlertDialog open={!!cancelTarget} onOpenChange={(open) => { if (!open) setCancelTarget(null); }}>

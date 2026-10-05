@@ -12,6 +12,7 @@ export const POST: APIRoute = async ({ url, cookies }) => {
   if (dateFrom) params.set('dateFrom', dateFrom);
   const dateTo = url.searchParams.get('dateTo');
   if (dateTo) params.set('dateTo', dateTo);
+  if (url.searchParams.get('overwrite') === 'true') params.set('overwrite', 'true');
   const query = params.toString() ? `?${params}` : '';
   const res = await fetch(`${API_URL}/api/transaction-reports/generate${query}`, {
     method: 'POST',
