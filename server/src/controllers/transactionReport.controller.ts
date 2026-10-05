@@ -114,6 +114,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
       { header: 'Payment Status', key: 'paymentStatus', width: 14 },
       { header: 'Date Claimed', key: 'claimedAt', width: 20 },
       { header: 'Date Paid', key: 'paidAt', width: 20 },
+      { header: 'Store Notes', key: 'storeNotes', width: 36 },
     ];
 
     const fmtDateTime = (d?: Date | null) =>
@@ -155,6 +156,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
           paymentStatus: tx.paymentStatus,
           claimedAt: fmtDateTime(tx.claimedAt),
           paidAt: fmtDateTime(tx.paidAt),
+          storeNotes: tx.notes?.trim() ?? '',
         });
       } else {
         for (let i = 0; i < items.length; i++) {
@@ -182,6 +184,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
             paymentStatus: i === 0 ? tx.paymentStatus : '',
             claimedAt: i === 0 ? fmtDateTime(tx.claimedAt) : '',
             paidAt: i === 0 ? fmtDateTime(tx.paidAt) : '',
+            storeNotes: i === 0 ? (tx.notes?.trim() ?? '') : '',
           });
         }
       }
@@ -192,6 +195,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
       const col = sheet.getColumn(key);
       col.numFmt = '#,##0.00';
     }
+    sheet.getColumn('storeNotes').alignment = { wrapText: true, vertical: 'top' };
 
     sheet.eachRow((row, rowNum) => {
       if (rowNum > 1) {
