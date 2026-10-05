@@ -148,7 +148,7 @@ export function Topbar({ name, role, roles = [], avatar: initialAvatar, showBran
   };
 
   return (
-    <header className={`flex h-16 shrink-0 items-center border-b border-border bg-card px-4 sm:px-6 ${showBrand ? 'justify-between' : 'justify-end'}`}>
+    <header className={`sticky top-0 z-40 flex h-16 shrink-0 items-center border-b border-border bg-card/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-card/80 sm:px-6 ${showBrand ? 'justify-between' : 'justify-end'}`}>
       {showBrand && (
         <div className="flex items-center gap-2.5">
           <img src="/logo.svg" alt="" width="32" height="32" className="size-8 shrink-0 rounded-lg" />

@@ -89,18 +89,33 @@ interface ShopViewProps {
   bannerUrl?: string;
 }
 
-function StoreBanner({ src, storeName }: { src: string; storeName: string }) {
+/** Extra scroll distance the banner stays pinned before it releases with the page. */
+const BANNER_HOLD = 240;
+
+/**
+ * Full image, lower half faded into the page. The image stays pinned under the
+ * nav while the store header and products slide over that fade, so scrolling
+ * does not crop the picture into a strip.
+ */
+function StoreBanner({ src, storeName, className }: { src: string; storeName: string; className?: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) return null;
   return (
-    <div className="aspect-[3/1] w-full overflow-hidden rounded-xl border border-border bg-muted sm:aspect-[4/1]">
-      <img
-        src={src}
-        alt={`${storeName} banner`}
-        className="size-full object-cover"
-        fetchPriority="high"
-        onError={() => setFailed(true)}
-      />
+    <div className={`relative ${className ?? ''}`} style={{ marginBottom: -BANNER_HOLD }}>
+      <div className="sticky top-16 z-0">
+        <img
+          src={src}
+          alt={`${storeName} banner`}
+          className="pointer-events-none block h-auto w-full"
+          fetchPriority="high"
+          onError={() => setFailed(true)}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,transparent_42%,var(--canvas)_100%)]"
+        />
+      </div>
+      <div aria-hidden="true" style={{ height: BANNER_HOLD }} />
     </div>
   );
 }
@@ -919,11 +934,17 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
         </Alert>
       ))}
 
-      {bannerUrl && <StoreBanner src={bannerUrl} storeName={storeName} />}
+      {bannerUrl && (
+        <StoreBanner
+          src={bannerUrl}
+          storeName={storeName}
+          className={stockAlerts.length ? '-mx-6' : '-mx-6 -mt-6'}
+        />
+      )}
 
       {/* ── Header ── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-col gap-1">
+      <div className={`flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between ${bannerUrl ? 'relative z-10 -mt-24 sm:-mt-28' : ''}`}>
+        <div className={`flex flex-col gap-1 ${bannerUrl ? 'max-w-md rounded-2xl bg-canvas/90 px-3.5 py-2.5 backdrop-blur-md' : ''}`}>
           <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-2xl font-bold tracking-tight">{storeName}</h1>
             <Badge variant="success" className="px-2.5 py-1 font-semibold">
@@ -986,7 +1007,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
       </div>
 
       {/* ── Main layout ── */}
-      <div className="flex gap-6 items-start">
+      <div className="relative z-10 flex gap-6 items-start">
         <div className="min-w-0 flex-1">
         <div className="shop-products-section">
           {/* Dot-grid texture layer */}
