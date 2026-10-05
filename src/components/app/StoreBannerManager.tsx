@@ -17,8 +17,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 
-const BANNER_WIDTH = 1600;
-const BANNER_HEIGHT = 400;
+// Keep the source aspect ratio. The shop fades the lower half into the page.
+const BANNER_MAX_WIDTH = 1600;
+const BANNER_MAX_HEIGHT = 1400;
 const MAX_SOURCE_BYTES = 15 * 1024 * 1024;
 const MAX_DATA_URL_CHARS = 650_000;
 const QUALITY_STEPS = [0.82, 0.7, 0.55, 0.4];
@@ -30,16 +31,13 @@ interface StoreBannerManagerProps {
 async function toBannerDataUrl(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file);
   try {
+    const scale = Math.min(1, BANNER_MAX_WIDTH / bitmap.width, BANNER_MAX_HEIGHT / bitmap.height);
     const canvas = document.createElement('canvas');
-    canvas.width = BANNER_WIDTH;
-    canvas.height = BANNER_HEIGHT;
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Image processing is not supported in this browser.');
-
-    const scale = Math.max(BANNER_WIDTH / bitmap.width, BANNER_HEIGHT / bitmap.height);
-    const sw = BANNER_WIDTH / scale;
-    const sh = BANNER_HEIGHT / scale;
-    ctx.drawImage(bitmap, (bitmap.width - sw) / 2, (bitmap.height - sh) / 2, sw, sh, 0, 0, BANNER_WIDTH, BANNER_HEIGHT);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
 
     for (const quality of QUALITY_STEPS) {
       let url = canvas.toDataURL('image/webp', quality);
@@ -163,29 +161,35 @@ export function StoreBannerManager({ storeId }: StoreBannerManagerProps) {
       <CardHeader>
         <CardTitle>Store banner</CardTitle>
         <CardDescription>
-          Shown at the top of your shop page for customers. Wide images work best; the picture is
-          cropped to the center at a 4:1 ratio.
+          Shown at the top of your shop page. The whole image is kept; the shop fades the lower
+          half into the page background.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {loading ? (
-          <Skeleton className="aspect-[4/1] w-full rounded-lg" />
+          <Skeleton className="aspect-[2/1] w-full rounded-lg" />
         ) : (
-          <div className="relative aspect-[4/1] w-full overflow-hidden rounded-lg border border-border bg-muted">
+          <div className="relative overflow-hidden rounded-lg border border-border bg-canvas">
             {previewUrl ? (
               <img
                 src={previewUrl}
                 alt={pending ? 'New banner preview' : 'Current store banner'}
-                className="size-full object-cover"
+                className="block h-auto w-full"
                 onError={() => {
                   if (!pending) setLoadFailed(true);
                 }}
               />
             ) : (
-              <div className="flex size-full flex-col items-center justify-center gap-1.5 text-muted-foreground">
+              <div className="flex min-h-40 flex-col items-center justify-center gap-1.5 text-muted-foreground">
                 <ImageIcon className="size-7" aria-hidden="true" />
                 <p className="text-sm">No banner yet</p>
               </div>
+            )}
+            {previewUrl && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,transparent_42%,var(--canvas)_100%)]"
+              />
             )}
             {pending && (
               <span className="absolute left-2 top-2 rounded-md bg-foreground/80 px-2 py-0.5 text-xs font-semibold text-background">
