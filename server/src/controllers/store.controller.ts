@@ -43,7 +43,8 @@ export const getStore = async (req: Request, res: Response): Promise<void> => {
 
 export const createStore = async (req: Request, res: Response): Promise<void> => {
   try {
-    const store = await Store.create(req.body);
+    const { bannerImage: _banner, bannerUpdatedAt: _bannerAt, ...fields } = req.body as Record<string, unknown>;
+    const store = await Store.create(fields);
     res.status(201).json(store);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
@@ -52,7 +53,8 @@ export const createStore = async (req: Request, res: Response): Promise<void> =>
 
 export const updateStore = async (req: Request, res: Response): Promise<void> => {
   try {
-    const store = await Store.findByIdAndUpdate(req.params.id, req.body, {
+    const { bannerImage: _banner, bannerUpdatedAt: _bannerAt, ...fields } = req.body as Record<string, unknown>;
+    const store = await Store.findByIdAndUpdate(req.params.id, fields, {
       new: true,
       runValidators: true,
     });
@@ -126,6 +128,92 @@ export const updateStoreStatus = async (req: Request, res: Response): Promise<vo
     }
 
     res.json(store);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
+const BANNER_MAX_CHARS = 700_000;
+const BANNER_DATA_URL_HEAD = /^data:(image\/(?:jpeg|png|webp));base64,$/;
+
+const hasImageMagic = (mime: string, bytes: Buffer): boolean => {
+  if (mime === 'image/jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8;
+  if (mime === 'image/png') return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+  return (
+    bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP'
+  );
+};
+
+const decodeBanner = (dataUrl: string): { mime: string; bytes: Buffer } | null => {
+  const comma = dataUrl.indexOf(',');
+  if (comma === -1) return null;
+  const head = BANNER_DATA_URL_HEAD.exec(dataUrl.slice(0, comma + 1));
+  if (!head) return null;
+  const bytes = Buffer.from(dataUrl.slice(comma + 1), 'base64');
+  if (bytes.length === 0 || !hasImageMagic(head[1], bytes)) return null;
+  return { mime: head[1], bytes };
+};
+
+export const getStoreBanner = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const store = await Store.findById(req.params.id).select('+bannerImage');
+    const banner = store?.bannerImage ? decodeBanner(store.bannerImage) : null;
+    if (!banner) {
+      res.status(404).json({ message: 'No banner for this store' });
+      return;
+    }
+    res.set({
+      'Content-Type': banner.mime,
+      'Content-Length': String(banner.bytes.length),
+      'Cache-Control': 'private, max-age=86400',
+    });
+    res.send(banner.bytes);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
+export const setStoreBanner = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { bannerImage } = req.body as { bannerImage?: string | null };
+
+    if (bannerImage === null) {
+      const store = await Store.findByIdAndUpdate(
+        req.params.id,
+        { $unset: { bannerImage: 1 }, bannerUpdatedAt: null },
+        { new: true }
+      );
+      if (!store) {
+        res.status(404).json({ message: 'Store not found' });
+        return;
+      }
+      res.json({ bannerUpdatedAt: null });
+      return;
+    }
+
+    if (typeof bannerImage !== 'string' || !bannerImage) {
+      res.status(400).json({ message: 'Provide bannerImage as an image data URL, or null to remove it' });
+      return;
+    }
+    if (bannerImage.length > BANNER_MAX_CHARS) {
+      res.status(413).json({ message: 'Banner image is too large. Choose a smaller image.' });
+      return;
+    }
+    if (!decodeBanner(bannerImage)) {
+      res.status(400).json({ message: 'Banner must be a JPEG, PNG or WebP image.' });
+      return;
+    }
+
+    const store = await Store.findByIdAndUpdate(
+      req.params.id,
+      { bannerImage, bannerUpdatedAt: new Date() },
+      { new: true }
+    );
+    if (!store) {
+      res.status(404).json({ message: 'Store not found' });
+      return;
+    }
+    res.json({ bannerUpdatedAt: store.bannerUpdatedAt });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
   }

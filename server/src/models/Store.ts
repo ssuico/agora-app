@@ -5,6 +5,8 @@ export interface IStore extends Document {
   locationId: mongoose.Types.ObjectId;
   isOpen: boolean;
   isMaintenance: boolean;
+  bannerImage?: string;
+  bannerUpdatedAt?: Date | null;
 }
 
 const storeSchema = new Schema<IStore>(
@@ -13,6 +15,8 @@ const storeSchema = new Schema<IStore>(
     locationId: { type: Schema.Types.ObjectId, ref: 'Location', required: true },
     isOpen: { type: Boolean, default: true },
     isMaintenance: { type: Boolean, default: false },
+    bannerImage: { type: String, select: false },
+    bannerUpdatedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

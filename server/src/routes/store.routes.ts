@@ -4,9 +4,11 @@ import {
   createStore,
   deleteStore,
   getStore,
+  getStoreBanner,
   getStoreManagers,
   getStores,
   getStoresByLocation,
+  setStoreBanner,
   unassignManager,
   updateStore,
   updateStoreStatus,
@@ -34,6 +36,15 @@ storeRoutes.patch(
   (req, _res, next) => { req.params.storeId = req.params.id; next(); },
   enforceStoreAccess,
   updateStoreStatus
+);
+
+storeRoutes.get('/:id/banner', getStoreBanner);
+storeRoutes.put(
+  '/:id/banner',
+  authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  (req, _res, next) => { req.params.storeId = req.params.id; next(); },
+  enforceStoreAccess,
+  setStoreBanner
 );
 
 storeRoutes.post('/:id/assign-manager', authorize(UserRole.ADMIN), assignManager);
