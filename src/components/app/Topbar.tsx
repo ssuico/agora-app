@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
+import { ThemeToggle } from './ThemeToggle';
 import { Check, ChevronDown, Clock, LogOut, User } from 'lucide-react';
 
 interface TopbarProps {
@@ -162,6 +163,7 @@ export function Topbar({ name, role, roles = [], avatar: initialAvatar }: Topbar
             <p className="text-xs">{date}</p>
           </div>
         </div>
+        <ThemeToggle />
         <Separator orientation="vertical" className="hidden data-[orientation=vertical]:h-8 sm:block" />
         <DropdownMenu>
         <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-border bg-card px-2 py-1.5 outline-none transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">

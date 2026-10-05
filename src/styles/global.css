@@ -3,8 +3,7 @@
 @import "shadcn/tailwind.css";
 @import url("https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap");
 
-/* No dark theme ships. Keeping the variant bound to a class that is never set
-   stops any leftover `dark:` utility from following the OS preference. */
+/* Dark mode is class-driven (see ThemeBoot.astro), never the raw OS media query. */
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -37,13 +36,17 @@
     --color-operational-soft: var(--operational-soft);
     --color-operational-subtle: var(--operational-subtle);
     --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
     --color-success: var(--success);
+    --color-success-foreground: var(--success-foreground);
     --color-success-soft: var(--success-soft);
     --color-success-ink: var(--success-ink);
     --color-warning: var(--warning);
+    --color-warning-foreground: var(--warning-foreground);
     --color-warning-soft: var(--warning-soft);
     --color-warning-ink: var(--warning-ink);
     --color-error: var(--error);
+    --color-error-foreground: var(--error-foreground);
     --color-error-soft: var(--error-soft);
     --color-error-ink: var(--error-ink);
     --color-info: var(--info);
@@ -141,6 +144,11 @@
     --error-soft: #fcebe9;
     --error-ink: #8a1c13;
     --destructive: var(--error);
+    /* Text on a solid status fill. Follows the surface color: white in light, dark in dark. */
+    --success-foreground: var(--bg-100);
+    --warning-foreground: var(--bg-100);
+    --error-foreground: var(--bg-100);
+    --destructive-foreground: var(--bg-100);
     --info: var(--accent-200);
     --info-soft: var(--operational-subtle);
     --info-ink: var(--accent-200);
@@ -168,6 +176,66 @@
     --sidebar-accent-foreground: var(--text-100);
     --sidebar-border: var(--bg-300);
     --sidebar-ring: var(--primary-100);
+}
+
+/*
+ * Dark theme. See design-log/2026-10-02-dark-mode.md.
+ * Hierarchy comes from lightness: canvas < card < popover < muted < accent,
+ * with hairline borders, since shadows do not read on dark. Accents move to the
+ * lighter palette members and take dark text. The base palette members
+ * (--bg-*, --text-*) are re-pointed so every semantic alias that references them
+ * follows; only roles that cannot be derived are set explicitly below.
+ */
+:root.dark {
+    --bg-100: #1a1d21;
+    --bg-200: #252a30;
+    --bg-300: #343a42;
+    --text-100: #ececee;
+    --text-200: #a9aeb7;
+
+    --canvas: #0e0f11;
+    --popover: #21252a;
+    --accent: #2d333a;
+
+    --primary: var(--primary-200);
+    --primary-hover: color-mix(in srgb, var(--primary-200) 88%, white);
+    --primary-subtle: color-mix(in srgb, var(--primary-100) 26%, var(--bg-100));
+    --ring: var(--primary-200);
+
+    --operational: var(--accent-100);
+    --operational-subtle: color-mix(in srgb, var(--accent-100) 16%, var(--bg-100));
+
+    --input: color-mix(in srgb, var(--text-200) 58%, var(--bg-100));
+
+    --success: #46c07f;
+    --success-soft: color-mix(in srgb, var(--success) 16%, var(--bg-100));
+    --success-ink: #9be3bd;
+    --warning: #f0a73e;
+    --warning-soft: color-mix(in srgb, var(--warning) 16%, var(--bg-100));
+    --warning-ink: #f7cd8a;
+    --error: #ff7b72;
+    --error-soft: color-mix(in srgb, var(--error) 16%, var(--bg-100));
+    --error-ink: #ffb4ad;
+    --info: var(--accent-100);
+    --info-ink: color-mix(in srgb, var(--accent-100) 55%, white);
+
+    --rating: #f5b73d;
+
+    --chart-1: var(--primary-200);
+    --chart-2: var(--accent-100);
+    --chart-3: color-mix(in srgb, var(--accent-100) 45%, white);
+    --chart-4: color-mix(in srgb, var(--primary-200) 45%, white);
+    --chart-5: var(--text-200);
+    --chart-6: color-mix(in srgb, var(--accent-100) 60%, var(--bg-100));
+    --chart-7: color-mix(in srgb, var(--primary-200) 72%, var(--bg-100));
+    --chart-8: color-mix(in srgb, var(--primary-200) 50%, var(--accent-100));
+    --chart-9: color-mix(in srgb, var(--text-200) 60%, var(--bg-100));
+    --chart-10: color-mix(in srgb, var(--accent-100) 45%, var(--text-200));
+
+    --sidebar-primary: var(--primary-200);
+    --sidebar-ring: var(--primary-200);
+
+    color-scheme: dark;
 }
 
 /* ── Tables ───────────────────────────────────────────────────────────────── */
@@ -242,7 +310,7 @@
   @apply py-2.5;
 }
 .data-table.purchases-table tbody tr.purchases-row-active {
-  background: color-mix(in srgb, var(--primary-300) 40%, var(--card)) !important;
+  background: color-mix(in srgb, var(--primary-subtle) 40%, var(--card)) !important;
 }
 .data-table.purchases-table tbody tr.purchases-row-expanded,
 .data-table.purchases-table tbody tr.purchases-row-expanded:hover {
@@ -287,7 +355,7 @@
 .app-surface {
   border: 1px solid var(--border);
   background: var(--card);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-100) 8%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
 @keyframes auth-float {
@@ -343,7 +411,7 @@
   position: fixed;
   inset: 0;
   z-index: -1;
-  background-color: var(--text-100);
+  background-color: #1a1a1a;
   background-image: url("/auth-bg-960.webp");
   background-position: center 45%;
   background-size: cover;
@@ -362,9 +430,13 @@
   inset: 0;
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--text-100) 30%, transparent),
-    color-mix(in srgb, var(--text-100) 50%, transparent)
+    rgb(26 26 26 / 0.3),
+    rgb(26 26 26 / 0.5)
   );
+}
+
+:root.dark .auth-backdrop::after {
+  background: linear-gradient(to bottom, rgb(14 15 17 / 0.5), rgb(14 15 17 / 0.72));
 }
 
 .auth-frame {
@@ -539,7 +611,7 @@
   border-radius: var(--radius-xl);
   border: 1px solid var(--border);
   background: var(--card);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-100) 6%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
   overflow: hidden;
 }
 

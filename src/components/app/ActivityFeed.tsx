@@ -53,10 +53,10 @@ function getAvatarColor(name: string): string {
 
 function ActivityTypeIcon({ type }: { type: ActivityLogEntry['type'] }) {
   if (type === 'reservation_created')
-    return <ShoppingBag className="size-2.5 text-white" />;
+    return <ShoppingBag className="size-2.5 text-card" />;
   if (type === 'rating_submitted')
-    return <Star className="size-2.5 text-white" />;
-  return <Zap className="size-2.5 text-white" />;
+    return <Star className="size-2.5 text-card" />;
+  return <Zap className="size-2.5 text-card" />;
 }
 
 function typeBadgeColor(type: ActivityLogEntry['type']): string {

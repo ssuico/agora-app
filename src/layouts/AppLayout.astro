@@ -1,6 +1,7 @@
 ---
 import { Sidebar } from '../components/app/Sidebar';
 import { Topbar } from '../components/app/Topbar';
+import ThemeBoot from "../components/app/ThemeBoot.astro";
 import { Toaster } from '../components/app/Toaster';
 import { decodeJWT } from '../lib/jwt';
 import { createApiClient } from '../lib/api';
@@ -69,6 +70,7 @@ if (storeId) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#ffffff" />
+    <ThemeBoot />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

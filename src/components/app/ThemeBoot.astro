@@ -1,0 +1,30 @@
+---
+// Runs before first paint so a dark preference never flashes light. Must be placed
+// after the `theme-color` meta tag. Logic mirrors src/lib/theme.ts.
+---
+
+<script is:inline>
+  (function () {
+    var KEY = 'agora-theme';
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    function stored() {
+      try {
+        var v = localStorage.getItem(KEY);
+        return v === 'light' || v === 'dark' ? v : null;
+      } catch (e) {
+        return null;
+      }
+    }
+    function apply() {
+      var pref = stored();
+      var dark = pref ? pref === 'dark' : mq.matches;
+      document.documentElement.classList.toggle('dark', dark);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', dark ? '#1a1d21' : '#ffffff');
+    }
+    apply();
+    mq.addEventListener('change', function () {
+      if (!stored()) apply();
+    });
+  })();
+</script>

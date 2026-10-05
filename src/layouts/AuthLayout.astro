@@ -1,4 +1,5 @@
 ---
+import ThemeBoot from "../components/app/ThemeBoot.astro";
 import { Toaster } from '../components/app/Toaster';
 import '../styles/global.css';
 interface Props {
@@ -12,6 +13,7 @@ const { title = 'Agora POS' } = Astro.props;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#ffffff" />
+    <ThemeBoot />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
