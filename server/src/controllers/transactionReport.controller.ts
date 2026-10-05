@@ -5,13 +5,28 @@ import { TransactionItem } from '../models/TransactionItem.js';
 import { TransactionReport } from '../models/TransactionReport.js';
 import { APP_TIMEZONE, toLocalDateStr, localDayRange, localDayRangeFromDateString } from '../config/timezone.js';
 
+const isDuplicateKeyError = (err: unknown): boolean =>
+  typeof err === 'object' && err !== null && (err as { code?: number }).code === 11000;
+
+const findReportMeta = (filter: Record<string, unknown>) =>
+  TransactionReport.findOne(filter).select('-fileData').populate('generatedBy', 'name').lean();
+
+const slugify = (value: string): string =>
+  value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+
 export const generateReport = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { storeId, dateFrom, dateTo } = req.query as { storeId?: string; dateFrom?: string; dateTo?: string };
+    const { storeId, dateFrom, dateTo, overwrite: overwriteParam } = req.query as {
+      storeId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      overwrite?: string;
+    };
     if (!storeId) {
       res.status(400).json({ message: 'storeId is required' });
       return;
     }
+    const overwrite = overwriteParam === 'true';
 
     let dayStart: Date;
     let dayEnd: Date;
@@ -33,6 +48,25 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
       const range = localDayRange(todayMidnightUtc);
       dayStart = range.dayStart;
       dayEnd = range.dayEnd;
+    }
+
+    // Identity comes from the verified token only, never from the request.
+    const userId = req.user!.userId;
+    const reportKey = { generatedBy: userId, storeId, transactionDate: dateStr };
+
+    const respondExists = (report: unknown) =>
+      res.status(409).json({
+        code: 'REPORT_EXISTS',
+        message: 'You already generated a report for this date.',
+        report,
+      });
+
+    if (!overwrite) {
+      const existing = await findReportMeta(reportKey);
+      if (existing) {
+        respondExists(existing);
+        return;
+      }
     }
 
     const transactions = await Transaction.find({
@@ -171,26 +205,40 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    const fileName = `transactions_${dateStr.replace(/_/g, '-')}.xlsx`;
+    const userSlug = slugify(req.user!.name ?? '');
+    const fileName = `transactions_${dateStr.replace(/_/g, '-')}${userSlug ? `_${userSlug}` : ''}.xlsx`;
+    const fileData = Buffer.from(buffer as ArrayBuffer);
 
-    const report = await TransactionReport.findOneAndUpdate(
-      { storeId, transactionDate: dateStr },
-      {
-        storeId,
-        generatedBy: req.user!.userId,
-        transactionDate: dateStr,
-        fileName,
-        fileData: Buffer.from(buffer as ArrayBuffer),
-      },
-      { upsert: true, new: true }
-    );
+    let reportId: unknown;
+    if (overwrite) {
+      const upsert = () =>
+        TransactionReport.findOneAndUpdate(
+          reportKey,
+          { $set: { fileName, fileData, generatedAt: new Date() } },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      let saved;
+      try {
+        saved = await upsert();
+      } catch (err) {
+        // Two concurrent upserts can both try to insert; the loser retries as an update.
+        if (!isDuplicateKeyError(err)) throw err;
+        saved = await upsert();
+      }
+      reportId = saved?._id;
+    } else {
+      try {
+        const created = await TransactionReport.create({ ...reportKey, fileName, fileData, generatedAt: new Date() });
+        reportId = created._id;
+      } catch (err) {
+        if (!isDuplicateKeyError(err)) throw err;
+        respondExists(await findReportMeta(reportKey));
+        return;
+      }
+    }
 
-    const populated = await TransactionReport.findById(report._id)
-      .select('-fileData')
-      .populate('generatedBy', 'name')
-      .lean();
-
-    res.status(201).json(populated);
+    const populated = await findReportMeta({ _id: reportId });
+    res.status(overwrite ? 200 : 201).json(populated);
   } catch (err) {
     console.error('Generate report error:', err);
     res.status(500).json({ message: 'Failed to generate report', error: String(err) });
@@ -208,7 +256,7 @@ export const getReports = async (req: Request, res: Response): Promise<void> => 
     const reports = await TransactionReport.find({ storeId })
       .select('-fileData')
       .populate('generatedBy', 'name')
-      .sort({ createdAt: -1 })
+      .sort({ generatedAt: -1 })
       .lean();
 
     res.json(reports);

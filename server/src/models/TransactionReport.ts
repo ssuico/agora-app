@@ -7,7 +7,9 @@ export interface ITransactionReport extends Document {
   fileName: string;
   fileData: Buffer;
   mimeType: string;
+  generatedAt: Date;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 const transactionReportSchema = new Schema<ITransactionReport>(
@@ -18,12 +20,14 @@ const transactionReportSchema = new Schema<ITransactionReport>(
     fileName: { type: String, required: true },
     fileData: { type: Buffer, required: true },
     mimeType: { type: String, default: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+    generatedAt: { type: Date, required: true, default: Date.now },
   },
   { timestamps: true }
 );
 
-transactionReportSchema.index({ storeId: 1, transactionDate: 1 }, { unique: true });
-transactionReportSchema.index({ storeId: 1, createdAt: -1 });
+// One report per user, per store, per report date.
+transactionReportSchema.index({ generatedBy: 1, storeId: 1, transactionDate: 1 }, { unique: true });
+transactionReportSchema.index({ storeId: 1, generatedAt: -1 });
 
 export const TransactionReport = mongoose.model<ITransactionReport>(
   'TransactionReport',

@@ -7,6 +7,7 @@ import {
 } from '../controllers/transactionReport.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { authorize } from '../middleware/role.js';
+import { enforceStoreAccess } from '../middleware/storeScope.js';
 import { UserRole } from '../types/index.js';
 
 export const transactionReportRoutes: IRouter = Router();
@@ -16,11 +17,13 @@ transactionReportRoutes.use(authenticate);
 transactionReportRoutes.post(
   '/generate',
   authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  enforceStoreAccess,
   generateReport
 );
 transactionReportRoutes.get(
   '/',
   authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  enforceStoreAccess,
   getReports
 );
 transactionReportRoutes.get(

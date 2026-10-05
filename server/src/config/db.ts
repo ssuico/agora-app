@@ -3,7 +3,15 @@ import mongoose from 'mongoose';
 // Stale indexes removed from schemas that must be dropped from existing collections.
 const STALE_INDEXES: Record<string, string[]> = {
   ratings: ['transactionId_1_productId_1'],
+  transactionreports: ['storeId_1_transactionDate_1', 'storeId_1_createdAt_-1'],
 };
+
+// Reports created before `generatedAt` existed: updatedAt is when they were last written.
+async function backfillReportGeneratedAt(): Promise<void> {
+  await mongoose.connection
+    .collection('transactionreports')
+    .updateMany({ generatedAt: { $exists: false } }, [{ $set: { generatedAt: '$updatedAt' } }]);
+}
 
 async function dropStaleIndexes(): Promise<void> {
   for (const [collectionName, indexNames] of Object.entries(STALE_INDEXES)) {
@@ -31,4 +39,5 @@ export const connectDB = async (): Promise<void> => {
 
   console.log('MongoDB connected');
   await dropStaleIndexes();
+  await backfillReportGeneratedAt();
 };
