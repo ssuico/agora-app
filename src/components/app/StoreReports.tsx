@@ -25,6 +25,7 @@ import { CustomerFeedback } from './CustomerFeedback';
 import { CustomerInteractions } from './CustomerInteractions';
 import { DashboardCharts } from './DashboardCharts';
 import { ProductSalesTable } from './ProductSalesTable';
+import { StoreBannerManager } from './StoreBannerManager';
 
 interface SummaryData {
   totalSales: number;
@@ -259,6 +260,7 @@ export function StoreReports({ storeId }: StoreReportsProps) {
           <TabsTrigger value="feedback">Customer Feedback</TabsTrigger>
           <TabsTrigger value="interactions">Interactions</TabsTrigger>
           <TabsTrigger value="top-products">Products</TabsTrigger>
+          <TabsTrigger value="storefront">Storefront</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -502,6 +504,13 @@ export function StoreReports({ storeId }: StoreReportsProps) {
         {/* Products Tab */}
         <TabsContent value="top-products">
           <ProductSalesTable storeId={storeId} />
+        </TabsContent>
+
+        {/* Storefront Tab */}
+        <TabsContent value="storefront">
+          <div className="max-w-3xl">
+            <StoreBannerManager storeId={storeId} />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

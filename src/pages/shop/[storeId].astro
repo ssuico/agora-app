@@ -12,21 +12,26 @@ interface Store {
   name: string;
   isOpen: boolean;
   isMaintenance: boolean;
+  bannerUpdatedAt?: string | null;
 }
 
 let storeName = 'Store';
 let storeIsOpen = true;
 let storeIsMaintenance = false;
+let bannerUrl: string | undefined;
 try {
   const store = await api.get<Store>(`/api/stores/${storeId}`);
   storeName = store.name;
   storeIsOpen = store.isOpen ?? true;
   storeIsMaintenance = store.isMaintenance ?? false;
+  if (store.bannerUpdatedAt) {
+    bannerUrl = `/api/stores/${storeId}/banner?v=${new Date(store.bannerUpdatedAt).getTime()}`;
+  }
 } catch {
   // handled in component
 }
 ---
 
 <CustomerLayout title={storeName}>
-  <ShopView storeId={storeId!} storeName={storeName} initialIsOpen={storeIsOpen} initialIsMaintenance={storeIsMaintenance} client:load />
+  <ShopView storeId={storeId!} storeName={storeName} initialIsOpen={storeIsOpen} initialIsMaintenance={storeIsMaintenance} bannerUrl={bannerUrl} client:load />
 </CustomerLayout>

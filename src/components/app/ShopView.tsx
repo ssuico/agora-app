@@ -86,6 +86,23 @@ interface ShopViewProps {
   storeName: string;
   initialIsOpen?: boolean;
   initialIsMaintenance?: boolean;
+  bannerUrl?: string;
+}
+
+function StoreBanner({ src, storeName }: { src: string; storeName: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <div className="aspect-[3/1] w-full overflow-hidden rounded-xl border border-border bg-muted sm:aspect-[4/1]">
+      <img
+        src={src}
+        alt={`${storeName} banner`}
+        className="size-full object-cover"
+        fetchPriority="high"
+        onError={() => setFailed(true)}
+      />
+    </div>
+  );
 }
 
 const fmt = (n: number) =>
@@ -497,7 +514,7 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
 // Main ShopView
 // ---------------------------------------------------------------------------
 
-export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMaintenance = false }: ShopViewProps) {
+export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMaintenance = false, bannerUrl }: ShopViewProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -901,6 +918,8 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
           </Button>
         </Alert>
       ))}
+
+      {bannerUrl && <StoreBanner src={bannerUrl} storeName={storeName} />}
 
       {/* ── Header ── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
