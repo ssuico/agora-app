@@ -212,7 +212,13 @@ export const getTransactions = async (req: Request, res: Response): Promise<void
     if (storeId) filter.storeId = storeId;
     if (claimStatus && claimStatus !== 'all') filter.claimStatus = claimStatus;
     if (paymentStatus && paymentStatus !== 'all') filter.paymentStatus = paymentStatus;
-    if (orderStatus && orderStatus !== 'all') {
+    if (orderStatus === 'completed') {
+      filter.orderStatus = { $ne: 'cancelled' };
+      filter.$and = [{ claimStatus: 'claimed' }, { paymentStatus: 'paid' }];
+    } else if (orderStatus === 'active') {
+      filter.orderStatus = 'active';
+      filter.$nor = [{ claimStatus: 'claimed', paymentStatus: 'paid' }];
+    } else if (orderStatus && orderStatus !== 'all') {
       filter.orderStatus = orderStatus;
     }
 

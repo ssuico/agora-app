@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
-import { Transaction } from '../models/Transaction.js';
+import { Transaction, getDisplayOrderStatus } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { TransactionReport } from '../models/TransactionReport.js';
 import { APP_TIMEZONE, toLocalDateStr, localDayRange, localDayRangeFromDateString } from '../config/timezone.js';
@@ -151,7 +151,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
           totalAmount: tx.totalAmount,
           totalCost: tx.totalCost,
           grossProfit: tx.grossProfit,
-          orderStatus: tx.orderStatus,
+          orderStatus: getDisplayOrderStatus(tx),
           claimStatus: tx.claimStatus,
           paymentStatus: tx.paymentStatus,
           claimedAt: fmtDateTime(tx.claimedAt),
@@ -179,7 +179,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
             totalAmount: i === 0 ? tx.totalAmount : '',
             totalCost: i === 0 ? tx.totalCost : '',
             grossProfit: i === 0 ? tx.grossProfit : '',
-            orderStatus: i === 0 ? tx.orderStatus : '',
+            orderStatus: i === 0 ? getDisplayOrderStatus(tx) : '',
             claimStatus: i === 0 ? tx.claimStatus : '',
             paymentStatus: i === 0 ? tx.paymentStatus : '',
             claimedAt: i === 0 ? fmtDateTime(tx.claimedAt) : '',

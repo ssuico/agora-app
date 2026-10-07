@@ -4,6 +4,18 @@ export type ClaimStatus = 'unclaimed' | 'claimed';
 export type PaymentStatus = 'unpaid' | 'paid' | 'partial';
 export type OrderStatus = 'active' | 'cancelled';
 
+export type DisplayOrderStatus = OrderStatus | 'completed';
+
+/** An order is completed when it is not cancelled and is both paid and claimed. */
+export function getDisplayOrderStatus(tx: {
+  orderStatus?: OrderStatus | null;
+  claimStatus?: ClaimStatus | null;
+  paymentStatus?: PaymentStatus | null;
+}): DisplayOrderStatus {
+  if (tx.orderStatus === 'cancelled') return 'cancelled';
+  return tx.claimStatus === 'claimed' && tx.paymentStatus === 'paid' ? 'completed' : 'active';
+}
+
 export interface ITransaction extends Document {
   storeId: mongoose.Types.ObjectId;
   customerId?: mongoose.Types.ObjectId;
