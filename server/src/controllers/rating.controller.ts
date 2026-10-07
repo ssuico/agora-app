@@ -275,46 +275,73 @@ export const getRatingAggregates = async (req: Request, res: Response): Promise<
       buildOverallAgg(storeObjId, 'store'),
     ]);
 
-    // Per-product averages
-    const perProduct = await Rating.aggregate([
-      { $match: { storeId: storeObjId, type: 'product', productId: { $ne: null } } },
-      {
-        $group: {
-          _id: '$productId',
-          averageStars: { $avg: '$stars' },
-          totalCount: { $sum: 1 },
-        },
-      },
-      { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
-      { $unwind: { path: '$product', preserveNullAndEmptyArrays: false } },
-      { $project: { productId: '$_id', productName: '$product.name', averageStars: 1, totalCount: 1 } },
-      { $sort: { averageStars: -1 } },
+    // Every rating (with or without a comment) so each reviewer is listed and
+    // the per-product / per-store counts always match the visible rows.
+    const [allProductRatings, allStoreRatings] = await Promise.all([
+      Rating.find({ storeId: storeObjId, type: 'product' })
+        .sort({ createdAt: -1 })
+        .populate('customerId', 'name avatar')
+        .populate('productId', 'name')
+        .lean(),
+      Rating.find({ storeId: storeObjId, type: 'store' })
+        .sort({ createdAt: -1 })
+        .populate('customerId', 'name avatar')
+        .lean(),
     ]);
 
-    // All product ratings (with or without comments) so every reviewer appears in the modal
-    const recentProductFeedback = await Rating.find({ storeId, type: 'product' })
-      .sort({ createdAt: -1 })
-      .limit(200)
-      .populate('customerId', 'name')
-      .populate('productId', 'name')
-      .lean();
-
-    // Recent store comments
-    const recentStoreFeedback = await Rating.find({ storeId, type: 'store', comment: { $ne: null } })
-      .sort({ createdAt: -1 })
-      .limit(20)
-      .populate('customerId', 'name')
-      .lean();
+    type PerProductRating = {
+      _id: string;
+      stars: number;
+      comment: string | null;
+      createdAt: Date;
+      customerId: string | null;
+      customerName: string;
+      customerAvatar: string;
+    };
+    const perProductMap = new Map<
+      string,
+      { productId: string; productName: string; total: number; ratings: PerProductRating[] }
+    >();
+    for (const r of allProductRatings) {
+      const product = r.productId as unknown as { _id: mongoose.Types.ObjectId; name: string } | null;
+      const customer = r.customerId as unknown as { _id: mongoose.Types.ObjectId; name: string; avatar?: string } | null;
+      // populate() yields null for deleted products/users; group those under placeholders.
+      const key = product ? String(product._id) : 'deleted';
+      let bucket = perProductMap.get(key);
+      if (!bucket) {
+        bucket = { productId: key, productName: product?.name ?? 'Deleted product', total: 0, ratings: [] };
+        perProductMap.set(key, bucket);
+      }
+      bucket.total += r.stars;
+      bucket.ratings.push({
+        _id: String(r._id),
+        stars: r.stars,
+        comment: r.comment ?? null,
+        createdAt: r.createdAt,
+        customerId: customer ? String(customer._id) : null,
+        customerName: customer?.name ?? 'Deleted user',
+        customerAvatar: customer?.avatar ?? '',
+      });
+    }
+    const perProduct = [...perProductMap.values()]
+      .map((b) => ({
+        productId: b.productId,
+        productName: b.productName,
+        averageStars: b.total / b.ratings.length,
+        totalCount: b.ratings.length,
+        ratings: b.ratings,
+      }))
+      .sort((a, b) => b.averageStars - a.averageStars || b.totalCount - a.totalCount);
 
     res.json({
       product: {
         overall: productOverall,
         perProduct,
-        recentFeedback: recentProductFeedback,
+        recentFeedback: allProductRatings.slice(0, 200),
       },
       store: {
         overall: storeOverall,
-        recentFeedback: recentStoreFeedback,
+        recentFeedback: allStoreRatings,
       },
     });
   } catch (err) {
