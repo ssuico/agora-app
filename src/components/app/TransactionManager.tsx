@@ -221,12 +221,22 @@ function SegmentTrigger({ value, children }: { value: string; children: React.Re
   );
 }
 
-function OrderBadge({ status }: { status: OrderStatus }) {
-  return status === 'cancelled' ? (
-    <Badge variant="error">Cancelled</Badge>
-  ) : (
-    <Badge variant="secondary">Active</Badge>
-  );
+/** Paid and claimed orders that are not cancelled are shown as completed. */
+function getDisplayOrderStatus(tx: Pick<Transaction, 'orderStatus' | 'claimStatus' | 'paymentStatus'>): OrderStatus | 'completed' {
+  if (tx.orderStatus === 'cancelled') return 'cancelled';
+  return tx.claimStatus === 'claimed' && tx.paymentStatus === 'paid' ? 'completed' : 'active';
+}
+
+function OrderBadge({ status }: { status: OrderStatus | 'completed' }) {
+  if (status === 'cancelled') return <Badge variant="error">Cancelled</Badge>;
+  if (status === 'completed') {
+    return (
+      <Badge variant="success">
+        <CheckCircle2 />Completed
+      </Badge>
+    );
+  }
+  return <Badge variant="secondary">Active</Badge>;
 }
 
 function ProductImageThumb({ src, className }: { src?: string; className?: string }) {
@@ -1121,6 +1131,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                   <SelectGroup>
                     <SelectItem value="all">All</SelectItem>
                     <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
                     <SelectItem value="cancelled">Cancelled</SelectItem>
                   </SelectGroup>
                 </SelectContent>
@@ -1243,14 +1254,13 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               <table className="data-table transactions-table">
                 <thead>
                   <tr>
-                    <th className="w-10 px-2" title="Complete order (claimed & paid)" />
+                    <th>Status</th>
                     <th className="w-8 px-2" />
                     <th>ID</th>
                     <th>Customer</th>
                     <th>Items</th>
                     <th>Amount</th>
                     <th>Profit</th>
-                    <th>Order</th>
                     <th>Claiming</th>
                     <th>Payment</th>
                     <th>Date</th>
@@ -1260,7 +1270,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 <tbody>
                   {transactions.length === 0 ? (
                     <tr>
-                      <td colSpan={COL_COUNT + 1} className="px-4 py-8 text-center text-muted-foreground">
+                      <td colSpan={COL_COUNT} className="px-4 py-8 text-center text-muted-foreground">
                         <Empty className="border-0 p-4 md:p-4">
                           <EmptyHeader>
                             <EmptyMedia variant="icon"><FileSpreadsheet /></EmptyMedia>
@@ -1889,21 +1899,10 @@ function TransactionRow({
   onCancelClick: () => void;
   onDeleteClick: () => void;
 }) {
-  const isComplete = !isCancelled && tx.claimStatus === 'claimed' && tx.paymentStatus === 'paid';
-
   return (
     <>
       <tr className={isCancelled ? 'row-muted' : undefined}>
-        {/* Complete order indicator (claimed & paid) */}
-        <td className="px-2 py-3 text-center">
-          {isComplete ? (
-            <span title="Order complete (claimed & paid)" className="inline-flex">
-              <CheckCircle2 className="size-5 text-success mx-auto" />
-            </span>
-          ) : (
-            <span className="text-muted-foreground/40">—</span>
-          )}
-        </td>
+        <td className="px-4 py-3"><OrderBadge status={getDisplayOrderStatus(tx)} /></td>
         {/* Expand toggle */}
         <td className="px-2 py-3">
           <Button variant="ghost" size="icon-xs" className="text-muted-foreground" onClick={onToggleExpand} title="View items">
@@ -1941,7 +1940,6 @@ function TransactionRow({
         </td>
         <td className={`px-4 py-3 font-medium ${isCancelled ? 'line-through text-muted-foreground' : ''}`}>{fmt(tx.totalAmount)}</td>
         <td className={`px-4 py-3 font-medium ${isCancelled ? 'line-through text-muted-foreground' : ''}`}>{fmt(tx.grossProfit)}</td>
-        <td className="px-4 py-3"><OrderBadge status={tx.orderStatus ?? 'active'} /></td>
         <td className="px-4 py-3">
           {isCancelled ? (
             <span className="text-xs text-muted-foreground">—</span>
@@ -2065,7 +2063,7 @@ function TransactionRow({
       {/* Expanded items row */}
       {isExpanded && (
         <tr className={isCancelled ? 'row-muted' : 'row-sub'}>
-          <td colSpan={COL_COUNT + 1} className="px-0 py-0">
+          <td colSpan={COL_COUNT} className="px-0 py-0">
             <div className="px-10 py-3 border-b">
               {isLoadingItems ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
