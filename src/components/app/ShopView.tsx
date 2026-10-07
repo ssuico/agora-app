@@ -121,6 +121,10 @@ function StoreBanner({ src, storeName, className }: { src: string; storeName: st
   );
 }
 
+const MIN_UPDATE_REASON_WORDS = 2;
+
+const countWords = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
 
@@ -559,6 +563,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
   const [hasRatedStore, setHasRatedStore] = useState(false);
   const [existingStoreStars, setExistingStoreStars] = useState<number | null>(null);
   const [storeAverage, setStoreAverage] = useState<{ averageStars: number; totalCount: number } | null>(null);
+  const storeUpdateReasonMissing = hasRatedStore && countWords(storeRatingComment) < MIN_UPDATE_REASON_WORDS;
   const [storeReviews, setStoreReviews] = useState<FeedbackEntry[]>([]);
   const [storeReviewsOpen, setStoreReviewsOpen] = useState(false);
 
@@ -1732,15 +1737,34 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
                 {['', 'Terrible', 'Poor', 'Average', 'Good', 'Excellent'][storeRatingStars]}
               </Badge>
             </div>
-            <Textarea
-              value={storeRatingComment}
-              onChange={(e) => setStoreRatingComment(e.target.value)}
-              placeholder="Share what you liked or what could be better... (optional)"
-              maxLength={500}
-              rows={3}
-              className="resize-none rounded-xl"
-            />
-            <p className="text-right text-xs text-muted-foreground">{storeRatingComment.length}/500</p>
+            <div className="flex flex-col gap-1.5">
+              {hasRatedStore && (
+                <Label htmlFor="store-rating-comment" className="text-xs">
+                  Why are you changing your rating? <span className="text-destructive">*</span>
+                </Label>
+              )}
+              <Textarea
+                id="store-rating-comment"
+                value={storeRatingComment}
+                onChange={(e) => setStoreRatingComment(e.target.value)}
+                placeholder={
+                  hasRatedStore
+                    ? 'Tell us what changed (at least 2 words)...'
+                    : 'Share what you liked or what could be better... (optional)'
+                }
+                maxLength={500}
+                rows={3}
+                required={hasRatedStore}
+                aria-invalid={storeUpdateReasonMissing && storeRatingComment.length > 0}
+                className="resize-none rounded-xl"
+              />
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className={storeUpdateReasonMissing && storeRatingComment.length > 0 ? 'text-destructive' : ''}>
+                  {hasRatedStore ? 'Required when updating — minimum of 2 words.' : ''}
+                </span>
+                <span>{storeRatingComment.length}/500</span>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" className="rounded-full" onClick={() => { setStoreRatingOpen(false); setStoreRatingComment(''); }} disabled={storeRatingSubmitting}>
@@ -1748,7 +1772,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
             </Button>
             <Button
               className="rounded-full"
-              disabled={storeRatingSubmitting}
+              disabled={storeRatingSubmitting || storeUpdateReasonMissing}
               onClick={async () => {
                 setStoreRatingSubmitting(true);
                 try {

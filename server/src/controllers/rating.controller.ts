@@ -8,6 +8,10 @@ import { TransactionItem } from '../models/TransactionItem.js';
 import { User } from '../models/User.js';
 import { getIO } from '../socket.js';
 
+const MIN_STORE_UPDATE_WORDS = 2;
+
+const countWords = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
+
 /** Returns true if the customer has ever purchased the given product. */
 const customerHasPurchased = async (customerId: string, productId: string): Promise<boolean> => {
   // Find TransactionItems for this product, then verify one of those transactions belongs to the customer
@@ -52,8 +56,24 @@ export const createRating = async (req: Request, res: Response): Promise<void> =
         return;
       }
       const entry = ratings[0];
+      const storeFilter = {
+        storeId: new mongoose.Types.ObjectId(storeId),
+        customerId: new mongoose.Types.ObjectId(customerId),
+        type: 'store' as const,
+        transactionId: null,
+      };
+
+      // First rating needs no comment; changing an existing one requires a reason.
+      const alreadyRated = await Rating.exists(storeFilter);
+      if (alreadyRated && countWords(entry.comment ?? '') < MIN_STORE_UPDATE_WORDS) {
+        res.status(400).json({
+          message: `Please add a comment of at least ${MIN_STORE_UPDATE_WORDS} words explaining why you are updating your rating.`,
+        });
+        return;
+      }
+
       await Rating.findOneAndUpdate(
-        { storeId: new mongoose.Types.ObjectId(storeId), customerId: new mongoose.Types.ObjectId(customerId), type: 'store', transactionId: null },
+        storeFilter,
         {
           $set: { stars: entry.stars, comment: entry.comment?.trim() || null },
           $setOnInsert: {
