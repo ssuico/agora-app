@@ -113,6 +113,7 @@ async function saveAndSendCode(input: {
   purpose: CodePurpose;
   signupName?: string;
   signupPasswordHash?: string;
+  recipientName?: string;
 }): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
   if (!isMailConfigured()) {
     return { ok: false, status: 503, message: 'Email delivery is not configured yet.' };
@@ -134,7 +135,12 @@ async function saveAndSendCode(input: {
   );
 
   try {
-    await sendVerificationEmail({ to: input.email, code, purpose: input.purpose });
+    await sendVerificationEmail({
+      to: input.email,
+      code,
+      purpose: input.purpose,
+      name: input.signupName ?? input.recipientName,
+    });
   } catch (err) {
     await VerificationCode.deleteOne({ email: input.email, purpose: input.purpose });
     console.error('Failed to send verification email', err);
@@ -379,7 +385,7 @@ export const sendPasswordResetCode = async (req: Request, res: Response): Promis
       return;
     }
 
-    const sent = await saveAndSendCode({ email, purpose: 'password_reset' });
+    const sent = await saveAndSendCode({ email, purpose: 'password_reset', recipientName: user.name });
     if (!sent.ok) {
       res.status(sent.status).json({ message: sent.message });
       return;

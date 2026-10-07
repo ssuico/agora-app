@@ -13,8 +13,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import mongoose from 'mongoose';
+import { isEmailVerificationEnabled } from './config/authFeatures.js';
 import { connectDB } from './config/db.js';
 import { app } from './app.js';
+import { verifyMailTransport } from './services/mailer.js';
 import { initSocket } from './socket.js';
 
 const PORT = Number(process.env.PORT) || 3001;
@@ -45,6 +47,17 @@ connectDB()
         `Server running on http://${HOST}:${PORT} [${isProd ? 'production' : 'development'}]`
       );
     });
+
+    if (isEmailVerificationEnabled()) {
+      verifyMailTransport()
+        .then(() => console.log('Email codes enabled: SMTP login verified.'))
+        .catch((err: { code?: string; responseCode?: number; message?: string }) => {
+          console.error(
+            `Email codes enabled but SMTP check failed (${err.code ?? 'ERROR'} ${err.responseCode ?? ''}): ${err.message}. ` +
+              'Signup and password-reset emails will fail. Run "pnpm mail:verify" in server/.'
+          );
+        });
+    }
 
     const shutdown = (signal: string) => {
       console.log(`\n${signal} received — shutting down gracefully...`);
