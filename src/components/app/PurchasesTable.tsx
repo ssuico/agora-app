@@ -21,7 +21,14 @@ interface Purchase {
   totalAmount: number;
   createdAt: string;
   orderStatus?: string;
+  claimStatus?: string;
+  paymentStatus?: string;
   items?: PurchaseItem[];
+}
+
+function getOrderStatusLabel(tx: Purchase): 'active' | 'completed' | 'cancelled' {
+  if (tx.orderStatus === 'cancelled') return 'cancelled';
+  return tx.claimStatus === 'claimed' && tx.paymentStatus === 'paid' ? 'completed' : 'active';
 }
 
 const fmt = (n: number) =>
@@ -82,6 +89,7 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
                 const items = tx.items ?? [];
                 const hasItems = items.length > 0;
                 const isActive = tx.orderStatus !== 'cancelled';
+                const orderStatusLabel = getOrderStatusLabel(tx);
                 return (
                   <Fragment key={tx._id}>
                     <tr
@@ -113,7 +121,7 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
                       <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">{new Date(tx.createdAt).toLocaleString()}</td>
                       <td className="px-4 py-3">
                         <Badge variant={isActive ? 'success' : 'secondary'}>
-                          {tx.orderStatus ?? 'active'}
+                          {orderStatusLabel}
                         </Badge>
                       </td>
                     </tr>
