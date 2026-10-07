@@ -1,5 +1,6 @@
-import { Router, type Router as IRouter } from 'express';
+import { Router, type RequestHandler, type Router as IRouter } from 'express';
 import rateLimit from 'express-rate-limit';
+import { isEmailVerificationEnabled } from '../config/authFeatures.js';
 import {
   confirmPasswordReset,
   confirmSignup,
@@ -29,13 +30,25 @@ const sensitiveAuthLimiter = rateLimit({
   message: { message: 'Too many attempts. Please try again later.' },
 });
 
+// Every accepted request on these routes can send an email, so they get a tighter cap than login.
+const emailSendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many email requests. Please try again later.' },
+});
+
+const emailSendLimiterWhenEnabled: RequestHandler = (req, res, next) =>
+  isEmailVerificationEnabled() ? emailSendLimiter(req, res, next) : next();
+
 authRoutes.post('/login', sensitiveAuthLimiter, login);
 authRoutes.post('/logout', logout);
 authRoutes.get('/options', getAuthOptions);
-authRoutes.post('/signup', sensitiveAuthLimiter, signup);
-authRoutes.post('/signup/code', sensitiveAuthLimiter, sendSignupCode);
+authRoutes.post('/signup', sensitiveAuthLimiter, emailSendLimiterWhenEnabled, signup);
+authRoutes.post('/signup/code', sensitiveAuthLimiter, emailSendLimiter, sendSignupCode);
 authRoutes.post('/signup/confirm', sensitiveAuthLimiter, confirmSignup);
-authRoutes.post('/forgot-password/code', sensitiveAuthLimiter, sendPasswordResetCode);
+authRoutes.post('/forgot-password/code', sensitiveAuthLimiter, emailSendLimiter, sendPasswordResetCode);
 authRoutes.post('/forgot-password/confirm', sensitiveAuthLimiter, confirmPasswordReset);
 authRoutes.post('/register', sensitiveAuthLimiter, authenticate, authorize(UserRole.ADMIN), register);
 authRoutes.get('/me', authenticate, getMe);

@@ -87,7 +87,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       role: user.role,
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err });
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -141,6 +142,22 @@ async function saveAndSendCode(input: {
   }
 
   return { ok: true };
+}
+
+// Reserves one guess in a single update so concurrent requests cannot exceed MAX_CODE_ATTEMPTS.
+async function claimAttempt(id: unknown): Promise<boolean> {
+  const claimed = await VerificationCode.findOneAndUpdate(
+    { _id: id, attempts: { $lt: MAX_CODE_ATTEMPTS } },
+    { $inc: { attempts: 1 } },
+    { new: true }
+  );
+  return claimed !== null;
+}
+
+// A code works once: only the request that deletes the record may use it.
+async function consumeCode(id: unknown): Promise<boolean> {
+  const consumed = await VerificationCode.findOneAndDelete({ _id: id });
+  return consumed !== null;
 }
 
 function duplicateAccountMessage(): string {
@@ -290,21 +307,22 @@ export const confirmSignup = async (req: Request, res: Response): Promise<void> 
       res.status(400).json({ message: 'That code is incorrect or has expired.' });
       return;
     }
-    if (record.attempts >= MAX_CODE_ATTEMPTS) {
+    if (!(await claimAttempt(record._id))) {
       await record.deleteOne();
       res.status(400).json({ message: 'Too many incorrect codes. Request a new one.' });
       return;
     }
     if (!codesMatch(record.codeHash, 'signup', email, code)) {
-      record.attempts += 1;
-      await record.save();
+      res.status(400).json({ message: 'That code is incorrect or has expired.' });
+      return;
+    }
+    if (!(await consumeCode(record._id))) {
       res.status(400).json({ message: 'That code is incorrect or has expired.' });
       return;
     }
 
     const already = await User.findOne({ email });
     if (already) {
-      await record.deleteOne();
       res.status(409).json({ message: duplicateAccountMessage() });
       return;
     }
@@ -315,7 +333,6 @@ export const confirmSignup = async (req: Request, res: Response): Promise<void> 
       password: record.signupPasswordHash,
       role: UserRole.CUSTOMER,
     });
-    await record.deleteOne();
 
     const session = await issueSession(user);
     setAuthCookie(res, session.token);
@@ -347,19 +364,18 @@ export const sendPasswordResetCode = async (req: Request, res: Response): Promis
       return;
     }
 
+    const neutral = { message: 'If that email has an account, we sent a 6-digit code to it.', email };
+
     const user = await User.findOne({ email });
     if (!user) {
-      res.status(404).json({ message: 'No account uses that email. Create an account instead.' });
+      res.json(neutral);
       return;
     }
 
     const pending = await VerificationCode.findOne({ email, purpose: 'password_reset' });
     const cooldown = pending ? cooldownResponse(pending.lastSentAt) : null;
     if (cooldown) {
-      res.status(429).json({
-        message: `Wait ${cooldown.retryAfterSeconds} seconds before requesting another code.`,
-        retryAfterSeconds: cooldown.retryAfterSeconds,
-      });
+      res.json(neutral);
       return;
     }
 
@@ -369,7 +385,7 @@ export const sendPasswordResetCode = async (req: Request, res: Response): Promis
       return;
     }
 
-    res.json({ message: 'We sent a 6-digit code to your email.', email });
+    res.json(neutral);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -403,28 +419,28 @@ export const confirmPasswordReset = async (req: Request, res: Response): Promise
       res.status(400).json({ message: 'That code is incorrect or has expired.' });
       return;
     }
-    if (record.attempts >= MAX_CODE_ATTEMPTS) {
+    if (!(await claimAttempt(record._id))) {
       await record.deleteOne();
       res.status(400).json({ message: 'Too many incorrect codes. Request a new one.' });
       return;
     }
     if (!codesMatch(record.codeHash, 'password_reset', email, code)) {
-      record.attempts += 1;
-      await record.save();
+      res.status(400).json({ message: 'That code is incorrect or has expired.' });
+      return;
+    }
+    if (!(await consumeCode(record._id))) {
       res.status(400).json({ message: 'That code is incorrect or has expired.' });
       return;
     }
 
     const user = await User.findOne({ email });
     if (!user) {
-      await record.deleteOne();
-      res.status(404).json({ message: 'No account uses that email. Create an account instead.' });
+      res.status(400).json({ message: 'That code is incorrect or has expired.' });
       return;
     }
 
     user.password = await bcrypt.hash(newPassword, 12);
     await user.save();
-    await record.deleteOne();
     res.json({ message: 'Password updated. Sign in with your new password.' });
   } catch (err) {
     console.error(err);
@@ -448,7 +464,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     setAuthCookie(res, session.token);
     res.json(session);
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err });
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -470,7 +487,8 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
 
     res.json({ ...user.toObject(), roles, activeRole: req.user!.role, storeIds });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err });
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -515,7 +533,8 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
     const storeIds = roles.includes(UserRole.STORE_MANAGER) ? await assignedStoreIds(user) : undefined;
     res.json({ ...user.toObject(), roles, activeRole: req.user!.role, storeIds });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err });
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -545,6 +564,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     await user.save();
     res.json({ message: 'Password updated successfully' });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err });
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 };
