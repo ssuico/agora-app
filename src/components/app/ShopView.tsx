@@ -1,5 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -66,7 +67,7 @@ interface FeedbackEntry {
   stars: number;
   comment?: string | null;
   createdAt: string;
-  customerId?: { name: string } | null;
+  customerId?: { name: string; avatar?: string } | null;
   productId?: { name: string; _id: string } | null;
   type: 'product' | 'store';
 }
@@ -557,6 +558,9 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
   const [storeRatingSubmitting, setStoreRatingSubmitting] = useState(false);
   const [hasRatedStore, setHasRatedStore] = useState(false);
   const [existingStoreStars, setExistingStoreStars] = useState<number | null>(null);
+  const [storeAverage, setStoreAverage] = useState<{ averageStars: number; totalCount: number } | null>(null);
+  const [storeReviews, setStoreReviews] = useState<FeedbackEntry[]>([]);
+  const [storeReviewsOpen, setStoreReviewsOpen] = useState(false);
 
   const [interactionOpen, setInteractionOpen] = useState(false);
   const [interactionType, setInteractionType] = useState<'question' | 'recommendation'>('question');
@@ -615,6 +619,14 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
       }
       setProductRatings(ratingsMap);
       setProductReviews(reviewsMap);
+      const storeOverall = data.store?.overall as { averageStars?: number; totalCount?: number } | undefined;
+      if (storeOverall && typeof storeOverall.averageStars === 'number') {
+        setStoreAverage({
+          averageStars: storeOverall.averageStars,
+          totalCount: storeOverall.totalCount ?? 0,
+        });
+      }
+      setStoreReviews(Array.isArray(data.store?.recentFeedback) ? (data.store.recentFeedback as FeedbackEntry[]) : []);
     } catch { /* ignore */ }
   };
 
@@ -953,6 +965,21 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">Browse and reserve items — pay when you claim</p>
+          {storeAverage && storeAverage.totalCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => setStoreReviewsOpen(true)}
+              aria-label={`View all ${storeAverage.totalCount} store ratings`}
+              className="group flex w-fit items-center gap-2 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <MiniStars value={storeAverage.averageStars} count={storeAverage.totalCount} />
+              <span className="text-xs font-medium text-primary underline-offset-2 group-hover:underline">
+                View all ratings
+              </span>
+            </button>
+          ) : (
+            <p className="text-xs text-muted-foreground">No store ratings yet</p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -1621,6 +1648,63 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
         </DialogContent>
       </Dialog>
 
+      {/* ── Store Ratings Dialog ── */}
+      <Dialog open={storeReviewsOpen} onOpenChange={setStoreReviewsOpen}>
+        <DialogContent className="flex max-h-[85vh] w-[min(94vw,32rem)] flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="border-b px-5 pt-5 pb-4">
+            <DialogTitle>Ratings for {storeName}</DialogTitle>
+            <DialogDescription>
+              {storeAverage && storeAverage.totalCount > 0
+                ? `${storeAverage.averageStars.toFixed(1)} average from ${storeAverage.totalCount} ${storeAverage.totalCount === 1 ? 'customer' : 'customers'}`
+                : 'No ratings yet.'}
+            </DialogDescription>
+          </DialogHeader>
+          {storeReviews.length > 0 ? (
+            <ul className="divide-y divide-border/60 overflow-y-auto">
+              {storeReviews.map((r) => {
+                const name = r.customerId?.name ?? 'Deleted user';
+                const initials = name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?';
+                return (
+                  <li key={r._id} className="flex items-start gap-3 px-5 py-3.5">
+                    <Avatar className="size-8 shrink-0">
+                      {r.customerId?.avatar && <AvatarImage src={r.customerId.avatar} alt={name} className="object-cover" />}
+                      <AvatarFallback className="text-[10px] font-semibold">{initials}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                        <span className="text-sm font-medium">{name}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {new Date(r.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      </div>
+                      <span className="mt-0.5 flex items-center gap-0.5" aria-label={`${r.stars} out of 5 stars`}>
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Star
+                            key={s}
+                            className={`size-3 ${s <= r.stars ? 'fill-rating text-rating' : 'text-muted-foreground/20'}`}
+                          />
+                        ))}
+                      </span>
+                      {r.comment ? (
+                        <p className="mt-1.5 wrap-break-word text-xs leading-relaxed text-foreground">{r.comment}</p>
+                      ) : (
+                        <p className="mt-1.5 text-xs italic text-muted-foreground">No comment provided.</p>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <Empty className="border-0 py-10">
+              <EmptyHeader>
+                <EmptyDescription>No store ratings yet.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* ── Rate Store Dialog ── */}
       <Dialog open={storeRatingOpen} onOpenChange={(v) => { if (!v) { setStoreRatingOpen(false); setStoreRatingComment(''); } }}>
         <DialogContent className="max-w-sm">
@@ -1683,6 +1767,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
                   }
                   setHasRatedStore(true);
                   setExistingStoreStars(storeRatingStars);
+                  fetchRatingAggregates();
                   setStoreRatingOpen(false);
                   setStoreRatingComment('');
                   toast.success('Thank you for your rating!');
