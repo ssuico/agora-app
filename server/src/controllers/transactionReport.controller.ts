@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
-import { Transaction, getDisplayOrderStatus } from '../models/Transaction.js';
+import { Transaction, getDisplayOrderStatus, getPreOrderDisplayStatus } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { TransactionReport } from '../models/TransactionReport.js';
 import { APP_TIMEZONE, toLocalDateStr, localDayRange, localDayRangeFromDateString } from '../config/timezone.js';
@@ -16,9 +16,37 @@ const slugify = (value: string): string =>
 
 const orderTypeLabel = (orderType?: string | null): string => {
   if (orderType === 'preorder') return 'Pre-Order';
-  if (orderType === 'reserved') return 'Reserved';
+  if (orderType === 'walk-in') return 'Walk-in';
   return 'Regular';
 };
+
+const statusLabel = (value?: string | null): string =>
+  value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
+
+type ReportProduct = {
+  name: string;
+  sellingPrice: number;
+  costPrice: number;
+  preOrderStatus?: 'pending' | 'ready' | null;
+};
+
+const reportStatuses = (
+  tx: {
+    orderStatus?: 'active' | 'cancelled' | null;
+    claimStatus?: 'unclaimed' | 'claimed' | null;
+    paymentStatus?: 'unpaid' | 'paid' | 'partial' | null;
+    orderType?: string | null;
+    amountPaid?: number | null;
+  },
+  product?: { preOrderStatus?: 'pending' | 'ready' | null } | null,
+) => ({
+  orderStatus: statusLabel(getDisplayOrderStatus(tx)),
+  orderType: orderTypeLabel(tx.orderType),
+  claimStatus: statusLabel(tx.claimStatus),
+  paymentStatus: statusLabel(tx.paymentStatus),
+  amountPaid: tx.amountPaid ?? 0,
+  preOrderStatus: tx.orderType === 'preorder' ? statusLabel(getPreOrderDisplayStatus(tx, product)) : '',
+});
 
 export const generateReport = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -78,7 +106,6 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
     const transactions = await Transaction.find({
       storeId,
       createdAt: { $gte: dayStart, $lte: dayEnd },
-      orderStatus: { $ne: 'cancelled' },
     })
       .populate('customerId', 'name email')
       .sort({ createdAt: 1 })
@@ -86,7 +113,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
 
     const txIds = transactions.map((t) => t._id);
     const allItems = await TransactionItem.find({ transactionId: { $in: txIds } })
-      .populate('productId', 'name sellingPrice costPrice')
+      .populate('productId', 'name sellingPrice costPrice preOrderStatus')
       .lean();
 
     const itemsByTx = new Map<string, typeof allItems>();
@@ -118,7 +145,9 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
       { header: 'Order Status', key: 'orderStatus', width: 14 },
       { header: 'Order Type', key: 'orderType', width: 14 },
       { header: 'Claim Status', key: 'claimStatus', width: 14 },
-      { header: 'Payment Status', key: 'paymentStatus', width: 14 },
+      { header: 'Payment Status', key: 'paymentStatus', width: 16 },
+      { header: 'Amount Paid', key: 'amountPaid', width: 14 },
+      { header: 'Pre-Order Status', key: 'preOrderStatus', width: 18 },
       { header: 'Date Claimed', key: 'claimedAt', width: 20 },
       { header: 'Date Paid', key: 'paidAt', width: 20 },
       { header: 'Store Notes', key: 'storeNotes', width: 36 },
@@ -143,6 +172,22 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
           : null;
       const customerName = customer?.name ?? tx.walkInCustomerName ?? 'Walk-in';
       const items = itemsByTx.get(String(tx._id)) || [];
+      const firstProduct = items
+        .map((item) =>
+          item.productId && typeof item.productId === 'object'
+            ? (item.productId as unknown as ReportProduct)
+            : null
+        )
+        .find((product) => product != null) ?? null;
+      const statuses = reportStatuses(tx, firstProduct);
+      const blankStatuses = {
+        orderStatus: '',
+        orderType: '',
+        claimStatus: '',
+        paymentStatus: '',
+        amountPaid: '',
+        preOrderStatus: '',
+      };
 
       if (items.length === 0) {
         sheet.addRow({
@@ -158,10 +203,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
           totalAmount: tx.totalAmount,
           totalCost: tx.totalCost,
           grossProfit: tx.grossProfit,
-          orderStatus: getDisplayOrderStatus(tx),
-          orderType: orderTypeLabel(tx.orderType),
-          claimStatus: tx.claimStatus,
-          paymentStatus: tx.paymentStatus,
+          ...statuses,
           claimedAt: fmtDateTime(tx.claimedAt),
           paidAt: fmtDateTime(tx.paidAt),
           storeNotes: tx.notes?.trim() ?? '',
@@ -171,7 +213,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
           const item = items[i];
           const prod =
             item.productId && typeof item.productId === 'object'
-              ? (item.productId as unknown as { name: string; sellingPrice: number; costPrice: number })
+              ? (item.productId as unknown as ReportProduct)
               : null;
 
           sheet.addRow({
@@ -187,10 +229,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
             totalAmount: i === 0 ? tx.totalAmount : '',
             totalCost: i === 0 ? tx.totalCost : '',
             grossProfit: i === 0 ? tx.grossProfit : '',
-            orderStatus: i === 0 ? getDisplayOrderStatus(tx) : '',
-            orderType: i === 0 ? orderTypeLabel(tx.orderType) : '',
-            claimStatus: i === 0 ? tx.claimStatus : '',
-            paymentStatus: i === 0 ? tx.paymentStatus : '',
+            ...(i === 0 ? statuses : blankStatuses),
             claimedAt: i === 0 ? fmtDateTime(tx.claimedAt) : '',
             paidAt: i === 0 ? fmtDateTime(tx.paidAt) : '',
             storeNotes: i === 0 ? (tx.notes?.trim() ?? '') : '',
@@ -199,7 +238,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
       }
     }
 
-    const currencyCols = ['unitPrice', 'subtotal', 'costSubtotal', 'totalAmount', 'totalCost', 'grossProfit'];
+    const currencyCols = ['unitPrice', 'subtotal', 'costSubtotal', 'totalAmount', 'totalCost', 'grossProfit', 'amountPaid'];
     for (const key of currencyCols) {
       const col = sheet.getColumn(key);
       col.numFmt = '#,##0.00';
