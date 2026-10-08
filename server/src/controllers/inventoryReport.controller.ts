@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
 import { InventoryRecord } from '../models/InventoryRecord.js';
 import { InventoryReport } from '../models/InventoryReport.js';
-import { Product } from '../models/Product.js';
+import { Product, REGULAR_PRODUCT_FILTER } from '../models/Product.js';
 import { Transaction } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { localDayRange } from '../config/timezone.js';
@@ -27,7 +27,7 @@ async function buildReportData(storeId: string, dateStr: string): Promise<Report
   const dateUTC = new Date(dateStr);
   dateUTC.setUTCHours(0, 0, 0, 0);
 
-  const products = await Product.find({ storeId }).lean();
+  const products = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
   if (products.length === 0) return [];
 
   const productIds = products.map((p) => p._id);

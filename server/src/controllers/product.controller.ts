@@ -2,8 +2,10 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { toLocalDateStr } from '../config/timezone.js';
 import { InventoryRecord } from '../models/InventoryRecord.js';
-import { Product } from '../models/Product.js';
+import { PreOrderListing } from '../models/PreOrderListing.js';
+import { Product, REGULAR_PRODUCT_FILTER, type ProductType } from '../models/Product.js';
 import { TransactionItem } from '../models/TransactionItem.js';
+import { cutoffError, parseExpectedDate, parsePreOrderClosesAt } from '../services/preorderWindow.js';
 import { UserRole } from '../types/index.js';
 
 const normalizeDiscountPrice = (value: unknown): number | null | undefined => {
@@ -32,20 +34,31 @@ const sendValidationError = (res: Response, err: unknown): boolean => {
   return false;
 };
 
+/** Default listing is regular inventory. `preorder` and `all` are explicit. */
+function productTypeFilter(productType: string | undefined): Record<string, unknown> {
+  if (productType === 'all') return {};
+  if (productType === 'preorder') return { productType: 'preorder' };
+  return { ...REGULAR_PRODUCT_FILTER };
+}
+
 export const getProducts = async (req: Request, res: Response): Promise<void> => {
   try {
     const storeId = req.query.storeId as string | undefined;
     const dailyOnly = req.query.dailyOnly === 'true';
+    const typeFilter = productTypeFilter(req.query.productType as string | undefined);
 
     if (req.user!.role === UserRole.STORE_MANAGER && !storeId) {
-      const products = await Product.find({ storeId: { $in: req.user!.storeIds ?? [] } }).sort({
+      const products = await Product.find({
+        storeId: { $in: req.user!.storeIds ?? [] },
+        ...typeFilter,
+      }).sort({
         createdAt: -1,
       });
       res.json(products);
       return;
     }
 
-    const filter = storeId ? { storeId } : {};
+    const filter = storeId ? { storeId, ...typeFilter } : { ...typeFilter };
     const products = await Product.find(filter).sort({ createdAt: -1 });
 
     if (dailyOnly && storeId) {
@@ -102,23 +115,59 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const isPreOrder = req.body.productType === 'preorder';
+    const productType: ProductType = isPreOrder ? 'preorder' : 'regular';
+
+    let preOrderClosesAt: Date | null = null;
+    let preOrderExpectedDate: Date | null | undefined;
+    if (isPreOrder) {
+      const closes = parsePreOrderClosesAt(req.body.preOrderClosesAt);
+      if (!closes.ok) {
+        res.status(400).json({ message: closes.message });
+        return;
+      }
+      const expected = parseExpectedDate(req.body.preOrderExpectedDate);
+      if (!expected.ok) {
+        res.status(400).json({ message: expected.message });
+        return;
+      }
+      const windowError = cutoffError(closes.date, expected.date, { required: true, requireFuture: true });
+      if (windowError) {
+        res.status(400).json({ message: windowError });
+        return;
+      }
+      preOrderClosesAt = closes.date;
+      preOrderExpectedDate = expected.date;
+    }
+
     const payload = {
       ...req.body,
       sellingPrice,
+      productType,
       ...(discountPrice !== undefined ? { discountPrice } : {}),
+      ...(isPreOrder ? { stockQuantity: 0, preOrderClosesAt, preOrderExpectedDate } : {}),
     };
 
     const product = await Product.create(payload);
 
-    const today = new Date(toLocalDateStr(new Date()));
-    today.setUTCHours(0, 0, 0, 0);
-    await InventoryRecord.create({
-      productId: product._id,
-      storeId: product.storeId,
-      date: today,
-      initialStock: product.stockQuantity,
-      restock: 0,
-    }).catch(() => {});
+    if (isPreOrder) {
+      await PreOrderListing.create({
+        productId: product._id,
+        storeId: product.storeId,
+        listedAt: new Date(),
+        unlistedAt: null,
+      });
+    } else {
+      const today = new Date(toLocalDateStr(new Date()));
+      today.setUTCHours(0, 0, 0, 0);
+      await InventoryRecord.create({
+        productId: product._id,
+        storeId: product.storeId,
+        date: today,
+        initialStock: product.stockQuantity,
+        restock: 0,
+      }).catch(() => {});
+    }
 
     res.status(201).json(product);
   } catch (err) {
@@ -129,7 +178,7 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
 
 export const updateProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { stockQuantity, ...updateData } = req.body;
+    const { stockQuantity: _stockQuantity, productType: _productType, ...updateData } = req.body;
     const discountPrice = normalizeDiscountPrice(updateData.discountPrice);
     if (Number.isNaN(discountPrice)) {
       res.status(400).json({ message: 'Discount price must be a valid number' });
@@ -139,7 +188,9 @@ export const updateProduct = async (req: Request, res: Response): Promise<void> 
       updateData.discountPrice = discountPrice;
     }
 
-    const existingProduct = await Product.findById(req.params.id).select('sellingPrice discountPrice');
+    const existingProduct = await Product.findById(req.params.id).select(
+      'sellingPrice discountPrice productType preOrderExpectedDate preOrderClosesAt'
+    );
     if (!existingProduct) {
       res.status(404).json({ message: 'Product not found' });
       return;
@@ -163,6 +214,55 @@ export const updateProduct = async (req: Request, res: Response): Promise<void> 
       updateData.sellingPrice = requestedSellingPrice;
     }
 
+    let nextExpected = existingProduct.preOrderExpectedDate ?? null;
+    if (updateData.preOrderExpectedDate === '' || updateData.preOrderExpectedDate === null) {
+      nextExpected = null;
+      updateData.preOrderExpectedDate = null;
+    } else if (updateData.preOrderExpectedDate !== undefined) {
+      const expected = parseExpectedDate(updateData.preOrderExpectedDate);
+      if (!expected.ok) {
+        res.status(400).json({ message: expected.message });
+        return;
+      }
+      nextExpected = expected.date;
+      updateData.preOrderExpectedDate = expected.date;
+    }
+
+    let nextCloses = existingProduct.preOrderClosesAt ?? null;
+    if (updateData.preOrderClosesAt === '' || updateData.preOrderClosesAt === null) {
+      nextCloses = null;
+      updateData.preOrderClosesAt = null;
+    } else if (updateData.preOrderClosesAt !== undefined) {
+      const closes = parsePreOrderClosesAt(updateData.preOrderClosesAt);
+      if (!closes.ok) {
+        res.status(400).json({ message: closes.message });
+        return;
+      }
+      nextCloses = closes.date;
+      updateData.preOrderClosesAt = closes.date;
+    }
+
+    if (existingProduct.productType === 'preorder') {
+      const windowError = cutoffError(nextCloses, nextExpected, { required: false, requireFuture: false });
+      if (windowError) {
+        res.status(400).json({ message: windowError });
+        return;
+      }
+    }
+
+    if (
+      updateData.preOrderStatus !== undefined &&
+      updateData.preOrderStatus !== 'pending' &&
+      updateData.preOrderStatus !== 'ready'
+    ) {
+      res.status(400).json({ message: 'Invalid pre-order status' });
+      return;
+    }
+
+    if (updateData.preOrderOpen !== undefined) {
+      updateData.preOrderOpen = Boolean(updateData.preOrderOpen);
+    }
+
     const product = await Product.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
       runValidators: true,
@@ -182,7 +282,10 @@ export const updateProduct = async (req: Request, res: Response): Promise<void> 
 
 export const deleteProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    await Product.findByIdAndDelete(req.params.id);
+    const product = await Product.findByIdAndDelete(req.params.id);
+    if (product) {
+      await PreOrderListing.deleteMany({ productId: product._id });
+    }
     res.json({ message: 'Product deleted' });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
@@ -200,7 +303,7 @@ export const getProductsSoldStats = async (req: Request, res: Response): Promise
     const parsedLimit = parseInt(limitParam, 10);
     const lim = parsedLimit === 0 ? 0 : Math.min(parsedLimit || 10, 50);
 
-    const products = await Product.find({ storeId }).select('_id').lean();
+    const products = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).select('_id').lean();
     const productIds = products.map((p) => p._id);
 
     const pipeline: mongoose.PipelineStage[] = [

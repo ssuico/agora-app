@@ -3,6 +3,8 @@ import mongoose, { Document, Schema } from 'mongoose';
 export type ClaimStatus = 'unclaimed' | 'claimed';
 export type PaymentStatus = 'unpaid' | 'paid' | 'partial';
 export type OrderStatus = 'active' | 'cancelled';
+export type OrderType = 'regular' | 'reserved' | 'preorder';
+export type PreOrderDisplayStatus = 'pending' | 'ready' | 'fulfilled' | 'cancelled';
 
 export type DisplayOrderStatus = OrderStatus | 'completed';
 
@@ -14,6 +16,24 @@ export function getDisplayOrderStatus(tx: {
 }): DisplayOrderStatus {
   if (tx.orderStatus === 'cancelled') return 'cancelled';
   return tx.claimStatus === 'claimed' && tx.paymentStatus === 'paid' ? 'completed' : 'active';
+}
+
+/**
+ * Pre-order status is derived, matching getDisplayOrderStatus.
+ * Ready comes from the product; fulfilled is paid and claimed; cancelled wins.
+ */
+export function getPreOrderDisplayStatus(
+  tx: {
+    orderStatus?: OrderStatus | null;
+    claimStatus?: ClaimStatus | null;
+    paymentStatus?: PaymentStatus | null;
+  },
+  product?: { preOrderStatus?: 'pending' | 'ready' | null } | null
+): PreOrderDisplayStatus {
+  if (tx.orderStatus === 'cancelled') return 'cancelled';
+  if (getDisplayOrderStatus(tx) === 'completed') return 'fulfilled';
+  if (product?.preOrderStatus === 'ready') return 'ready';
+  return 'pending';
 }
 
 export interface ITransaction extends Document {
@@ -29,6 +49,7 @@ export interface ITransaction extends Document {
   /** Amount paid so far; used when paymentStatus === 'partial'. */
   amountPaid: number;
   orderStatus: OrderStatus;
+  orderType: OrderType;
   /** When the order became fully paid; null while unpaid or partial. */
   paidAt?: Date | null;
   /** When the order was marked claimed; null while unclaimed. */
@@ -53,6 +74,7 @@ const transactionSchema = new Schema<ITransaction>(
     paymentStatus: { type: String, enum: ['unpaid', 'paid', 'partial'], default: 'unpaid' },
     amountPaid: { type: Number, default: 0, min: 0 },
     orderStatus: { type: String, enum: ['active', 'cancelled'], default: 'active' },
+    orderType: { type: String, enum: ['regular', 'reserved', 'preorder'], default: 'regular' },
     paidAt: { type: Date, default: null },
     claimedAt: { type: Date, default: null },
     notes: { type: String, default: null },

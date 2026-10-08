@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { localDayRange, toLocalDateStr } from '../config/timezone.js';
 import { InventoryRecord } from '../models/InventoryRecord.js';
-import { Product } from '../models/Product.js';
+import { Product, REGULAR_PRODUCT_FILTER } from '../models/Product.js';
 import { Store } from '../models/Store.js';
 import { StoreClosing } from '../models/StoreClosing.js';
 import { Transaction } from '../models/Transaction.js';
@@ -63,7 +63,7 @@ export const getDailyInventory = async (req: Request, res: Response): Promise<vo
 
     const date = toDateOnly(dateStr);
 
-    const products = await Product.find({ storeId }).lean();
+    const products = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
     if (products.length === 0) {
       res.json([]);
       return;
@@ -174,6 +174,12 @@ export const restockProduct = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    const product = await Product.findById(productId).select('productType').lean();
+    if (product?.productType === 'preorder') {
+      res.status(400).json({ message: 'Pre-order products are not part of inventory' });
+      return;
+    }
+
     const record = await InventoryRecord.findOneAndUpdate(
       { productId, date: targetDate },
       { $inc: { restock: quantity } },
@@ -189,7 +195,7 @@ export const restockProduct = async (req: Request, res: Response): Promise<void>
 
     try {
       const io = getIO();
-      const updatedProducts = await Product.find({ storeId }).lean();
+      const updatedProducts = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
       io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
     } catch { /* socket broadcast is non-critical */ }
 
@@ -233,6 +239,10 @@ export const reduceStock = async (req: Request, res: Response): Promise<void> =>
       res.status(404).json({ message: 'Product not found' });
       return;
     }
+    if (product.productType === 'preorder') {
+      res.status(400).json({ message: 'Pre-order products are not part of inventory' });
+      return;
+    }
 
     const currentStock = product.stockQuantity ?? 0;
     const actualReduce = Math.min(quantity, Math.max(0, currentStock));
@@ -258,7 +268,7 @@ export const reduceStock = async (req: Request, res: Response): Promise<void> =>
 
     try {
       const io = getIO();
-      const updatedProducts = await Product.find({ storeId }).lean();
+      const updatedProducts = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
       io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
     } catch { /* socket broadcast is non-critical */ }
 
@@ -289,7 +299,7 @@ export const closeStore = async (req: Request, res: Response): Promise<void> => 
 
     const date = toDateOnly(dateStr);
 
-    const products = await Product.find({ storeId }).lean();
+    const products = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
     if (products.length === 0) {
       res.status(400).json({ message: 'No products found for this store' });
       return;
@@ -478,7 +488,7 @@ export const getListingHistory = async (req: Request, res: Response): Promise<vo
 
     const today = todayInAppTz();
 
-    const products = await Product.find({ storeId }).lean();
+    const products = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
     if (products.length === 0) {
       res.json([]);
       return;
@@ -579,6 +589,10 @@ export const relistProduct = async (req: Request, res: Response): Promise<void> 
       res.status(404).json({ message: 'Product not found in this store' });
       return;
     }
+    if (product.productType === 'preorder') {
+      res.status(400).json({ message: 'Pre-order products are not part of inventory' });
+      return;
+    }
 
     const today = todayInAppTz();
 
@@ -611,7 +625,7 @@ export const relistProduct = async (req: Request, res: Response): Promise<void> 
 
     try {
       const io = getIO();
-      const updatedProducts = await Product.find({ storeId }).lean();
+      const updatedProducts = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
       io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
     } catch { /* socket broadcast is non-critical */ }
 

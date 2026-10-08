@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { ActivityLog } from '../models/ActivityLog.js';
-import { Product } from '../models/Product.js';
+import { PreOrderListing } from '../models/PreOrderListing.js';
+import { Product, REGULAR_PRODUCT_FILTER } from '../models/Product.js';
 import { Store } from '../models/Store.js';
-import { Transaction, type ClaimStatus, type PaymentStatus } from '../models/Transaction.js';
+import { demandForProducts } from './preorder.controller.js';
+import { Transaction, type ClaimStatus, type OrderType, type PaymentStatus } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { User } from '../models/User.js';
 import { getIO } from '../socket.js';
@@ -25,6 +27,26 @@ interface CreateTransactionBody {
   amountPaid?: number;
   notes?: string;
   customerNotes?: string;
+  /** Only `preorder` is honored. Regular and reserved are assigned by who is checking out. */
+  orderType?: string;
+}
+
+async function broadcastPreOrderDemand(
+  storeId: string,
+  productIds: mongoose.Types.ObjectId[]
+): Promise<void> {
+  const unique = [...new Map(productIds.map((id) => [String(id), id])).values()];
+  if (unique.length === 0) return;
+  const io = getIO();
+  const demand = await demandForProducts(unique);
+  for (const id of unique) {
+    const summary = demand.get(String(id)) ?? { totalUnits: 0, customerCount: 0 };
+    io.to(`store:${storeId}`).emit('preorder:updated', {
+      productId: String(id),
+      totalUnits: summary.totalUnits,
+      customerCount: summary.customerCount,
+    });
+  }
 }
 
 export const createTransaction = async (req: Request, res: Response): Promise<void> => {
@@ -47,7 +69,14 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
       await session.abortTransaction();
       return;
     }
-    if (!store.isOpen) {
+    const isPreOrder = body.orderType === 'preorder';
+    const orderType: OrderType = isPreOrder
+      ? 'preorder'
+      : req.user!.role === UserRole.CUSTOMER
+        ? 'reserved'
+        : 'regular';
+
+    if (!store.isOpen && !isPreOrder) {
       res.status(403).json({ message: 'This store is currently closed. Please try again later.' });
       await session.abortTransaction();
       return;
@@ -62,16 +91,53 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
       subtotal: number;
       costSubtotal: number;
     }> = [];
+    const preOrderProductIds: mongoose.Types.ObjectId[] = [];
 
     for (const item of items) {
+      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+        throw new Error('Each item quantity must be a whole number of at least 1');
+      }
+
       const product = await Product.findById(item.productId).session(session);
       if (!product) {
         throw new Error(`Product ${item.productId} not found`);
       }
-      if (product.stockQuantity < item.quantity) {
-        throw new Error(
-          `Insufficient stock for "${product.name}" (available: ${product.stockQuantity})`
-        );
+
+      if (isPreOrder) {
+        if (product.productType !== 'preorder') {
+          throw new Error(`"${product.name}" is not a pre-order product`);
+        }
+        if (!product.preOrderOpen) {
+          throw new Error(`Pre-orders are closed for "${product.name}"`);
+        }
+        if (product.preOrderClosesAt && product.preOrderClosesAt.getTime() <= Date.now()) {
+          throw new Error(`Pre-orders for "${product.name}" have closed`);
+        }
+        const openListing = await PreOrderListing.findOne({
+          productId: product._id,
+          unlistedAt: null,
+        }).session(session);
+        const anyListing = await PreOrderListing.exists({ productId: product._id }).session(session);
+        if (anyListing && !openListing) {
+          throw new Error(`"${product.name}" is no longer listed for pre-order`);
+        }
+        if (String(product.storeId) !== String(storeId)) {
+          throw new Error(`"${product.name}" does not belong to this store`);
+        }
+        preOrderProductIds.push(product._id as mongoose.Types.ObjectId);
+      } else {
+        if (product.productType === 'preorder') {
+          throw new Error(
+            `"${product.name}" is a pre-order item. Place it from the Pre-Orders tab.`
+          );
+        }
+        if (product.stockQuantity < item.quantity) {
+          throw new Error(
+            `Insufficient stock for "${product.name}" (available: ${product.stockQuantity})`
+          );
+        }
+        product.stockQuantity -= item.quantity;
+        await product.save({ session });
       }
 
       const effectivePrice =
@@ -83,9 +149,6 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
       totalAmount += subtotal;
       totalCost += costSubtotal;
-
-      product.stockQuantity -= item.quantity;
-      await product.save({ session });
 
       resolvedItems.push({
         productId: product._id as mongoose.Types.ObjectId,
@@ -146,6 +209,7 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         claimStatus,
         paymentStatus,
         amountPaid,
+        orderType,
         claimedAt: claimStatus === 'claimed' ? now : null,
         paidAt: paymentStatus === 'paid' ? now : null,
         notes,
@@ -161,8 +225,12 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
     try {
       const io = getIO();
-      const updatedProducts = await Product.find({ storeId }).lean();
-      io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+      if (!isPreOrder) {
+        const updatedProducts = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
+        io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+      } else {
+        await broadcastPreOrderDemand(storeId, preOrderProductIds);
+      }
 
       const populatedTx = await Transaction.findById(transaction._id)
         .populate('customerId', 'name email')
@@ -186,11 +254,13 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
       const activityDoc = await ActivityLog.create({
         storeId,
-        type: 'reservation_created',
+        type: isPreOrder ? 'preorder_placed' : 'reservation_created',
         actorName,
         actorAvatar,
-        message: `${actorName} placed a reservation`,
-        metadata: { transactionId: String(transaction._id), totalAmount },
+        message: isPreOrder
+          ? `${actorName} placed a pre-order`
+          : `${actorName} placed a reservation`,
+        metadata: { transactionId: String(transaction._id), totalAmount, orderType },
       });
       io.to(`store:${storeId}`).emit('activity:new', activityDoc);
     } catch { /* socket broadcast is non-critical */ }
@@ -207,7 +277,7 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
 export const getTransactions = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { storeId, claimStatus, paymentStatus, orderStatus, customerName, productId, dateFrom, dateTo } = req.query;
+    const { storeId, claimStatus, paymentStatus, orderStatus, orderType, customerName, productId, dateFrom, dateTo } = req.query;
     const filter: Record<string, unknown> = {};
     if (storeId) filter.storeId = storeId;
     if (claimStatus && claimStatus !== 'all') filter.claimStatus = claimStatus;
@@ -220,6 +290,13 @@ export const getTransactions = async (req: Request, res: Response): Promise<void
       filter.$nor = [{ claimStatus: 'claimed', paymentStatus: 'paid' }];
     } else if (orderStatus && orderStatus !== 'all') {
       filter.orderStatus = orderStatus;
+    }
+
+    if (orderType === 'regular') {
+      // Missing field on older documents means regular.
+      filter.orderType = { $in: ['regular', null] };
+    } else if (orderType === 'reserved' || orderType === 'preorder') {
+      filter.orderType = orderType;
     }
 
     const fromStr = typeof dateFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ? dateFrom : null;
@@ -339,6 +416,13 @@ export const updateTransactionStatus = async (req: Request, res: Response): Prom
     try {
       const io = getIO();
       io.to(`store:${transaction.storeId}`).emit('transaction:updated', transaction.toJSON());
+      if (transaction.orderType === 'preorder') {
+        const lines = await TransactionItem.find({ transactionId: transaction._id }).select('productId').lean();
+        await broadcastPreOrderDemand(
+          String(transaction.storeId),
+          lines.map((line) => line.productId as mongoose.Types.ObjectId)
+        );
+      }
     } catch { /* socket broadcast is non-critical */ }
 
     res.json(transaction);
@@ -438,13 +522,16 @@ export const cancelTransaction = async (req: Request, res: Response): Promise<vo
     }
 
     const items = await TransactionItem.find({ transactionId: transaction._id }).session(session);
+    const restoresStock = transaction.orderType !== 'preorder';
 
-    for (const item of items) {
-      await Product.findByIdAndUpdate(
-        item.productId,
-        { $inc: { stockQuantity: item.quantity } },
-        { session }
-      );
+    if (restoresStock) {
+      for (const item of items) {
+        await Product.findByIdAndUpdate(
+          item.productId,
+          { $inc: { stockQuantity: item.quantity } },
+          { session }
+        );
+      }
     }
 
     transaction.orderStatus = 'cancelled';
@@ -459,8 +546,15 @@ export const cancelTransaction = async (req: Request, res: Response): Promise<vo
     try {
       const io = getIO();
       const storeId = String(transaction.storeId);
-      const updatedProducts = await Product.find({ storeId }).lean();
-      io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+      if (restoresStock) {
+        const updatedProducts = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
+        io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+      } else {
+        await broadcastPreOrderDemand(
+          storeId,
+          items.map((item) => item.productId as mongoose.Types.ObjectId)
+        );
+      }
       io.to(`store:${storeId}`).emit('transaction:updated', populated);
     } catch { /* socket broadcast is non-critical */ }
 
@@ -486,8 +580,10 @@ export const deleteTransaction = async (req: Request, res: Response): Promise<vo
     }
 
     const items = await TransactionItem.find({ transactionId: transaction._id }).session(session);
+    const restoresStock =
+      transaction.orderType !== 'preorder' && transaction.orderStatus !== 'cancelled';
 
-    if (transaction.orderStatus !== 'cancelled') {
+    if (restoresStock) {
       for (const item of items) {
         await Product.findByIdAndUpdate(
           item.productId,
@@ -505,8 +601,15 @@ export const deleteTransaction = async (req: Request, res: Response): Promise<vo
     const storeId = String(transaction.storeId);
     try {
       const io = getIO();
-      const updatedProducts = await Product.find({ storeId }).lean();
-      io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+      if (transaction.orderType === 'preorder') {
+        await broadcastPreOrderDemand(
+          storeId,
+          items.map((item) => item.productId as mongoose.Types.ObjectId)
+        );
+      } else if (restoresStock) {
+        const updatedProducts = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
+        io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+      }
     } catch { /* socket broadcast is non-critical */ }
 
     res.status(204).send();

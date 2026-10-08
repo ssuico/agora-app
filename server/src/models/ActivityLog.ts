@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export type ActivityType = 'reservation_created' | 'rating_submitted';
+export type ActivityType = 'reservation_created' | 'rating_submitted' | 'preorder_placed';
 
 export interface IActivityLog extends Document {
   storeId: mongoose.Types.ObjectId;
@@ -16,7 +16,7 @@ export interface IActivityLog extends Document {
 const activityLogSchema = new Schema<IActivityLog>(
   {
     storeId: { type: Schema.Types.ObjectId, ref: 'Store', required: true },
-    type: { type: String, enum: ['reservation_created', 'rating_submitted'], required: true },
+    type: { type: String, enum: ['reservation_created', 'rating_submitted', 'preorder_placed'], required: true },
     actorName: { type: String, required: true, trim: true },
     actorAvatar: { type: String, default: null },
     message: { type: String, required: true, trim: true },

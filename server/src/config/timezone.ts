@@ -68,3 +68,26 @@ export function localDayRangeFromDateString(dateStr: string): { dayStart: Date; 
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
   return { dayStart, dayEnd };
 }
+
+/**
+ * Interpret `YYYY-MM-DDTHH:mm` as a wall-clock time in APP_TIMEZONE (Eastern)
+ * and return the UTC instant.
+ */
+export function localDateTimeFromString(value: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value.trim());
+  if (!match) throw new Error('Invalid date and time');
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = match[6] ? Number(match[6]) : 0;
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) {
+    throw new Error('Invalid date and time');
+  }
+  const wallAsUtc = Date.UTC(year, month - 1, day, hour, minute, second, 0);
+  const offsetMs = getTzOffsetMinutes(new Date(wallAsUtc), APP_TIMEZONE) * 60 * 1000;
+  const instant = new Date(wallAsUtc + offsetMs);
+  const corrected = getTzOffsetMinutes(instant, APP_TIMEZONE) * 60 * 1000;
+  return corrected === offsetMs ? instant : new Date(wallAsUtc + corrected);
+}

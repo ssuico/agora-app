@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { localDayRange, localDayRangeFromDateString, toLocalDateStr } from '../config/timezone.js';
 import { Expense } from '../models/Expense.js';
 import { InventoryRecord } from '../models/InventoryRecord.js';
-import { Product } from '../models/Product.js';
+import { Product, REGULAR_PRODUCT_FILTER } from '../models/Product.js';
 import { Rating } from '../models/Rating.js';
 import { Store } from '../models/Store.js';
 import { Transaction } from '../models/Transaction.js';
@@ -102,7 +102,7 @@ export const getDailyReport = async (req: Request, res: Response): Promise<void>
         'productId',
         'name sellingPrice costPrice'
       ),
-      Product.find({ storeId }).select('name stockQuantity sellingPrice costPrice'),
+      Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).select('name stockQuantity sellingPrice costPrice'),
     ]);
 
     const soldMap = new Map<
@@ -183,7 +183,7 @@ export const getInventoryReport = async (req: Request, res: Response): Promise<v
     const dateStr = String(date).trim();
     const dateObj = toDateOnly(dateStr);
 
-    const products = await Product.find({ storeId }).lean();
+    const products = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
     if (products.length === 0) {
       res.json({ date: dateStr, products: [] });
       return;
@@ -368,8 +368,10 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    // --- 3. Inventory snapshot ---
-    const inventorySnapshot = allProducts.map((p) => ({
+    // --- 3. Inventory snapshot (pre-order products are demand, not stock) ---
+    const inventorySnapshot = allProducts
+      .filter((p) => p.productType !== 'preorder')
+      .map((p) => ({
       productId: String(p._id),
       name: p.name,
       stockQuantity: p.stockQuantity,

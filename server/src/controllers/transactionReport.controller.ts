@@ -14,6 +14,12 @@ const findReportMeta = (filter: Record<string, unknown>) =>
 const slugify = (value: string): string =>
   value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 
+const orderTypeLabel = (orderType?: string | null): string => {
+  if (orderType === 'preorder') return 'Pre-Order';
+  if (orderType === 'reserved') return 'Reserved';
+  return 'Regular';
+};
+
 export const generateReport = async (req: Request, res: Response): Promise<void> => {
   try {
     const { storeId, dateFrom, dateTo, overwrite: overwriteParam } = req.query as {
@@ -110,6 +116,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
       { header: 'Total Cost', key: 'totalCost', width: 14 },
       { header: 'Gross Profit', key: 'grossProfit', width: 14 },
       { header: 'Order Status', key: 'orderStatus', width: 14 },
+      { header: 'Order Type', key: 'orderType', width: 14 },
       { header: 'Claim Status', key: 'claimStatus', width: 14 },
       { header: 'Payment Status', key: 'paymentStatus', width: 14 },
       { header: 'Date Claimed', key: 'claimedAt', width: 20 },
@@ -152,6 +159,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
           totalCost: tx.totalCost,
           grossProfit: tx.grossProfit,
           orderStatus: getDisplayOrderStatus(tx),
+          orderType: orderTypeLabel(tx.orderType),
           claimStatus: tx.claimStatus,
           paymentStatus: tx.paymentStatus,
           claimedAt: fmtDateTime(tx.claimedAt),
@@ -180,6 +188,7 @@ export const generateReport = async (req: Request, res: Response): Promise<void>
             totalCost: i === 0 ? tx.totalCost : '',
             grossProfit: i === 0 ? tx.grossProfit : '',
             orderStatus: i === 0 ? getDisplayOrderStatus(tx) : '',
+            orderType: i === 0 ? orderTypeLabel(tx.orderType) : '',
             claimStatus: i === 0 ? tx.claimStatus : '',
             paymentStatus: i === 0 ? tx.paymentStatus : '',
             claimedAt: i === 0 ? fmtDateTime(tx.claimedAt) : '',
