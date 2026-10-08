@@ -237,18 +237,12 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         .lean();
       io.to(`store:${storeId}`).emit('transaction:created', populatedTx);
 
-      // Activity feed: log reservation created
-      const actorName =
-        req.user?.role === UserRole.CUSTOMER
-          ? (req.user.name ?? 'A customer')
-          : walkInCustomerName
-          ? walkInCustomerName
-          : 'Walk-in customer';
-
-      // Fetch fresh avatar from DB so it's always up-to-date regardless of JWT age
+      // The feed names the customer on the order, not the staff member who entered it.
+      let actorName = walkInCustomerName || 'Walk-in customer';
       let actorAvatar: string | null = null;
-      if (req.user?.userId) {
-        const userDoc = await User.findById(req.user.userId).select('avatar').lean();
+      if (customerId) {
+        const userDoc = await User.findById(customerId).select('name avatar').lean();
+        if (userDoc?.name) actorName = userDoc.name;
         actorAvatar = userDoc?.avatar || null;
       }
 

@@ -44,6 +44,50 @@ async function migrateOrderTypesToWalkIn(): Promise<void> {
   );
 }
 
+/** Recent Activity stored "Walk-in customer" whenever staff picked a registered customer. */
+async function repairActivityActorNames(): Promise<void> {
+  const logs = mongoose.connection.collection('activitylogs');
+  const transactions = mongoose.connection.collection('transactions');
+  const users = mongoose.connection.collection('users');
+
+  const candidates = await logs.find({
+    type: { $in: ['reservation_created', 'preorder_placed'] },
+    actorName: 'Walk-in customer',
+    'metadata.transactionId': { $type: 'string' },
+  }).toArray();
+  if (candidates.length === 0) return;
+
+  const txIds = candidates
+    .map((log) => log.metadata?.transactionId as string)
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+  const txs = await transactions.find({ _id: { $in: txIds } }).toArray();
+  const txById = new Map(txs.map((tx) => [String(tx._id), tx]));
+  const customerIds = txs.map((tx) => tx.customerId).filter(Boolean);
+  const customerDocs = await users.find({ _id: { $in: customerIds } }).project({ name: 1, avatar: 1 }).toArray();
+  const customerById = new Map(customerDocs.map((user) => [String(user._id), user]));
+
+  let repaired = 0;
+  for (const log of candidates) {
+    const tx = txById.get(String(log.metadata?.transactionId));
+    if (!tx) continue;
+    const customer = tx.customerId ? customerById.get(String(tx.customerId)) : undefined;
+    const name = (typeof customer?.name === 'string' && customer.name.trim())
+      || (typeof tx.walkInCustomerName === 'string' && tx.walkInCustomerName.trim())
+      || '';
+    if (!name) continue;
+    const message = log.type === 'preorder_placed'
+      ? `${name} placed a pre-order`
+      : `${name} placed a reservation`;
+    await logs.updateOne(
+      { _id: log._id },
+      { $set: { actorName: name, actorAvatar: customer?.avatar || null, message } },
+    );
+    repaired += 1;
+  }
+  if (repaired > 0) console.log(`Activity names repaired: ${repaired}`);
+}
+
 async function backfillReportGeneratedAt(): Promise<void> {
   await mongoose.connection
     .collection('transactionreports')
@@ -77,5 +121,6 @@ export const connectDB = async (): Promise<void> => {
   console.log('MongoDB connected');
   await dropStaleIndexes();
   await migrateOrderTypesToWalkIn();
+  await repairActivityActorNames();
   await backfillReportGeneratedAt();
 };
