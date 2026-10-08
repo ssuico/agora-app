@@ -46,7 +46,7 @@ import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-paginatio
 type ClaimStatus = 'unclaimed' | 'claimed';
 type PaymentStatus = 'unpaid' | 'paid' | 'partial';
 type OrderStatus = 'active' | 'cancelled';
-type OrderType = 'regular' | 'reserved' | 'preorder';
+type OrderType = 'regular' | 'walk-in' | 'preorder';
 
 interface Transaction {
   _id: string;
@@ -243,7 +243,7 @@ function OrderBadge({ status }: { status: OrderStatus | 'completed' }) {
 
 function OrderTypeBadge({ orderType }: { orderType?: OrderType | null }) {
   if (orderType === 'preorder') return <Badge variant="warning">PRE-ORDER</Badge>;
-  if (orderType === 'reserved') return <Badge variant="info">RESERVED</Badge>;
+  if (orderType === 'walk-in') return <Badge variant="info">WALK-IN</Badge>;
   return <Badge variant="outline">REGULAR</Badge>;
 }
 
@@ -1155,7 +1155,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                   <SelectGroup>
                     <SelectItem value="all">All</SelectItem>
                     <SelectItem value="regular">Regular</SelectItem>
-                    <SelectItem value="reserved">Reserved</SelectItem>
+                    <SelectItem value="walk-in">Walk-in</SelectItem>
                     <SelectItem value="preorder">Pre-Order</SelectItem>
                   </SelectGroup>
                 </SelectContent>

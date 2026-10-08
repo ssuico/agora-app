@@ -21,7 +21,7 @@ interface Purchase {
   totalAmount: number;
   createdAt: string;
   orderStatus?: string;
-  orderType?: 'regular' | 'reserved' | 'preorder';
+  orderType?: 'regular' | 'walk-in' | 'preorder';
   claimStatus?: string;
   paymentStatus?: string;
   items?: PurchaseItem[];
@@ -29,7 +29,7 @@ interface Purchase {
 
 function OrderTypeBadge({ orderType }: { orderType?: Purchase['orderType'] }) {
   if (orderType === 'preorder') return <Badge variant="warning">PRE-ORDER</Badge>;
-  if (orderType === 'reserved') return <Badge variant="info">RESERVED</Badge>;
+  if (orderType === 'walk-in') return <Badge variant="info">WALK-IN</Badge>;
   return <Badge variant="outline">REGULAR</Badge>;
 }
 

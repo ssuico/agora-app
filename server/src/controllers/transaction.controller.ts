@@ -27,7 +27,7 @@ interface CreateTransactionBody {
   amountPaid?: number;
   notes?: string;
   customerNotes?: string;
-  /** Only `preorder` is honored. Regular and reserved are assigned by who is checking out. */
+  /** Only `preorder` is honored. Regular and walk-in are assigned by who is checking out. */
   orderType?: string;
 }
 
@@ -73,8 +73,8 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
     const orderType: OrderType = isPreOrder
       ? 'preorder'
       : req.user!.role === UserRole.CUSTOMER
-        ? 'reserved'
-        : 'regular';
+        ? 'regular'
+        : 'walk-in';
 
     if (!store.isOpen && !isPreOrder) {
       res.status(403).json({ message: 'This store is currently closed. Please try again later.' });
@@ -295,7 +295,7 @@ export const getTransactions = async (req: Request, res: Response): Promise<void
     if (orderType === 'regular') {
       // Missing field on older documents means regular.
       filter.orderType = { $in: ['regular', null] };
-    } else if (orderType === 'reserved' || orderType === 'preorder') {
+    } else if (orderType === 'walk-in' || orderType === 'preorder') {
       filter.orderType = orderType;
     }
 

@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export type ClaimStatus = 'unclaimed' | 'claimed';
 export type PaymentStatus = 'unpaid' | 'paid' | 'partial';
 export type OrderStatus = 'active' | 'cancelled';
-export type OrderType = 'regular' | 'reserved' | 'preorder';
+export type OrderType = 'regular' | 'walk-in' | 'preorder';
 export type PreOrderDisplayStatus = 'pending' | 'ready' | 'fulfilled' | 'cancelled';
 
 export type DisplayOrderStatus = OrderStatus | 'completed';
@@ -74,7 +74,7 @@ const transactionSchema = new Schema<ITransaction>(
     paymentStatus: { type: String, enum: ['unpaid', 'paid', 'partial'], default: 'unpaid' },
     amountPaid: { type: Number, default: 0, min: 0 },
     orderStatus: { type: String, enum: ['active', 'cancelled'], default: 'active' },
-    orderType: { type: String, enum: ['regular', 'reserved', 'preorder'], default: 'regular' },
+    orderType: { type: String, enum: ['regular', 'walk-in', 'preorder'], default: 'regular' },
     paidAt: { type: Date, default: null },
     claimedAt: { type: Date, default: null },
     notes: { type: String, default: null },
