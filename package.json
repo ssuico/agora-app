@@ -9,6 +9,7 @@
     "dev:all:host": "concurrently -n \"server,astro\" -c \"blue,green\" \"cd server && pnpm dev\" \"astro dev --host\"",
     "clean:cache": "node -e \"const fs=require('fs');const p=(d)=>fs.existsSync(d)&&fs.rmSync(d,{recursive:true,force:true});p('node_modules/.vite');p('node_modules/.astro');console.log('Vite/Astro cache cleared.');\"",
     "build": "astro build && cd server && pnpm install --frozen-lockfile && pnpm build",
+    "check": "pnpm --dir server exec tsc --noEmit && astro build && pnpm --dir server build",
     "start": "node server/dist/index.js",
     "preview": "astro preview",
     "astro": "astro"
