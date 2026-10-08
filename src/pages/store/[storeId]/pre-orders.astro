@@ -1,0 +1,10 @@
+---
+import { PreOrderManager } from '../../../components/app/PreOrderManager';
+import AppLayout from '../../../layouts/AppLayout.astro';
+
+const { storeId } = Astro.params;
+---
+
+<AppLayout title="Pre-Orders" storeId={storeId}>
+  <PreOrderManager storeId={storeId!} client:load />
+</AppLayout>

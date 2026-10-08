@@ -1,4 +1,5 @@
 import {
+  CalendarClock,
   ChevronDown,
   Home,
   MapPin,
@@ -63,6 +64,12 @@ function getNavItems(storeId?: string): NavItem[] {
       label: 'Inventory',
       href: `${storePrefix}/products`,
       icon: <Package className="size-4" />,
+      roles: ['store_manager'],
+    },
+    {
+      label: 'Pre-Orders',
+      href: `${storePrefix}/pre-orders`,
+      icon: <CalendarClock className="size-4" />,
       roles: ['store_manager'],
     },
     {

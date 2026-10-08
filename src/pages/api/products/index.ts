@@ -6,7 +6,7 @@ const API_URL = getApiBase();
 export const GET: APIRoute = async ({ url, cookies }) => {
   const token = cookies.get('agora_token')?.value ?? '';
   const params = new URLSearchParams();
-  for (const key of ['storeId', 'dailyOnly']) {
+  for (const key of ['storeId', 'dailyOnly', 'productType']) {
     const val = url.searchParams.get(key);
     if (val) params.set(key, val);
   }

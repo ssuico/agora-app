@@ -27,11 +27,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  AlertCircle, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, CreditCard, Eye,
+  AlertCircle, AlertTriangle, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Clock, CreditCard, Eye,
   Grid3x3, HelpCircle, ImageIcon, LayoutGrid, Lightbulb, MessageSquare,
   Minus, Package, PackageCheck, PackageX, Plus, QrCode, Search, ShoppingCart, Star, Store, Trash2, Wallet, X,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
 import { ActivityFeed } from './ActivityFeed';
@@ -140,6 +140,219 @@ const getDiscountPercent = (product: Product) => {
 };
 
 let alertCounter = 0;
+
+interface PreOrderListing {
+  _id: string;
+  name: string;
+  images: string[];
+  sellingPrice: number;
+  discountPrice?: number | null;
+  notes?: string;
+  preOrderOpen: boolean;
+  preOrderExpectedDate?: string | null;
+  preOrderClosesAt?: string | null;
+  preOrderStatus: 'pending' | 'ready';
+  totalUnits: number;
+  customerCount: number;
+}
+
+function preOrderPrice(product: Pick<PreOrderListing, 'sellingPrice' | 'discountPrice'>): number {
+  if (typeof product.discountPrice === 'number' && product.discountPrice >= 0) {
+    return Math.min(product.discountPrice, product.sellingPrice);
+  }
+  return product.sellingPrice;
+}
+
+function formatExpectedDate(value?: string | null): string {
+  if (!value) return 'Not set';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not set';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function formatLocalDateTime(value?: string | null): string {
+  if (!value) return 'Not set';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not set';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function canPreOrder(product: PreOrderListing, now = Date.now()): boolean {
+  if (!product.preOrderOpen) return false;
+  if (!product.preOrderClosesAt) return true;
+  const closes = new Date(product.preOrderClosesAt).getTime();
+  return Number.isNaN(closes) || closes > now;
+}
+
+function useNow(intervalMs = 30_000, enabled = true): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!enabled) return;
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => window.clearInterval(id);
+  }, [intervalMs, enabled]);
+  return now;
+}
+
+function closingCountdown(closesAt: string | null | undefined, now: number): { text: string; urgent: boolean; ended: boolean } | null {
+  if (!closesAt) return null;
+  const closes = new Date(closesAt).getTime();
+  if (Number.isNaN(closes)) return null;
+  const diff = closes - now;
+  if (diff <= 0) return { text: 'Ordering ended', urgent: false, ended: true };
+  const totalSeconds = Math.floor(diff / 1000);
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const text = days > 0
+    ? `${days}d ${hours}h ${pad(minutes)}m`
+    : hours > 0
+      ? `${hours}h ${pad(minutes)}m ${pad(seconds)}s`
+      : minutes > 0
+        ? `${minutes}m ${pad(seconds)}s`
+        : `${seconds}s`;
+  return { text, urgent: diff < 3_600_000, ended: false };
+}
+
+function ClosingCountdown({ closesAt, now }: { closesAt?: string | null; now: number }) {
+  const countdown = closingCountdown(closesAt, now);
+  if (!countdown) return null;
+  const tone = countdown.ended
+    ? 'border-border bg-muted/40 text-muted-foreground'
+    : countdown.urgent
+      ? 'border-warning/40 bg-warning-soft text-warning-ink'
+      : 'border-border bg-muted/40';
+  return (
+    <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${tone}`}>
+      <Clock className="size-4 shrink-0" />
+      <div className="flex min-w-0 flex-col">
+        <span className="text-xs">{countdown.ended ? 'Ordering' : 'Closes in'}</span>
+        <span className="text-sm font-semibold tabular-nums">{countdown.text}</span>
+      </div>
+    </div>
+  );
+}
+
+function PreOrderCatalog({
+  products,
+  loading,
+  onPreOrder,
+}: {
+  products: PreOrderListing[];
+  loading: boolean;
+  onPreOrder: (product: PreOrderListing) => void;
+}) {
+  const now = useNow(1000);
+  const [query, setQuery] = useState('');
+  const visible = products.filter((product) =>
+    product.name.toLowerCase().includes(query.trim().toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Skeleton key={index} className="h-72 rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+        <Input
+          type="search"
+          placeholder="Search pre-orders..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="pl-9 rounded-xl"
+        />
+      </div>
+      {visible.length === 0 ? (
+        <Empty className="py-16">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><CalendarClock /></EmptyMedia>
+            <EmptyTitle>{query ? 'No matching pre-orders' : 'No pre-orders yet'}</EmptyTitle>
+            <EmptyDescription>
+              {query ? 'Try a different search term.' : 'This store is not taking pre-orders right now.'}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {visible.map((product) => {
+            const price = preOrderPrice(product);
+            const discounted = price < product.sellingPrice;
+            const accepting = canPreOrder(product, now);
+            const orderingEnded = product.preOrderOpen && !accepting;
+            return (
+              <Card key={product._id} className="overflow-hidden">
+                <div className="relative aspect-[4/3] bg-muted">
+                  {product.images?.[0] ? (
+                    <img src={product.images[0]} alt="" className="size-full object-cover" />
+                  ) : (
+                    <div className="flex size-full items-center justify-center">
+                      <ImageIcon className="size-8 text-muted-foreground/40" />
+                    </div>
+                  )}
+                  <Badge variant="warning" className="absolute left-3 top-3 font-semibold">Pre-Order</Badge>
+                  {!accepting && (
+                    <Badge variant="secondary" className="absolute right-3 top-3">
+                      {orderingEnded ? 'Ordering ended' : 'Closed'}
+                    </Badge>
+                  )}
+                </div>
+                <CardContent className="flex flex-col gap-2 pt-4">
+                  <h3 className="font-semibold leading-snug">{product.name}</h3>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-lg font-bold tabular-nums">{fmt(price)}</span>
+                    {discounted && (
+                      <span className="text-sm text-muted-foreground line-through tabular-nums">{fmt(product.sellingPrice)}</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Expected: {formatExpectedDate(product.preOrderExpectedDate)}</p>
+                  {product.preOrderOpen && (
+                    <ClosingCountdown closesAt={product.preOrderClosesAt} now={now} />
+                  )}
+                  <p className="text-sm text-muted-foreground">Orders close: {formatLocalDateTime(product.preOrderClosesAt)}</p>
+                  <p className="text-sm font-medium">Pre-Orders: {product.totalUnits}</p>
+                  {product.preOrderStatus === 'ready' && (
+                    <Badge variant="info" className="w-fit">Ready for pickup</Badge>
+                  )}
+                  <Button
+                    className="mt-1 w-full rounded-xl"
+                    disabled={!accepting}
+                    onClick={() => onPreOrder(product)}
+                  >
+                    <CalendarClock data-icon="inline-start" />
+                    {accepting ? 'Pre-Order Now' : orderingEnded ? 'Ordering ended' : 'Pre-order closed'}
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Shared image helpers
@@ -536,6 +749,15 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
 
 export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMaintenance = false, bannerUrl }: ShopViewProps) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [catalogTab, setCatalogTab] = useState<'products' | 'preorders'>(initialIsOpen ? 'products' : 'preorders');
+  const wasStoreOpen = useRef(initialIsOpen);
+  const [preOrders, setPreOrders] = useState<PreOrderListing[]>([]);
+  const [preOrdersLoading, setPreOrdersLoading] = useState(true);
+  const [preOrderTarget, setPreOrderTarget] = useState<PreOrderListing | null>(null);
+  const now = useNow(1000, preOrderTarget != null);
+  const [preOrderQty, setPreOrderQty] = useState(1);
+  const [preOrderNotes, setPreOrderNotes] = useState('');
+  const [preOrderSubmitting, setPreOrderSubmitting] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [cartOpen, setCartOpen] = useState(false);
@@ -596,6 +818,15 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
       }
     } catch { /* ignore */ } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPreOrders = async () => {
+    try {
+      const res = await fetch(`/api/preorders?storeId=${storeId}`);
+      if (res.ok) setPreOrders(await res.json());
+    } catch { /* ignore */ } finally {
+      setPreOrdersLoading(false);
     }
   };
 
@@ -674,7 +905,12 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
     } catch { /* ignore */ }
   };
 
-  useEffect(() => { fetchProducts(); fetchRatingAggregates(); fetchMyStoreRating(); fetchMyProductRatings(); }, []);
+  useEffect(() => { fetchProducts(); fetchPreOrders(); fetchRatingAggregates(); fetchMyStoreRating(); fetchMyProductRatings(); }, []);
+
+  useEffect(() => {
+    if (wasStoreOpen.current && !isStoreOpen) setCatalogTab('preorders');
+    wasStoreOpen.current = isStoreOpen;
+  }, [isStoreOpen]);
 
   // --- Socket: real-time stock updates ---
 
@@ -729,13 +965,25 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
       if (data.storeId === storeId) setIsMaintenance(data.isMaintenance);
     };
 
+    const handlePreOrderUpdate = (data: { productId: string; totalUnits: number; customerCount: number }) => {
+      setPreOrders((prev) =>
+        prev.map((product) =>
+          product._id === data.productId
+            ? { ...product, totalUnits: data.totalUnits, customerCount: data.customerCount }
+            : product
+        )
+      );
+    };
+
     socket.on('stock:updated', handleStockUpdate);
     socket.on('store:status-changed', handleStatusChange);
     socket.on('store:maintenance-changed', handleMaintenanceChange);
+    socket.on('preorder:updated', handlePreOrderUpdate);
     return () => {
       socket.off('stock:updated', handleStockUpdate);
       socket.off('store:status-changed', handleStatusChange);
       socket.off('store:maintenance-changed', handleMaintenanceChange);
+      socket.off('preorder:updated', handlePreOrderUpdate);
       socket.emit('leave:store', storeId);
     };
   }, [storeId, availableProductIds]);
@@ -860,6 +1108,41 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
 
+  const openPreOrder = (product: PreOrderListing) => {
+    setPreOrderTarget(product);
+    setPreOrderQty(1);
+    setPreOrderNotes('');
+  };
+
+  const submitPreOrder = async () => {
+    if (!preOrderTarget || preOrderQty < 1) return;
+    setPreOrderSubmitting(true);
+    try {
+      const res = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeId,
+          items: [{ productId: preOrderTarget._id, quantity: preOrderQty }],
+          orderType: 'preorder',
+          ...(preOrderNotes.trim() && { customerNotes: preOrderNotes.trim() }),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error((data as { message?: string }).message ?? 'Could not place pre-order');
+        return;
+      }
+      toast.success(`Pre-order placed for ${preOrderQty} × "${preOrderTarget.name}"`);
+      setPreOrderTarget(null);
+      fetchPreOrders();
+    } catch {
+      toast.error('Could not place pre-order');
+    } finally {
+      setPreOrderSubmitting(false);
+    }
+  };
+
   // --- Special states ---
 
   if (isMaintenance) {
@@ -890,35 +1173,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
     );
   }
 
-  if (!isStoreOpen) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
-        <Empty className="w-full max-w-md flex-none">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Store />
-            </EmptyMedia>
-            <EmptyTitle className="text-2xl font-bold">Store Closed</EmptyTitle>
-            <EmptyDescription>
-              <span className="font-semibold text-foreground">{storeName}</span> is not accepting reservations right now.
-            </EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Alert className="text-left">
-              <Clock />
-              <AlertTitle className="line-clamp-none">The store manager has closed this store for the day.</AlertTitle>
-              <AlertDescription>Please check back tomorrow.</AlertDescription>
-            </Alert>
-            <Button asChild variant="outline" className="rounded-full px-6">
-              <a href="/purchases"><Package data-icon="inline-start" />My Purchases</a>
-            </Button>
-          </EmptyContent>
-        </Empty>
-      </div>
-    );
-  }
-
-  if (loading) {
+  if (loading && isStoreOpen) {
     return <ShopSkeleton gridCols={gridCols} />;
   }
 
@@ -964,12 +1219,16 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
         <div className={`flex flex-col gap-1 ${bannerUrl ? 'max-w-md rounded-2xl bg-canvas/90 px-3.5 py-2.5 backdrop-blur-md' : ''}`}>
           <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-2xl font-bold tracking-tight">{storeName}</h1>
-            <Badge variant="success" className="px-2.5 py-1 font-semibold">
-              <span className="size-1.5 rounded-full bg-current animate-pulse" />
-              Open
+            <Badge variant={isStoreOpen ? 'success' : 'warning'} className="px-2.5 py-1 font-semibold">
+              <span className={`size-1.5 rounded-full bg-current ${isStoreOpen ? 'animate-pulse' : ''}`} />
+              {isStoreOpen ? 'Open' : 'Closed'}
             </Badge>
           </div>
-          <p className="text-sm text-muted-foreground">Browse and reserve items — pay when you claim</p>
+          <p className="text-sm text-muted-foreground">
+            {isStoreOpen
+              ? 'Browse and reserve items — pay when you claim'
+              : 'Reservations are paused. Pre-orders stay open.'}
+          </p>
           {storeAverage && storeAverage.totalCount > 0 ? (
             <button
               type="button"
@@ -1017,6 +1276,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
             {hasRatedStore ? `${existingStoreStars}★ Rated` : 'Rate Store'}
           </Button>
           {/* Desktop cart button — hidden when FAB is visible */}
+          {isStoreOpen && (
           <Button
             variant={cartCount > 0 ? 'default' : 'outline'}
             size="sm"
@@ -1035,6 +1295,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
               </Badge>
             )}
           </Button>
+          )}
         </div>
       </div>
 
@@ -1046,6 +1307,32 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
           <div className="shop-products-bg" aria-hidden="true" />
 
           <div className="flex flex-col gap-4">
+          <Tabs value={catalogTab} onValueChange={(value) => setCatalogTab(value as 'products' | 'preorders')}>
+            <TabsList>
+              <TabsTrigger value="products">Products</TabsTrigger>
+              <TabsTrigger value="preorders">Pre-Orders</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          {catalogTab === 'preorders' ? (
+            <PreOrderCatalog products={preOrders} loading={preOrdersLoading} onPreOrder={openPreOrder} />
+          ) : !isStoreOpen ? (
+            <Empty className="py-16">
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Store /></EmptyMedia>
+                <EmptyTitle>Reservations are paused</EmptyTitle>
+                <EmptyDescription>
+                  {storeName} is closed for the day. Pre-orders are still available.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button className="rounded-full" onClick={() => setCatalogTab('preorders')}>
+                  <CalendarClock data-icon="inline-start" />
+                  Browse pre-orders
+                </Button>
+              </EmptyContent>
+            </Empty>
+          ) : (
+          <>
           {/* Search + grid controls */}
           <div className="flex items-center gap-3">
             <div className="relative flex-1 max-w-sm">
@@ -1331,6 +1618,8 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
               })}
             </div>
           )}
+          </>
+          )}
           </div>{/* end gap-4 */}
         </div>{/* end shop-products-section */}
         </div>{/* end flex-1 */}
@@ -1342,8 +1631,68 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
         </div>
       </div>
 
+      <Dialog open={preOrderTarget != null} onOpenChange={(open) => { if (!open) setPreOrderTarget(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pre-order {preOrderTarget?.name}</DialogTitle>
+            <DialogDescription>
+              This item is not in stock yet. Your order is recorded as a pre-order and does not come out of inventory.
+            </DialogDescription>
+          </DialogHeader>
+          {preOrderTarget && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Price</span>
+                <span className="font-semibold tabular-nums">{fmt(preOrderPrice(preOrderTarget))}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Expected</span>
+                <span>{formatExpectedDate(preOrderTarget.preOrderExpectedDate)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Orders close</span>
+                <span>{formatLocalDateTime(preOrderTarget.preOrderClosesAt)}</span>
+              </div>
+              {preOrderTarget.preOrderOpen && (
+                <ClosingCountdown closesAt={preOrderTarget.preOrderClosesAt} now={now} />
+              )}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="preorder-qty">Quantity</Label>
+                <Input
+                  id="preorder-qty"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={preOrderQty}
+                  onChange={(e) => setPreOrderQty(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="preorder-notes">Notes</Label>
+                <Textarea
+                  id="preorder-notes"
+                  placeholder="Optional note for the store"
+                  value={preOrderNotes}
+                  onChange={(e) => setPreOrderNotes(e.target.value)}
+                />
+              </div>
+              <p className="text-sm font-medium">
+                Total {fmt(preOrderPrice(preOrderTarget) * preOrderQty)}
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreOrderTarget(null)}>Cancel</Button>
+            <Button onClick={submitPreOrder} disabled={preOrderSubmitting || !preOrderTarget || !canPreOrder(preOrderTarget, now)}>
+              {preOrderSubmitting ? <Spinner data-icon="inline-start" /> : <CalendarClock data-icon="inline-start" />}
+              Pre-Order Now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Floating cart FAB ── */}
-      {cartCount > 0 && (
+      {isStoreOpen && cartCount > 0 && (
         <Button
           onClick={() => setCartOpen(true)}
           className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 xl:left-auto xl:right-8 xl:translate-x-0 h-auto gap-3 rounded-full px-5 py-3.5 shadow-2xl animate-in slide-in-from-bottom-4"

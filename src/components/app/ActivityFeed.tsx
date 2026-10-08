@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Activity, ShoppingBag, Star, Zap } from 'lucide-react';
+import { Activity, CalendarClock, ShoppingBag, Star, Zap } from 'lucide-react';
 import { getSocket } from '@/lib/socket';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 interface ActivityLogEntry {
   _id: string;
   storeId: string;
-  type: 'reservation_created' | 'rating_submitted';
+  type: 'reservation_created' | 'rating_submitted' | 'preorder_placed';
   actorName: string;
   actorAvatar?: string | null;
   message: string;
@@ -56,12 +56,15 @@ function ActivityTypeIcon({ type }: { type: ActivityLogEntry['type'] }) {
     return <ShoppingBag className="size-2.5 text-card" />;
   if (type === 'rating_submitted')
     return <Star className="size-2.5 text-card" />;
+  if (type === 'preorder_placed')
+    return <CalendarClock className="size-2.5 text-card" />;
   return <Zap className="size-2.5 text-card" />;
 }
 
 function typeBadgeColor(type: ActivityLogEntry['type']): string {
   if (type === 'reservation_created') return 'bg-operational';
   if (type === 'rating_submitted') return 'bg-warning';
+  if (type === 'preorder_placed') return 'bg-warning';
   return 'bg-muted-foreground';
 }
 

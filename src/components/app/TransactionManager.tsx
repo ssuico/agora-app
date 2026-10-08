@@ -46,6 +46,7 @@ import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-paginatio
 type ClaimStatus = 'unclaimed' | 'claimed';
 type PaymentStatus = 'unpaid' | 'paid' | 'partial';
 type OrderStatus = 'active' | 'cancelled';
+type OrderType = 'regular' | 'reserved' | 'preorder';
 
 interface Transaction {
   _id: string;
@@ -59,6 +60,7 @@ interface Transaction {
   paymentStatus: PaymentStatus;
   amountPaid?: number;
   orderStatus: OrderStatus;
+  orderType?: OrderType;
   paidAt?: string | null;
   claimedAt?: string | null;
   notes?: string | null;
@@ -237,6 +239,12 @@ function OrderBadge({ status }: { status: OrderStatus | 'completed' }) {
     );
   }
   return <Badge variant="secondary">Active</Badge>;
+}
+
+function OrderTypeBadge({ orderType }: { orderType?: OrderType | null }) {
+  if (orderType === 'preorder') return <Badge variant="warning">PRE-ORDER</Badge>;
+  if (orderType === 'reserved') return <Badge variant="info">RESERVED</Badge>;
+  return <Badge variant="outline">REGULAR</Badge>;
 }
 
 function ProductImageThumb({ src, className }: { src?: string; className?: string }) {
@@ -490,6 +498,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [filterClaim, setFilterClaim] = useState('all');
   const [filterPayment, setFilterPayment] = useState('all');
   const [filterOrder, setFilterOrder] = useState('all');
+  const [filterOrderType, setFilterOrderType] = useState('all');
   const [filterCustomerName, setFilterCustomerName] = useState('');
   const [filterCustomerNameDebounced, setFilterCustomerNameDebounced] = useState('');
   const [filterProductId, setFilterProductId] = useState('');
@@ -711,6 +720,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       if (filterClaim !== 'all') params.set('claimStatus', filterClaim);
       if (filterPayment !== 'all') params.set('paymentStatus', filterPayment);
       if (filterOrder !== 'all') params.set('orderStatus', filterOrder);
+      if (filterOrderType !== 'all') params.set('orderType', filterOrderType);
       if (filterCustomerNameDebounced.trim()) params.set('customerName', filterCustomerNameDebounced.trim());
       if (filterProductId) params.set('productId', filterProductId);
       if (filterDateFrom) params.set('dateFrom', filterDateFrom);
@@ -750,7 +760,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     const isInitialLoad = transactions.length === 0;
     if (isInitialLoad) setLoading(true);
     fetchTransactions();
-  }, [filterClaim, filterPayment, filterOrder, filterCustomerNameDebounced, filterProductId, filterDateFrom, filterDateTo]);
+  }, [filterClaim, filterPayment, filterOrder, filterOrderType, filterCustomerNameDebounced, filterProductId, filterDateFrom, filterDateTo]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -1138,6 +1148,20 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               </Select>
             </div>
             <div className="flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground whitespace-nowrap">Type:</Label>
+              <Select value={filterOrderType} onValueChange={setFilterOrderType}>
+                <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="regular">Regular</SelectItem>
+                    <SelectItem value="reserved">Reserved</SelectItem>
+                    <SelectItem value="preorder">Pre-Order</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
               <Label className="text-sm text-muted-foreground whitespace-nowrap">Customer:</Label>
               <Input
                 placeholder="Search by name..."
@@ -1184,6 +1208,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                 setFilterClaim('all');
                 setFilterPayment('all');
                 setFilterOrder('all');
+                setFilterOrderType('all');
                 setFilterCustomerName('');
                 setFilterCustomerNameDebounced('');
                 setFilterProductId('');
@@ -1902,7 +1927,12 @@ function TransactionRow({
   return (
     <>
       <tr className={isCancelled ? 'row-muted' : undefined}>
-        <td className="px-4 py-3"><OrderBadge status={getDisplayOrderStatus(tx)} /></td>
+        <td className="px-4 py-3">
+          <div className="flex flex-col items-start gap-1">
+            <OrderBadge status={getDisplayOrderStatus(tx)} />
+            <OrderTypeBadge orderType={tx.orderType} />
+          </div>
+        </td>
         {/* Expand toggle */}
         <td className="px-2 py-3">
           <Button variant="ghost" size="icon-xs" className="text-muted-foreground" onClick={onToggleExpand} title="View items">

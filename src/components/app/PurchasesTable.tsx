@@ -21,9 +21,16 @@ interface Purchase {
   totalAmount: number;
   createdAt: string;
   orderStatus?: string;
+  orderType?: 'regular' | 'reserved' | 'preorder';
   claimStatus?: string;
   paymentStatus?: string;
   items?: PurchaseItem[];
+}
+
+function OrderTypeBadge({ orderType }: { orderType?: Purchase['orderType'] }) {
+  if (orderType === 'preorder') return <Badge variant="warning">PRE-ORDER</Badge>;
+  if (orderType === 'reserved') return <Badge variant="info">RESERVED</Badge>;
+  return <Badge variant="outline">REGULAR</Badge>;
 }
 
 function getOrderStatusLabel(tx: Purchase): 'active' | 'completed' | 'cancelled' {
@@ -120,9 +127,12 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
                       <td className="px-4 py-3 text-right font-semibold tabular-nums">{fmt(tx.totalAmount)}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">{new Date(tx.createdAt).toLocaleString()}</td>
                       <td className="px-4 py-3">
-                        <Badge variant={isActive ? 'success' : 'secondary'}>
-                          {orderStatusLabel}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge variant={isActive ? 'success' : 'secondary'}>
+                            {orderStatusLabel}
+                          </Badge>
+                          <OrderTypeBadge orderType={tx.orderType} />
+                        </div>
                       </td>
                     </tr>
                     {isExpanded && hasItems && (
