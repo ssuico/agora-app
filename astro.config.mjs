@@ -13,6 +13,9 @@ export default defineConfig({
   adapter: node({ mode: 'middleware' }),
   vite: {
     plugins: [tailwindcss()],
+    optimizeDeps: {
+      include: ['recharts'],
+    },
     server: {
       proxy: {
         // Proxy Socket.IO traffic to Express so network clients work without
