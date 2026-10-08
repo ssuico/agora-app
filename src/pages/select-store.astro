@@ -1,10 +1,11 @@
 ---
 import CustomerLayout from '../layouts/CustomerLayout.astro';
 import { createApiClient } from '../lib/api';
+import { buttonVariants } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent } from '../components/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from '../components/ui/empty';
-import { Store as StoreIcon } from 'lucide-react';
+import { CalendarClock, Store as StoreIcon } from 'lucide-react';
 
 const token = Astro.cookies.get('agora_token')?.value ?? '';
 const api = createApiClient(token);
@@ -73,37 +74,37 @@ try {
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {stores.map((store) => {
             const isClosed = store.isOpen === false;
-            return (
-              <a
-                href={isClosed ? undefined : `/shop/${store._id}`}
-                class:list={['group', isClosed && 'cursor-not-allowed']}
-                aria-disabled={isClosed}
-                onclick={isClosed ? 'event.preventDefault()' : undefined}
-              >
-                <Card
-                  className={
-                    isClosed
-                      ? 'border-border opacity-60 transition-all'
-                      : 'transition-all group-hover:border-operational group-hover:shadow-md'
-                  }
-                >
-                  <CardContent className="flex items-center gap-3">
-                    <div class:list={[
-                      'flex size-10 items-center justify-center rounded-full',
-                      isClosed ? 'bg-muted text-muted-foreground' : 'bg-operational-subtle text-operational',
-                    ]}>
+            return isClosed ? (
+              <Card>
+                <CardContent className="flex flex-col gap-3">
+                  <div class="flex items-center gap-3">
+                    <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
                       <StoreIcon className="size-5" />
                     </div>
                     <div class="min-w-0 flex-1">
-                      <p class:list={[
-                        'text-lg font-semibold',
-                        isClosed ? 'text-muted-foreground' : 'group-hover:text-operational',
-                      ]}>{store.name}</p>
-                      {isClosed && (
-                        <p class="mt-0.5 text-xs font-medium text-destructive">Closed for the day</p>
-                      )}
+                      <div class="flex flex-wrap items-center gap-2">
+                        <p class="text-lg font-semibold">{store.name}</p>
+                        <Badge variant="error">Closed</Badge>
+                      </div>
+                      <p class="mt-0.5 text-xs text-muted-foreground">Reservations are paused.</p>
                     </div>
-                    {isClosed && <Badge variant="error">Closed</Badge>}
+                  </div>
+                  <a href={`/shop/${store._id}`} class={buttonVariants({ size: 'sm' }) + ' w-full'}>
+                    <CalendarClock className="size-4" />
+                    Pre-order items
+                  </a>
+                </CardContent>
+              </Card>
+            ) : (
+              <a href={`/shop/${store._id}`} class="group">
+                <Card className="transition-all group-hover:border-operational group-hover:shadow-md">
+                  <CardContent className="flex items-center gap-3">
+                    <div class="flex size-10 items-center justify-center rounded-full bg-operational-subtle text-operational">
+                      <StoreIcon className="size-5" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <p class="text-lg font-semibold group-hover:text-operational">{store.name}</p>
+                    </div>
                   </CardContent>
                 </Card>
               </a>
