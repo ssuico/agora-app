@@ -1,11 +1,23 @@
 import { useState } from 'react';
 import { Fragment } from 'react';
-import { ChevronDown, ChevronRight, Receipt } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { Ban, ChevronDown, ChevronRight, Receipt } from 'lucide-react';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
+import { Textarea } from '@/components/ui/textarea';
 
 interface PurchaseItem {
   productId?: string;
@@ -15,8 +27,17 @@ interface PurchaseItem {
   sellingPrice: number;
 }
 
+interface CancellationRequest {
+  status: 'pending' | 'approved' | 'rejected';
+  reason: string;
+  requestedAt: string;
+  resolvedAt?: string | null;
+  responseNote?: string | null;
+}
+
 interface Purchase {
   _id: string;
+  cancellationRequest?: CancellationRequest | null;
   storeId: { _id: string; name: string } | string | null;
   totalAmount: number;
   createdAt: string;
@@ -38,6 +59,79 @@ function getOrderStatusLabel(tx: Purchase): 'active' | 'completed' | 'cancelled'
   return tx.claimStatus === 'claimed' && tx.paymentStatus === 'paid' ? 'completed' : 'active';
 }
 
+const COLUMN_COUNT = 8;
+const MIN_CANCEL_REASON_WORDS = 2;
+const countWords = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+
+/** The customer can ask to cancel until the order is claimed, unless a request is already waiting. */
+function canRequestCancellation(tx: Purchase): boolean {
+  return (
+    tx.orderStatus !== 'cancelled' &&
+    tx.claimStatus !== 'claimed' &&
+    tx.cancellationRequest?.status !== 'pending'
+  );
+}
+
+/** One column for everything about cancelling: the action, or where the request stands. */
+function CancellationCell({ tx, onRequest }: { tx: Purchase; onRequest: () => void }) {
+  const request = tx.cancellationRequest;
+  const isCancelled = tx.orderStatus === 'cancelled';
+
+  if (isCancelled) {
+    return request?.status === 'approved' ? (
+      <Badge variant="secondary">Approved by store</Badge>
+    ) : (
+      <span className="text-muted-foreground/60">—</span>
+    );
+  }
+
+  if (request?.status === 'pending') {
+    return (
+      <div className="flex flex-col items-start gap-1">
+        <Badge variant="warning">Awaiting store approval</Badge>
+        <span className="text-xs text-muted-foreground">Order stays active until then</span>
+      </div>
+    );
+  }
+
+  const canRequest = canRequestCancellation(tx);
+  const declined = request?.status === 'rejected';
+
+  if (!canRequest && !declined) {
+    return <span className="text-muted-foreground/60">—</span>;
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-1.5">
+      {declined && (
+        <div className="flex max-w-56 flex-col items-start gap-1">
+          <Badge variant="error">Declined by store</Badge>
+          {request?.responseNote && (
+            <p className="line-clamp-2 text-xs text-muted-foreground" title={request.responseNote}>
+              “{request.responseNote}”
+            </p>
+          )}
+        </div>
+      )}
+      {canRequest && (
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          className="text-destructive hover:text-destructive"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRequest();
+          }}
+        >
+          <Ban data-icon="inline-start" />
+          {declined ? 'Ask again' : 'Cancel order'}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
 
@@ -48,10 +142,53 @@ function getStoreName(storeId: { _id: string; name: string } | string | null | u
   return s === '' || s === 'null' ? '—' : s.length > 8 ? s.slice(-8) : s;
 }
 
-export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
+export function PurchasesTable({ purchases: initialPurchases }: { purchases: Purchase[] }) {
+  const [purchases, setPurchases] = useState<Purchase[]>(initialPurchases);
   const [page, setPage] = useState(1);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [cancelTarget, setCancelTarget] = useState<Purchase | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const paginated = purchases.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+
+  const closeCancelDialog = () => {
+    if (cancelSubmitting) return;
+    setCancelTarget(null);
+    setCancelReason('');
+  };
+
+  const submitCancelRequest = async () => {
+    if (!cancelTarget) return;
+    setCancelSubmitting(true);
+    try {
+      const res = await fetch(`/api/transactions/${cancelTarget._id}/cancel-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: cancelReason.trim() }),
+      });
+      const data = (await res.json()) as Partial<Purchase> & { message?: string };
+      if (!res.ok) {
+        toast.error(data.message ?? 'Could not send your cancellation request');
+        return;
+      }
+      setPurchases((prev) =>
+        prev.map((p) =>
+          p._id === cancelTarget._id
+            ? { ...p, cancellationRequest: data.cancellationRequest ?? null }
+            : p
+        )
+      );
+      toast.success('Cancellation request sent. The store will review it.');
+      setCancelTarget(null);
+      setCancelReason('');
+    } catch {
+      toast.error('Could not send your cancellation request');
+    } finally {
+      setCancelSubmitting(false);
+    }
+  };
+
+  const reasonTooShort = countWords(cancelReason) < MIN_CANCEL_REASON_WORDS;
 
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {
@@ -65,22 +202,24 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
   return (
     <Card className="gap-0 overflow-hidden py-0">
       <CardContent className="flex flex-1 flex-col p-0">
-      <div className="data-table-scroll-wrapper purchases-table-scroll flex-1 min-h-[320px]">
+      <div className="data-table-scroll-wrapper purchases-table-scroll flex-1">
         <table className="data-table purchases-table">
           <thead>
             <tr>
-              <th className="w-10 px-3 py-3" aria-label="Details" />
-              <th className="px-4 py-3 text-left font-semibold">Order ID</th>
-              <th className="px-4 py-3 text-left font-semibold">Store</th>
-              <th className="px-4 py-3 text-right font-semibold">Total</th>
-              <th className="px-4 py-3 text-left font-semibold">Date</th>
-              <th className="px-4 py-3 text-left font-semibold">Status</th>
+              <th className="w-12" aria-label="Details" />
+              <th className="text-left font-semibold">Order ID</th>
+              <th className="text-left font-semibold">Store</th>
+              <th className="text-left font-semibold">Date</th>
+              <th className="text-right font-semibold">Total</th>
+              <th className="text-left font-semibold">Type</th>
+              <th className="text-left font-semibold">Status</th>
+              <th className="text-left font-semibold">Cancellation</th>
             </tr>
           </thead>
           <tbody>
             {purchases.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                <td colSpan={COLUMN_COUNT} className="py-12 text-center text-muted-foreground">
                   <Empty className="border-0 p-4 md:p-4">
                     <EmptyHeader>
                       <EmptyMedia variant="icon"><Receipt /></EmptyMedia>
@@ -103,7 +242,7 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
                       className={`transition-colors ${hasItems ? 'cursor-pointer' : ''} ${isExpanded ? 'purchases-row-active' : 'hover:bg-muted/40 active:bg-muted/60'}`}
                       onClick={() => hasItems && toggleExpanded(tx._id)}
                     >
-                      <td className="w-10 px-3 py-3 align-middle">
+                      <td className="w-12 align-middle">
                         {hasItems ? (
                           <Button
                             type="button"
@@ -122,22 +261,30 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
                           <span className="inline-block w-8" />
                         )}
                       </td>
-                      <td className="px-4 py-3 font-mono text-sm text-muted-foreground">{tx._id.slice(-8)}</td>
-                      <td className="px-4 py-3 font-medium">{getStoreName(tx.storeId)}</td>
-                      <td className="px-4 py-3 text-right font-semibold tabular-nums">{fmt(tx.totalAmount)}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">{new Date(tx.createdAt).toLocaleString()}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <Badge variant={isActive ? 'success' : 'secondary'}>
-                            {orderStatusLabel}
-                          </Badge>
-                          <OrderTypeBadge orderType={tx.orderType} />
-                        </div>
+                      <td className="font-mono text-sm text-muted-foreground">{tx._id.slice(-8)}</td>
+                      <td className="font-medium">{getStoreName(tx.storeId)}</td>
+                      <td>
+                        <p className="text-sm font-medium">
+                          {new Date(tx.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(tx.createdAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                        </p>
+                      </td>
+                      <td className="text-right font-semibold tabular-nums">{fmt(tx.totalAmount)}</td>
+                      <td>
+                        <OrderTypeBadge orderType={tx.orderType} />
+                      </td>
+                      <td>
+                        <Badge variant={isActive ? 'success' : 'secondary'} className="capitalize">{orderStatusLabel}</Badge>
+                      </td>
+                      <td className="whitespace-normal">
+                        <CancellationCell tx={tx} onRequest={() => setCancelTarget(tx)} />
                       </td>
                     </tr>
                     {isExpanded && hasItems && (
                       <tr key={`${tx._id}-items`} className="purchases-row-expanded">
-                        <td colSpan={6} className="p-0 border-t border-border">
+                        <td colSpan={COLUMN_COUNT} className="p-0 border-t border-border">
                           <div className="px-6 py-4">
                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Order items</p>
                             <table className="purchases-items-table w-full text-sm border border-border/60 rounded-lg overflow-hidden">
@@ -199,6 +346,65 @@ export function PurchasesTable({ purchases }: { purchases: Purchase[] }) {
           />
         </CardFooter>
       )}
+
+      <Dialog open={!!cancelTarget} onOpenChange={(open) => { if (!open) closeCancelDialog(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request to cancel this order</DialogTitle>
+            <DialogDescription>
+              The store has to approve your request. Your order stays active until they do.
+            </DialogDescription>
+          </DialogHeader>
+          {cancelTarget && (
+            <div className="flex flex-col gap-4">
+              <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                <p>
+                  <span className="text-muted-foreground">Order:</span>{' '}
+                  <span className="font-mono">{cancelTarget._id.slice(-8)}</span> · {getStoreName(cancelTarget.storeId)}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Total:</span>{' '}
+                  <span className="font-medium">{fmt(cancelTarget.totalAmount)}</span>
+                </p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cancel-reason" className="text-xs">
+                  Why do you want to cancel? <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="cancel-reason"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="Tell the store why (at least 2 words)..."
+                  maxLength={500}
+                  rows={3}
+                  className="resize-none"
+                  aria-invalid={cancelReason.length > 0 && reasonTooShort}
+                />
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span className={cancelReason.length > 0 && reasonTooShort ? 'text-destructive' : ''}>
+                    Required — minimum of 2 words.
+                  </span>
+                  <span>{cancelReason.length}/500</span>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={closeCancelDialog} disabled={cancelSubmitting}>
+              Keep order
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={submitCancelRequest}
+              disabled={cancelSubmitting || reasonTooShort}
+            >
+              {cancelSubmitting && <Spinner data-icon="inline-start" />}
+              Send request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
