@@ -48,9 +48,18 @@ type PaymentStatus = 'unpaid' | 'paid' | 'partial';
 type OrderStatus = 'active' | 'cancelled';
 type OrderType = 'regular' | 'walk-in' | 'preorder';
 
+interface CancellationRequest {
+  status: 'pending' | 'approved' | 'rejected';
+  reason: string;
+  requestedAt: string;
+  resolvedAt?: string | null;
+  responseNote?: string | null;
+}
+
 interface Transaction {
   _id: string;
   storeId: string;
+  cancellationRequest?: CancellationRequest | null;
   customerId?: { _id: string; name: string; email: string } | null;
   walkInCustomerName?: string | null;
   totalAmount: number;
@@ -483,6 +492,9 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [updating, setUpdating] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Transaction | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [reviewTarget, setReviewTarget] = useState<Transaction | null>(null);
+  const [reviewNote, setReviewNote] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState<'approve' | 'reject' | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmStatusAction, setConfirmStatusAction] = useState<{
@@ -779,12 +791,20 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       );
     };
 
+    const handleCancelRequested = (payload: { transactionId: string; totalAmount: number }) => {
+      toast(`A customer asked to cancel order ${payload.transactionId.slice(-8)} (${fmt(payload.totalAmount)}).`, {
+        icon: '⚠️',
+      });
+    };
+
     socket.on('transaction:created', handleCreated);
     socket.on('transaction:updated', handleUpdated);
+    socket.on('transaction:cancel-requested', handleCancelRequested);
 
     return () => {
       socket.off('transaction:created', handleCreated);
       socket.off('transaction:updated', handleUpdated);
+      socket.off('transaction:cancel-requested', handleCancelRequested);
       socket.emit('leave:store', storeId);
     };
   }, [storeId]);
@@ -982,6 +1002,40 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     }
   };
 
+  const closeReviewDialog = () => {
+    if (reviewSubmitting) return;
+    setReviewTarget(null);
+    setReviewNote('');
+  };
+
+  const handleResolveRequest = async (decision: 'approve' | 'reject') => {
+    if (!reviewTarget) return;
+    setReviewSubmitting(decision);
+    try {
+      const res = await fetch(`/api/transactions/${reviewTarget._id}/cancel-request`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, note: decision === 'reject' ? reviewNote.trim() : undefined }),
+      });
+      if (res.ok) {
+        const updated: Transaction = await res.json();
+        setTransactions((prev) =>
+          prev.map((tx) => (tx._id === updated._id ? { ...tx, ...updated } : tx))
+        );
+        toast.success(decision === 'approve' ? 'Request approved. Order cancelled.' : 'Request declined.');
+        setReviewTarget(null);
+        setReviewNote('');
+      } else {
+        const data = (await res.json()) as { message?: string };
+        toast.error(data.message ?? 'Failed to update the request');
+      }
+    } catch {
+      toast.error('Failed to update the request');
+    } finally {
+      setReviewSubmitting(null);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -1142,6 +1196,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                     <SelectItem value="all">All</SelectItem>
                     <SelectItem value="active">Active</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="cancel-requested">Cancel requested</SelectItem>
                     <SelectItem value="cancelled">Cancelled</SelectItem>
                   </SelectGroup>
                 </SelectContent>
@@ -1331,6 +1386,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                         onViewNotes={() => setNotesModalTx(tx)}
                         onEditCustomer={() => openEditCustomer(tx)}
                         onCancelClick={() => setCancelTarget(tx)}
+                        onReviewCancelRequest={() => { setReviewTarget(tx); setReviewNote(''); }}
                         onDeleteClick={() => setDeleteTarget(tx)}
                       />
                     );
@@ -1663,6 +1719,59 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Customer cancellation request review dialog */}
+      <Dialog open={!!reviewTarget} onOpenChange={(open) => { if (!open) closeReviewDialog(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancellation request</DialogTitle>
+            <DialogDescription>
+              The customer asked to cancel this order. Approving cancels it and returns reserved items to stock.
+            </DialogDescription>
+          </DialogHeader>
+          {reviewTarget && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1 rounded-md border px-4 py-3 text-sm">
+                <p><span className="text-muted-foreground">Order ID:</span> <span className="font-mono">{reviewTarget._id.slice(-8)}</span></p>
+                <p><span className="text-muted-foreground">Customer:</span> {reviewTarget.customerId && typeof reviewTarget.customerId === 'object' ? reviewTarget.customerId.name : (reviewTarget.walkInCustomerName || 'Walk-in')}</p>
+                <p><span className="text-muted-foreground">Amount:</span> <span className="font-medium">{fmt(reviewTarget.totalAmount)}</span></p>
+                {reviewTarget.cancellationRequest?.requestedAt && (
+                  <p><span className="text-muted-foreground">Requested:</span> {fmtDate(new Date(reviewTarget.cancellationRequest.requestedAt))}</p>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Customer&apos;s reason</p>
+                <p className="wrap-break-word rounded-md bg-muted/40 px-3 py-2 text-sm">
+                  {reviewTarget.cancellationRequest?.reason}
+                </p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="review-note" className="text-xs">Message to customer if declining (optional)</Label>
+                <Textarea
+                  id="review-note"
+                  value={reviewNote}
+                  onChange={(e) => setReviewNote(e.target.value)}
+                  placeholder="e.g. Your order is already being prepared."
+                  maxLength={500}
+                  rows={2}
+                  className="resize-none"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={closeReviewDialog} disabled={!!reviewSubmitting}>Close</Button>
+            <Button variant="outline" onClick={() => handleResolveRequest('reject')} disabled={!!reviewSubmitting}>
+              {reviewSubmitting === 'reject' && <Spinner data-icon="inline-start" />}
+              Decline
+            </Button>
+            <Button variant="destructive" onClick={() => handleResolveRequest('approve')} disabled={!!reviewSubmitting}>
+              {reviewSubmitting === 'approve' && <Spinner data-icon="inline-start" />}
+              Approve &amp; cancel order
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete confirmation dialog */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent className="data-[size=default]:sm:max-w-sm">
@@ -1907,6 +2016,7 @@ function TransactionRow({
   onViewNotes,
   onEditCustomer,
   onCancelClick,
+  onReviewCancelRequest,
   onDeleteClick,
 }: {
   tx: Transaction;
@@ -1922,8 +2032,10 @@ function TransactionRow({
   onViewNotes?: (tx: Transaction) => void;
   onEditCustomer?: () => void;
   onCancelClick: () => void;
+  onReviewCancelRequest: () => void;
   onDeleteClick: () => void;
 }) {
+  const hasPendingCancelRequest = !isCancelled && tx.cancellationRequest?.status === 'pending';
   return (
     <>
       <tr className={isCancelled ? 'row-muted' : undefined}>
@@ -1931,6 +2043,7 @@ function TransactionRow({
           <div className="flex flex-col items-start gap-1">
             <OrderBadge status={getDisplayOrderStatus(tx)} />
             <OrderTypeBadge orderType={tx.orderType} />
+            {hasPendingCancelRequest && <Badge variant="warning">Cancel requested</Badge>}
           </div>
         </td>
         {/* Expand toggle */}
@@ -2077,6 +2190,11 @@ function TransactionRow({
               ) : (
                 <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-warning hover:bg-warning-soft" disabled={isUpdating} onClick={() => onRequestStatusChange(tx, 'paymentStatus', 'unpaid')} title="Revert to unpaid">
                   <RotateCcw />
+                </Button>
+              )}
+              {hasPendingCancelRequest && (
+                <Button variant="ghost" size="icon" className="size-7 text-warning hover:bg-warning-soft hover:text-warning" disabled={isUpdating} onClick={onReviewCancelRequest} title="Review cancellation request">
+                  <AlertTriangle />
                 </Button>
               )}
               <Button variant="ghost" size="icon" className="size-7 text-destructive hover:bg-error-soft hover:text-destructive" disabled={isUpdating} onClick={onCancelClick} title="Cancel order">
