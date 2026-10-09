@@ -305,9 +305,16 @@
   font-weight: 600;
 }
 
-/* Purchases: denser rows, selected row uses the soft primary tint */
+/* Purchases: roomy rows, selected row uses the soft primary tint. The table fills the space under the
+   page header but never grows past the viewport; extra rows scroll inside it with a sticky header. */
+.data-table-scroll-wrapper.purchases-table-scroll {
+  max-height: max(20rem, calc(100vh - 26rem));
+}
+.data-table.purchases-table thead th {
+  @apply px-5 py-3.5;
+}
 .data-table.purchases-table tbody td {
-  @apply py-2.5;
+  @apply px-5 py-4;
 }
 .data-table.purchases-table tbody tr.purchases-row-active {
   background: color-mix(in srgb, var(--primary-subtle) 40%, var(--card)) !important;
