@@ -282,6 +282,9 @@ export const getTransactions = async (req: Request, res: Response): Promise<void
     } else if (orderStatus === 'active') {
       filter.orderStatus = 'active';
       filter.$nor = [{ claimStatus: 'claimed', paymentStatus: 'paid' }];
+    } else if (orderStatus === 'cancel-requested') {
+      filter.orderStatus = 'active';
+      filter['cancellationRequest.status'] = 'pending';
     } else if (orderStatus && orderStatus !== 'all') {
       filter.orderStatus = orderStatus;
     }
@@ -497,22 +500,29 @@ export const updateTransactionNotes = async (req: Request, res: Response): Promi
   }
 };
 
-export const cancelTransaction = async (req: Request, res: Response): Promise<void> => {
+type CancelOutcome =
+  | { ok: true; transaction: unknown }
+  | { ok: false; status: number; message: string };
+
+/**
+ * Cancels an order: restores stock for regular orders, re-broadcasts pre-order demand, and closes any
+ * pending customer cancellation request as approved. Shared by the manager's cancel button and by
+ * approving a customer's request.
+ */
+async function performCancellation(transactionId: string): Promise<CancelOutcome> {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const transaction = await Transaction.findById(req.params.id).session(session);
+    const transaction = await Transaction.findById(transactionId).session(session);
     if (!transaction) {
       await session.abortTransaction();
-      res.status(404).json({ message: 'Transaction not found' });
-      return;
+      return { ok: false, status: 404, message: 'Transaction not found' };
     }
 
     if (transaction.orderStatus === 'cancelled') {
       await session.abortTransaction();
-      res.status(400).json({ message: 'Transaction is already cancelled' });
-      return;
+      return { ok: false, status: 400, message: 'Transaction is already cancelled' };
     }
 
     const items = await TransactionItem.find({ transactionId: transaction._id }).session(session);
@@ -529,6 +539,10 @@ export const cancelTransaction = async (req: Request, res: Response): Promise<vo
     }
 
     transaction.orderStatus = 'cancelled';
+    if (transaction.cancellationRequest?.status === 'pending') {
+      transaction.cancellationRequest.status = 'approved';
+      transaction.cancellationRequest.resolvedAt = new Date();
+    }
     await transaction.save({ session });
 
     await session.commitTransaction();
@@ -552,12 +566,141 @@ export const cancelTransaction = async (req: Request, res: Response): Promise<vo
       io.to(`store:${storeId}`).emit('transaction:updated', populated);
     } catch { /* socket broadcast is non-critical */ }
 
-    res.json(populated);
+    return { ok: true, transaction: populated };
   } catch (err) {
     await session.abortTransaction();
-    res.status(500).json({ message: 'Server error', error: err });
+    throw err;
   } finally {
     session.endSession();
+  }
+}
+
+export const cancelTransaction = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const outcome = await performCancellation(req.params.id as string);
+    if (!outcome.ok) {
+      res.status(outcome.status).json({ message: outcome.message });
+      return;
+    }
+    res.json(outcome.transaction);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
+const MIN_CANCEL_REASON_WORDS = 2;
+const countWords = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
+
+/** Customer asks to cancel their own order. The order stays active until a store manager approves. */
+export const requestCancellation = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { reason: bodyReason } = req.body as { reason?: unknown };
+    const reason = typeof bodyReason === 'string' ? bodyReason.trim() : '';
+    if (countWords(reason) < MIN_CANCEL_REASON_WORDS) {
+      res.status(400).json({
+        message: `Please tell the store why you want to cancel (at least ${MIN_CANCEL_REASON_WORDS} words).`,
+      });
+      return;
+    }
+    if (reason.length > 500) {
+      res.status(400).json({ message: 'Reason must be 500 characters or fewer.' });
+      return;
+    }
+
+    const transaction = await Transaction.findById(req.params.id);
+    if (!transaction || String(transaction.customerId) !== req.user!.userId) {
+      res.status(404).json({ message: 'Order not found' });
+      return;
+    }
+    if (transaction.orderStatus === 'cancelled') {
+      res.status(400).json({ message: 'This order is already cancelled.' });
+      return;
+    }
+    if (transaction.claimStatus === 'claimed') {
+      res.status(400).json({ message: 'This order has already been claimed and can no longer be cancelled.' });
+      return;
+    }
+    if (transaction.cancellationRequest?.status === 'pending') {
+      res.status(400).json({ message: 'A cancellation request is already waiting for the store.' });
+      return;
+    }
+
+    transaction.cancellationRequest = {
+      status: 'pending',
+      reason,
+      requestedAt: new Date(),
+      resolvedAt: null,
+      responseNote: null,
+    };
+    await transaction.save();
+
+    const populated = await Transaction.findById(transaction._id)
+      .populate('customerId', 'name email')
+      .lean();
+
+    try {
+      const io = getIO();
+      const storeId = String(transaction.storeId);
+      io.to(`store:${storeId}`).emit('transaction:updated', populated);
+      // Not written to the public activity feed (shoppers see it on the storefront), and the
+      // payload carries no customer details.
+      io.to(`store:${storeId}`).emit('transaction:cancel-requested', {
+        transactionId: String(transaction._id),
+        totalAmount: transaction.totalAmount,
+      });
+    } catch { /* socket broadcast is non-critical */ }
+
+    res.json(populated);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
+  }
+};
+
+/** Store manager approves (cancels the order) or declines a customer's cancellation request. */
+export const resolveCancellationRequest = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { decision, note } = req.body as { decision?: unknown; note?: unknown };
+    if (decision !== 'approve' && decision !== 'reject') {
+      res.status(400).json({ message: "decision must be 'approve' or 'reject'" });
+      return;
+    }
+
+    const transaction = await Transaction.findById(req.params.id);
+    if (!transaction) {
+      res.status(404).json({ message: 'Transaction not found' });
+      return;
+    }
+    if (transaction.cancellationRequest?.status !== 'pending') {
+      res.status(400).json({ message: 'There is no pending cancellation request for this order.' });
+      return;
+    }
+
+    if (decision === 'approve') {
+      const outcome = await performCancellation(String(transaction._id));
+      if (!outcome.ok) {
+        res.status(outcome.status).json({ message: outcome.message });
+        return;
+      }
+      res.json(outcome.transaction);
+      return;
+    }
+
+    const responseNote = typeof note === 'string' && note.trim() ? note.trim().slice(0, 500) : null;
+    transaction.cancellationRequest.status = 'rejected';
+    transaction.cancellationRequest.resolvedAt = new Date();
+    transaction.cancellationRequest.responseNote = responseNote;
+    await transaction.save();
+
+    const populated = await Transaction.findById(transaction._id)
+      .populate('customerId', 'name email')
+      .lean();
+    try {
+      getIO().to(`store:${transaction.storeId}`).emit('transaction:updated', populated);
+    } catch { /* socket broadcast is non-critical */ }
+
+    res.json(populated);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
   }
 };
 

@@ -8,6 +8,18 @@ export type PreOrderDisplayStatus = 'pending' | 'ready' | 'fulfilled' | 'cancell
 
 export type DisplayOrderStatus = OrderStatus | 'completed';
 
+export type CancellationRequestStatus = 'pending' | 'approved' | 'rejected';
+
+/** A customer's ask to cancel; the order stays active until a store manager approves. */
+export interface CancellationRequest {
+  status: CancellationRequestStatus;
+  reason: string;
+  requestedAt: Date;
+  resolvedAt?: Date | null;
+  /** Optional message from the store manager, e.g. why a request was declined. */
+  responseNote?: string | null;
+}
+
 /** An order is completed when it is not cancelled and is both paid and claimed. */
 export function getDisplayOrderStatus(tx: {
   orderStatus?: OrderStatus | null;
@@ -58,6 +70,7 @@ export interface ITransaction extends Document {
   notes?: string | null;
   /** Optional notes from the customer when placing the reservation. */
   customerNotes?: string | null;
+  cancellationRequest?: CancellationRequest | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -79,6 +92,19 @@ const transactionSchema = new Schema<ITransaction>(
     claimedAt: { type: Date, default: null },
     notes: { type: String, default: null },
     customerNotes: { type: String, default: null },
+    cancellationRequest: {
+      type: new Schema<CancellationRequest>(
+        {
+          status: { type: String, enum: ['pending', 'approved', 'rejected'], required: true },
+          reason: { type: String, required: true, trim: true, maxlength: 500 },
+          requestedAt: { type: Date, required: true },
+          resolvedAt: { type: Date, default: null },
+          responseNote: { type: String, default: null, trim: true, maxlength: 500 },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
   },
   { timestamps: true }
 );

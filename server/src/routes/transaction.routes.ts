@@ -6,6 +6,8 @@ import {
   getMyPurchases,
   getTransaction,
   getTransactions,
+  requestCancellation,
+  resolveCancellationRequest,
   updateTransactionCustomer,
   updateTransactionNotes,
   updateTransactionStatus,
@@ -45,6 +47,16 @@ transactionRoutes.patch(
   '/:id/cancel',
   authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
   cancelTransaction
+);
+transactionRoutes.post(
+  '/:id/cancel-request',
+  authorize(UserRole.CUSTOMER),
+  requestCancellation
+);
+transactionRoutes.patch(
+  '/:id/cancel-request',
+  authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  resolveCancellationRequest
 );
 transactionRoutes.delete(
   '/:id',
