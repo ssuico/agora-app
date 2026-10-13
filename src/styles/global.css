@@ -415,9 +415,10 @@
 
 /* Photo backdrop. The scrim keeps the card and the credit pill legible over a busy image. */
 .auth-backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: -1;
+  pointer-events: none;
   background-color: #1a1a1a;
   background-image: url("/auth-bg-960.webp");
   background-position: center 45%;
@@ -607,6 +608,55 @@
 
   .auth-mobile-mark {
     display: none;
+  }
+}
+
+/* Room under the sign-in card for the fixed Discover hint. */
+.auth-main--discover {
+  padding-bottom: max(5.5rem, calc(env(safe-area-inset-bottom) + 4rem));
+}
+
+.auth-discover-hint {
+  position: fixed;
+  left: 50%;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 30;
+  display: inline-flex;
+  transform: translateX(-50%);
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.35);
+  background: rgb(26 26 26 / 0.55);
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #fff;
+  text-decoration: none;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: opacity 200ms ease, transform 200ms ease, background-color 200ms ease;
+}
+
+.auth-discover-hint:hover {
+  background: rgb(26 26 26 / 0.75);
+}
+
+.auth-discover-hint:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
+.auth-discover-hint.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(0.5rem);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.auth-discover-hint) {
+    scroll-behavior: smooth;
   }
 }
 

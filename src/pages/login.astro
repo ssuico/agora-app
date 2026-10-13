@@ -1,5 +1,6 @@
 ---
 import AuthShell from '../components/app/AuthShell.astro';
+import DiscoverAgora from '../components/app/discover/DiscoverAgora.astro';
 import { LoginForm } from '../components/app/LoginForm';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { decodeJWT } from '../lib/jwt';
@@ -29,4 +30,5 @@ if (token) {
       <p>Powered by Channel Precision Devs</p>
     </div>
   </div>
+  <DiscoverAgora slot="below" />
 </AuthShell>

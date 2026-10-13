@@ -1,0 +1,229 @@
+---
+import { CustomerPreviews } from './CustomerPreviews';
+import { ManagerPreviews } from './ManagerPreviews';
+import { buttonVariants } from '../../ui/button';
+import {
+  CalendarClock,
+  ClipboardList,
+  MapPin,
+  MessageSquare,
+  Package,
+  QrCode,
+  ShoppingBag,
+  Store,
+  UserRound,
+  Users,
+} from 'lucide-react';
+
+const steps = [
+  {
+    title: 'Pick a location',
+    detail: 'Choose a neighborhood, then the store you want to shop.',
+  },
+  {
+    title: 'Browse the store',
+    detail: 'See what is in stock, what is on pre-order, and how it was rated.',
+  },
+  {
+    title: 'Reserve or pre-order',
+    detail: 'Add items to your cart, or pre-order before the listing closes.',
+  },
+  {
+    title: 'Pay and claim',
+    detail: 'Pay with the store’s QR options, then claim the order in person.',
+  },
+];
+
+const customerFeatures = [
+  {
+    icon: MapPin,
+    title: 'Locations and stores',
+    detail: 'Start from a location, open a store, and read its banner. A closed store can still list pre-orders.',
+  },
+  {
+    icon: ShoppingBag,
+    title: 'Cart and reservations',
+    detail: 'Add quantities and place a reservation. You pay, then claim it at the store.',
+  },
+  {
+    icon: CalendarClock,
+    title: 'Pre-orders',
+    detail: 'Some items sit on their own tab with a closing countdown and an expected availability time.',
+  },
+  {
+    icon: QrCode,
+    title: 'QR payment options',
+    detail: 'Each store shows how to pay. Copy the QR details, pay, and claim the order in person.',
+  },
+  {
+    icon: MessageSquare,
+    title: 'Ratings and store chat',
+    detail: 'Open a product for reviews, leave a rating after you buy, or message the store from the shop.',
+  },
+  {
+    icon: ClipboardList,
+    title: 'My Purchases',
+    detail: 'Follow active, completed, and cancelled orders. Request a cancellation while an order is still active.',
+  },
+  {
+    icon: UserRound,
+    title: 'Profile',
+    detail: 'Update your name and photo, and reset your password from your account.',
+  },
+];
+
+const managerFeatures = [
+  {
+    icon: Store,
+    title: 'Store dashboard',
+    detail: 'Financial summary, charts, top products, and a feed of who just ordered.',
+  },
+  {
+    icon: Package,
+    title: 'Inventory',
+    detail: 'Stock, realtime counts, inventory reports, and listing history. Low and empty stock are flagged.',
+  },
+  {
+    icon: CalendarClock,
+    title: 'Pre-order listings',
+    detail: 'Publish items with a local deadline and move them through pending, ready, and fulfilled.',
+  },
+  {
+    icon: ClipboardList,
+    title: 'Transactions',
+    detail: 'Registered customer orders and walk-in sales. Approve cancellation requests and export the day’s report.',
+  },
+  {
+    icon: QrCode,
+    title: 'Payment options and banner',
+    detail: 'Upload the QR codes customers pay with, and set the banner they see on the storefront.',
+  },
+  {
+    icon: Users,
+    title: 'Store status and switching',
+    detail: 'Mark the store open, closed, or in maintenance. If you run more than one, switch stores from the sidebar.',
+  },
+];
+---
+
+<section id="discover" class="bg-canvas text-foreground" aria-labelledby="discover-title">
+  <div class="mx-auto flex max-w-6xl flex-col gap-16 px-4 py-16 sm:gap-20 sm:px-6 sm:py-24">
+    <header class="mx-auto flex max-w-2xl flex-col items-center text-center">
+      <p class="text-xs font-semibold tracking-[0.16em] text-primary uppercase">Discover Agora</p>
+      <h2 id="discover-title" class="mt-3 text-4xl font-bold tracking-tight text-balance sm:text-5xl">
+        Shop. Reserve. Claim.
+      </h2>
+      <p class="mt-4 text-base leading-relaxed text-muted-foreground text-pretty">
+        Agora is how neighborhood stores take orders before you walk in. Pick a location, browse what is on the shelf or up for pre-order, reserve it, pay with the store’s QR options, and claim it in person.
+      </p>
+      <div class="mt-6 flex flex-wrap justify-center gap-3 text-sm font-semibold">
+        <a href="#discover-customer" class="text-primary hover:underline">For customers</a>
+        <span class="text-border" aria-hidden="true">/</span>
+        <a href="#discover-manager" class="text-primary hover:underline">For store managers</a>
+      </div>
+    </header>
+
+    <div>
+      <h3 class="text-lg font-semibold tracking-tight">How it works</h3>
+      <ol class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {
+          steps.map((step, index) => (
+            <li class="rounded-2xl border border-border bg-card p-4">
+              <span class="flex size-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                {index + 1}
+              </span>
+              <h4 class="mt-3 font-semibold">{step.title}</h4>
+              <p class="mt-1 text-sm leading-relaxed text-muted-foreground">{step.detail}</p>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+
+    <aside class="rounded-2xl border border-border bg-card p-5 sm:p-6" aria-labelledby="discover-roles">
+      <h3 id="discover-roles" class="text-lg font-semibold tracking-tight">Your account</h3>
+      <p class="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+        Every new account is a Customer by default. Only an admin can upgrade an account and add the Store Manager role. If you run a store, ask your admin. Once that role is granted, switch between Customer and Store Manager from the top bar.
+      </p>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <span class="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground">
+          Customer
+        </span>
+        <span class="inline-flex items-center rounded-full border border-operational/30 bg-operational-subtle px-2.5 py-0.5 text-xs font-medium text-operational">
+          Store Manager
+        </span>
+      </div>
+    </aside>
+
+    <div id="discover-customer" class="scroll-mt-6 grid items-start gap-8 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:gap-10">
+      <div>
+        <p class="text-xs font-semibold tracking-[0.16em] text-primary uppercase">Customer</p>
+        <h3 class="mt-2 text-2xl font-bold tracking-tight">Shop the stores near you</h3>
+        <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
+          This is the view every account opens with. You browse, reserve, pay, and follow your orders.
+        </p>
+        <ul class="mt-6 flex flex-col gap-4">
+          {
+            customerFeatures.map((feature) => {
+              const Icon = feature.icon;
+              return (
+                <li class="flex gap-3">
+                  <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-subtle text-primary">
+                    <Icon className="size-4" aria-hidden="true" />
+                  </span>
+                  <span>
+                    <h4 class="text-sm font-semibold">{feature.title}</h4>
+                    <p class="mt-0.5 text-sm leading-relaxed text-muted-foreground">{feature.detail}</p>
+                  </span>
+                </li>
+              );
+            })
+          }
+        </ul>
+      </div>
+      <CustomerPreviews />
+    </div>
+
+    <div id="discover-manager" class="scroll-mt-6 grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:gap-10">
+      <div class="lg:order-2">
+        <p class="text-xs font-semibold tracking-[0.16em] text-operational uppercase">Store Manager</p>
+        <h3 class="mt-2 text-2xl font-bold tracking-tight">Run the store from one place</h3>
+        <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
+          An admin adds this role to your account. You then see the store you are assigned to, and you can still switch back to shopping as a customer.
+        </p>
+        <ul class="mt-6 flex flex-col gap-4">
+          {
+            managerFeatures.map((feature) => {
+              const Icon = feature.icon;
+              return (
+                <li class="flex gap-3">
+                  <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-operational-subtle text-operational">
+                    <Icon className="size-4" aria-hidden="true" />
+                  </span>
+                  <span>
+                    <h4 class="text-sm font-semibold">{feature.title}</h4>
+                    <p class="mt-0.5 text-sm leading-relaxed text-muted-foreground">{feature.detail}</p>
+                  </span>
+                </li>
+              );
+            })
+          }
+        </ul>
+      </div>
+      <div class="lg:order-1">
+        <ManagerPreviews />
+      </div>
+    </div>
+
+    <div class="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card px-5 py-8 text-center sm:px-8">
+      <h3 class="text-xl font-bold tracking-tight">Ready when you are</h3>
+      <p class="max-w-lg text-sm leading-relaxed text-muted-foreground">
+        Create an account to shop. Store Manager access is added later by an admin.
+      </p>
+      <div class="flex flex-wrap justify-center gap-3">
+        <a href="#auth-form" class={buttonVariants({ variant: 'outline' })}>Back to sign in</a>
+        <a href="/signup" class={buttonVariants()}>Create an account</a>
+      </div>
+    </div>
+  </div>
+</section>

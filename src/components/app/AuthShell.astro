@@ -17,9 +17,10 @@ interface Props {
 
 const { title, kicker, headline, lede, notices = [], showMobileMark = true } = Astro.props;
 const hasBoardContent = Boolean(kicker || headline || lede || notices.length > 0);
+const showDiscover = Astro.slots.has('below');
 ---
 
-<AuthLayout title={title}>
+<AuthLayout title={title} showDiscover={showDiscover}>
   <div class="auth-frame">
     <section
       class:list={['auth-board', !hasBoardContent && 'auth-board--logo']}
@@ -55,4 +56,11 @@ const hasBoardContent = Boolean(kicker || headline || lede || notices.length > 0
       <slot />
     </div>
   </div>
+  {
+    showDiscover && (
+      <Fragment slot="below">
+        <slot name="below" />
+      </Fragment>
+    )
+  }
 </AuthLayout>

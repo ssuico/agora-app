@@ -4,8 +4,10 @@ import { Toaster } from '../components/app/Toaster';
 import '../styles/global.css';
 interface Props {
   title?: string;
+  /** Login passes this when the Discover section is rendered below the hero. */
+  showDiscover?: boolean;
 }
-const { title = 'Agora POS' } = Astro.props;
+const { title = 'Agora POS', showDiscover = false } = Astro.props;
 ---
 
 <html lang="en">
@@ -30,9 +32,57 @@ const { title = 'Agora POS' } = Astro.props;
   <body class="bg-canvas text-foreground antialiased">
     <Toaster client:load />
     <a class="auth-skip" href="#auth-form">Skip to form</a>
-    <main class="relative isolate flex min-h-screen items-center justify-center overflow-x-hidden px-4 pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6">
+    <main
+      class:list={[
+        'relative isolate flex min-h-screen items-center justify-center overflow-x-hidden px-4 pt-8 sm:px-6',
+        showDiscover
+          ? 'auth-main--discover'
+          : 'pb-[max(2rem,env(safe-area-inset-bottom))]',
+      ]}
+    >
       <div class="auth-backdrop" aria-hidden="true"></div>
       <slot />
+      {
+        showDiscover && (
+          <a href="#discover" class="auth-discover-hint">
+            Discover Agora
+            <svg
+              class="motion-safe:animate-bounce"
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </a>
+        )
+      }
     </main>
+    <slot name="below" />
+    <script>
+      const hint = document.querySelector('.auth-discover-hint');
+      if (hint instanceof HTMLElement) {
+        const update = () => {
+          const hidden = window.scrollY > window.innerHeight * 0.4;
+          hint.classList.toggle('is-hidden', hidden);
+          if (hidden) {
+            hint.setAttribute('aria-hidden', 'true');
+            hint.tabIndex = -1;
+          } else {
+            hint.removeAttribute('aria-hidden');
+            hint.removeAttribute('tabindex');
+          }
+        };
+        update();
+        window.addEventListener('scroll', update, { passive: true });
+      }
+    </script>
   </body>
 </html>
