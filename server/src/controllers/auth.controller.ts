@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { Request, Response } from 'express';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import { isEmailVerificationEnabled, signupDomainError } from '../config/authFeatures.js';
+import { SESSION_TTL_SECONDS } from '../config/session.js';
 import { StoreManagerAssignment } from '../models/StoreManagerAssignment.js';
 import { User, type IUser } from '../models/User.js';
 import { VerificationCode } from '../models/VerificationCode.js';
@@ -34,7 +35,7 @@ async function issueSession(user: IUser, requestedRole?: UserRole) {
   const storeIds = role === UserRole.STORE_MANAGER ? await assignedStoreIds(user) : undefined;
 
   const jwtOptions: SignOptions = {
-    expiresIn: (process.env.JWT_EXPIRES_IN ?? '7d') as SignOptions['expiresIn'],
+    expiresIn: SESSION_TTL_SECONDS,
   };
   const token = jwt.sign(
     {
@@ -57,7 +58,7 @@ function setAuthCookie(res: Response, token: string) {
     httpOnly: true,
     secure: isProd,
     path: '/',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: SESSION_TTL_SECONDS * 1000,
     sameSite: 'lax',
   });
 }
