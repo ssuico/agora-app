@@ -96,7 +96,14 @@ export function LoginForm() {
           <h1 className="auth-wordmark text-primary" translate="no">Agora</h1>
         </CardTitle>
         <CardDescription className="text-base font-medium tracking-wide text-foreground/75">
-          Shop - Reserve - Claim
+          <span className="sr-only">Shop, Reserve, Claim</span>
+          <span className="auth-tagline" aria-hidden="true">
+            <span className="auth-tagline-word">Shop</span>
+            <span className="auth-tagline-sep">-</span>
+            <span className="auth-tagline-word">Reserve</span>
+            <span className="auth-tagline-sep">-</span>
+            <span className="auth-tagline-word">Claim</span>
+          </span>
         </CardDescription>
       </CardHeader>
       <CardContent>
