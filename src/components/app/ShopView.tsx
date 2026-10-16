@@ -34,6 +34,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
+import { useGridCols, type GridCols } from '@/lib/grid-cols';
 import { ActivityFeed } from './ActivityFeed';
 import { ShopSkeleton } from './ShopSkeleton';
 import { TopProducts } from './TopProducts';
@@ -229,9 +230,16 @@ function closingCountdown(closesAt: string | null | undefined, now: number): { t
   return { text, urgent: diff < 3_600_000, ended: false };
 }
 
-function ClosingCountdown({ closesAt, now }: { closesAt?: string | null; now: number }) {
+function ClosingCountdown({ closesAt, now, compact = false }: { closesAt?: string | null; now: number; compact?: boolean }) {
   const countdown = closingCountdown(closesAt, now);
   if (!countdown) return null;
+  if (compact) {
+    return (
+      <p className={`truncate text-[10px] font-medium tabular-nums ${countdown.urgent && !countdown.ended ? 'text-warning-ink' : 'text-muted-foreground'}`}>
+        {countdown.ended ? 'Ordering ended' : `Closes in ${countdown.text}`}
+      </p>
+    );
+  }
   const tone = countdown.ended
     ? 'border-border bg-muted/40 text-muted-foreground'
     : countdown.urgent
@@ -248,13 +256,48 @@ function ClosingCountdown({ closesAt, now }: { closesAt?: string | null; now: nu
   );
 }
 
+function catalogGridClass(cols: GridCols): string {
+  if (cols === 3) return 'gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+  if (cols === 6) return 'gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6';
+  return 'gap-2 grid-cols-3 sm:grid-cols-5 lg:grid-cols-9';
+}
+
+function GridDensityControl({ cols, onChange }: { cols: GridCols; onChange: (cols: GridCols) => void }) {
+  return (
+    <div className="flex items-center rounded-xl border border-border bg-card p-1 gap-0.5 shrink-0">
+      {([
+        { value: 3 as const, icon: <LayoutGrid /> },
+        { value: 6 as const, icon: <Grid3x3 /> },
+        { value: 9 as const, icon: <Grid3x3 /> },
+      ]).map(({ value, icon }) => (
+        <Button
+          key={value}
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => onChange(value)}
+          title={`${value} columns`}
+          aria-label={`${value} columns`}
+          aria-pressed={cols === value}
+          className={`rounded-lg ${cols === value ? 'bg-primary-subtle text-primary hover:bg-primary-subtle' : 'text-muted-foreground'}`}
+        >
+          {icon}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 function PreOrderCatalog({
   products,
   loading,
+  gridCols,
+  onGridColsChange,
   onPreOrder,
 }: {
   products: PreOrderListing[];
   loading: boolean;
+  gridCols: GridCols;
+  onGridColsChange: (cols: GridCols) => void;
   onPreOrder: (product: PreOrderListing) => void;
 }) {
   const now = useNow(1000);
@@ -262,30 +305,31 @@ function PreOrderCatalog({
   const visible = products.filter((product) =>
     product.name.toLowerCase().includes(query.trim().toLowerCase())
   );
-
-  if (loading) {
-    return (
-      <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <Skeleton key={index} className="h-72 rounded-xl" />
-        ))}
-      </div>
-    );
-  }
+  const isCompact = gridCols === 6;
+  const isMini = gridCols === 9;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-        <Input
-          type="search"
-          placeholder="Search pre-orders..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="pl-9 rounded-xl"
-        />
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+          <Input
+            type="search"
+            placeholder="Search pre-orders..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="pl-9 rounded-xl"
+          />
+        </div>
+        <GridDensityControl cols={gridCols} onChange={onGridColsChange} />
       </div>
-      {visible.length === 0 ? (
+      {loading ? (
+        <div className={`grid ${catalogGridClass(gridCols)}`}>
+          {Array.from({ length: isMini ? 9 : isCompact ? 6 : 3 }).map((_, index) => (
+            <Skeleton key={index} className={`${isMini ? 'h-28' : isCompact ? 'h-44' : 'h-64'} rounded-xl`} />
+          ))}
+        </div>
+      ) : visible.length === 0 ? (
         <Empty className="py-16">
           <EmptyHeader>
             <EmptyMedia variant="icon"><CalendarClock /></EmptyMedia>
@@ -296,53 +340,73 @@ function PreOrderCatalog({
           </EmptyHeader>
         </Empty>
       ) : (
-        <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={`grid transition-all ${catalogGridClass(gridCols)}`}>
           {visible.map((product) => {
             const price = preOrderPrice(product);
             const discounted = price < product.sellingPrice;
             const accepting = canPreOrder(product, now);
             const orderingEnded = product.preOrderOpen && !accepting;
+            const imageClass = isMini ? 'h-20' : isCompact ? 'h-32' : 'h-44';
             return (
-              <Card key={product._id} className="overflow-hidden">
-                <div className="relative aspect-[4/3] bg-muted">
+              <Card key={product._id} className="group overflow-hidden p-0 gap-0">
+                <div className={`relative overflow-hidden bg-muted/30 ${imageClass}`}>
                   {product.images?.[0] ? (
                     <img src={product.images[0]} alt="" className="size-full object-cover" />
                   ) : (
                     <div className="flex size-full items-center justify-center">
-                      <ImageIcon className="size-8 text-muted-foreground/40" />
+                      <ImageIcon className={`${isMini ? 'size-4' : 'size-8'} text-muted-foreground/40`} />
                     </div>
                   )}
-                  <Badge variant="warning" className="absolute left-3 top-3 font-semibold">Pre-Order</Badge>
-                  {!accepting && (
-                    <Badge variant="secondary" className="absolute right-3 top-3">
-                      {orderingEnded ? 'Ordering ended' : 'Closed'}
+                  {!isMini && (
+                    <Badge variant="warning" className={`absolute font-semibold ${isCompact ? 'left-1.5 top-1.5 text-[9px] px-1.5 py-0' : 'left-2 top-2'}`}>
+                      Pre-Order
+                    </Badge>
+                  )}
+                  {!accepting && !isMini && (
+                    <Badge variant="secondary" className="absolute right-2 top-2 text-[10px]">
+                      {orderingEnded ? 'Ended' : 'Closed'}
                     </Badge>
                   )}
                 </div>
-                <CardContent className="flex flex-col gap-2 pt-4">
-                  <h3 className="font-semibold leading-snug">{product.name}</h3>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-lg font-bold tabular-nums">{fmt(price)}</span>
-                    {discounted && (
-                      <span className="text-sm text-muted-foreground line-through tabular-nums">{fmt(product.sellingPrice)}</span>
+                <CardContent className={`flex flex-col ${isMini ? 'p-1.5 gap-1' : isCompact ? 'p-2.5 gap-1.5' : 'p-3 gap-2'}`}>
+                  <h3 className={`font-semibold ${isMini ? 'text-[10px] line-clamp-1' : isCompact ? 'text-xs line-clamp-1' : 'text-sm line-clamp-2 leading-snug'}`}>
+                    {product.name}
+                  </h3>
+                  <div className="flex items-baseline gap-1">
+                    <span className={`font-bold tabular-nums ${isMini ? 'text-[10px]' : isCompact ? 'text-sm' : 'text-xl'}`}>{fmt(price)}</span>
+                    {discounted && !isMini && (
+                      <span className="text-xs text-muted-foreground line-through tabular-nums">{fmt(product.sellingPrice)}</span>
                     )}
                   </div>
-                  <p className="text-sm text-muted-foreground">Expected: {formatExpectedDate(product.preOrderExpectedDate)}</p>
-                  {product.preOrderOpen && (
-                    <ClosingCountdown closesAt={product.preOrderClosesAt} now={now} />
+                  {!isMini && (
+                    <p className={`text-muted-foreground ${isCompact ? 'truncate text-[10px]' : 'text-sm'}`}>
+                      Expected: {formatExpectedDate(product.preOrderExpectedDate)}
+                    </p>
                   )}
-                  <p className="text-sm text-muted-foreground">Orders close: {formatLocalDateTime(product.preOrderClosesAt)}</p>
-                  <p className="text-sm font-medium">Pre-Orders: {product.totalUnits}</p>
-                  {product.preOrderStatus === 'ready' && (
-                    <Badge variant="info" className="w-fit">Ready for pickup</Badge>
+                  {!isMini && product.preOrderOpen && (
+                    <ClosingCountdown closesAt={product.preOrderClosesAt} now={now} compact={isCompact} />
+                  )}
+                  {!isCompact && !isMini && (
+                    <>
+                      <p className="text-sm text-muted-foreground">Orders close: {formatLocalDateTime(product.preOrderClosesAt)}</p>
+                      <p className="text-sm font-medium">Pre-Orders: {product.totalUnits}</p>
+                      {product.preOrderStatus === 'ready' && (
+                        <Badge variant="info" className="w-fit">Ready for pickup</Badge>
+                      )}
+                    </>
                   )}
                   <Button
-                    className="mt-1 w-full rounded-xl"
+                    className={`w-full ${isMini ? 'h-6 rounded-lg px-1' : isCompact ? 'h-7 rounded-lg' : 'mt-1 rounded-xl'}`}
+                    size={isMini || isCompact ? 'xs' : 'default'}
                     disabled={!accepting}
                     onClick={() => onPreOrder(product)}
                   >
                     <CalendarClock data-icon="inline-start" />
-                    {accepting ? 'Pre-Order Now' : orderingEnded ? 'Ordering ended' : 'Pre-order closed'}
+                    {isMini
+                      ? null
+                      : isCompact
+                        ? (accepting ? 'Pre-order' : 'Closed')
+                        : (accepting ? 'Pre-Order Now' : orderingEnded ? 'Ordering ended' : 'Pre-order closed')}
                   </Button>
                 </CardContent>
               </Card>
@@ -770,7 +834,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
   const [addToCartCooldowns, setAddToCartCooldowns] = useState<Set<string>>(new Set());
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [gridCols, setGridCols] = useState<3 | 6 | 9>(3);
+  const [gridCols, setGridCols] = useGridCols(3);
   const [isStoreOpen, setIsStoreOpen] = useState(initialIsOpen);
   const [isMaintenance, setIsMaintenance] = useState(initialIsMaintenance);
 
@@ -1314,7 +1378,13 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
             </TabsList>
           </Tabs>
           {catalogTab === 'preorders' ? (
-            <PreOrderCatalog products={preOrders} loading={preOrdersLoading} onPreOrder={openPreOrder} />
+            <PreOrderCatalog
+              products={preOrders}
+              loading={preOrdersLoading}
+              gridCols={gridCols}
+              onGridColsChange={setGridCols}
+              onPreOrder={openPreOrder}
+            />
           ) : !isStoreOpen ? (
             <Empty className="py-16">
               <EmptyHeader>
@@ -1346,26 +1416,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
               />
             </div>
 
-            <div className="flex items-center rounded-xl border border-border bg-card p-1 gap-0.5 shrink-0">
-              {([
-                { cols: 3 as const, icon: <LayoutGrid /> },
-                { cols: 6 as const, icon: <Grid3x3 /> },
-                { cols: 9 as const, icon: <Grid3x3 /> },
-              ]).map(({ cols, icon }) => (
-                <Button
-                  key={cols}
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setGridCols(cols)}
-                  title={`${cols} columns`}
-                  aria-label={`${cols} columns`}
-                  aria-pressed={gridCols === cols}
-                  className={`rounded-lg ${gridCols === cols ? 'bg-primary-subtle text-primary hover:bg-primary-subtle' : 'text-muted-foreground'}`}
-                >
-                  {icon}
-                </Button>
-              ))}
-            </div>
+            <GridDensityControl cols={gridCols} onChange={setGridCols} />
 
             {filteredProducts.length > 0 && (
               <span className="hidden sm:block shrink-0 text-xs text-muted-foreground">

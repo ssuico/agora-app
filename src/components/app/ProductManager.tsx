@@ -37,6 +37,7 @@ import { Activity, AlertCircle, AlertTriangle, CalendarClock, Check, ChevronLeft
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
+import { useGridCols, type GridCols } from '@/lib/grid-cols';
 import { LocalDateTimeField } from './LocalDateTimeField';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
@@ -563,8 +564,6 @@ function ProductManagerInventoryReport({
 // Realtime Stocks — live product stock overview with WebSocket updates
 // ---------------------------------------------------------------------------
 
-type GridCols = 3 | 6 | 9;
-
 interface RtProduct {
   _id: string;
   name: string;
@@ -595,7 +594,7 @@ function RealtimeStocksImage({ src, className }: { src?: string; className?: str
 function RealtimeStocks({ storeId }: { storeId: string }) {
   const [products, setProducts] = useState<RtProduct[]>([]);
   const [loading, setLoading] = useState(true);
-  const [cols, setCols] = useState<GridCols>(6);
+  const [cols, setCols] = useGridCols(6);
   const [search, setSearch] = useState('');
   const flashSet = useRef<Set<string>>(new Set());
   const [, forceRender] = useState(0);
