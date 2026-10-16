@@ -17,6 +17,7 @@ import { isEmailVerificationEnabled } from './config/authFeatures.js';
 import { connectDB } from './config/db.js';
 import { app } from './app.js';
 import { verifyMailTransport } from './services/mailer.js';
+import { startStoreDayCloseScheduler } from './services/storeDayClose.js';
 import { initSocket } from './socket.js';
 
 const PORT = Number(process.env.PORT) || 3001;
@@ -41,6 +42,7 @@ connectDB()
 
     const httpServer = createServer(app);
     initSocket(httpServer);
+    startStoreDayCloseScheduler();
 
     httpServer.listen(PORT, HOST, () => {
       console.log(
