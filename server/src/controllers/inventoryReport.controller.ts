@@ -96,7 +96,7 @@ async function buildExcelBuffer(dateStr: string, products: ReportProduct[]): Pro
   sheet.columns = [
     { header: 'Product', key: 'productName', width: 24 },
     { header: 'Seller', key: 'sellerName', width: 20 },
-    { header: 'Notes', key: 'notes', width: 30 },
+    { header: 'Description', key: 'notes', width: 30 },
     { header: 'Type', key: 'type', width: 14 },
     { header: 'Cost', key: 'costPrice', width: 12 },
     { header: 'Selling', key: 'sellingPrice', width: 12 },
