@@ -46,6 +46,7 @@ interface Product {
   sellingPrice: number;
   discountPrice?: number | null;
   stockQuantity: number;
+  notes?: string;
 }
 
 interface CartItem {
@@ -155,6 +156,28 @@ interface PreOrderListing {
   preOrderStatus: 'pending' | 'ready';
   totalUnits: number;
   customerCount: number;
+}
+
+function ProductDescription({
+  text,
+  density = 'full',
+}: {
+  text?: string;
+  density?: 'full' | 'compact' | 'mini' | 'dialog';
+}) {
+  const description = text?.trim();
+  if (!description) return null;
+  const clamp =
+    density === 'dialog'
+      ? 'text-sm'
+      : density === 'mini'
+        ? 'line-clamp-2 text-[10px]'
+        : density === 'compact'
+          ? 'line-clamp-2 text-xs'
+          : 'line-clamp-3 text-sm';
+  return (
+    <p className={`whitespace-pre-wrap leading-snug text-foreground ${clamp}`}>{description}</p>
+  );
 }
 
 function preOrderPrice(product: Pick<PreOrderListing, 'sellingPrice' | 'discountPrice'>): number {
@@ -372,6 +395,7 @@ function PreOrderCatalog({
                   <h3 className={`font-semibold ${isMini ? 'text-[10px] line-clamp-1' : isCompact ? 'text-xs line-clamp-1' : 'text-sm line-clamp-2 leading-snug'}`}>
                     {product.name}
                   </h3>
+                  <ProductDescription text={product.notes} density={isMini ? 'mini' : isCompact ? 'compact' : 'full'} />
                   <div className="flex items-baseline gap-1">
                     <span className={`font-bold tabular-nums ${isMini ? 'text-[10px]' : isCompact ? 'text-sm' : 'text-xl'}`}>{fmt(price)}</span>
                     {discounted && !isMini && (
@@ -669,6 +693,7 @@ function ProductDetailDialog({ product, open, onOpenChange, inCart, onAddToCart,
                 <DialogTitle className="text-2xl font-bold leading-snug">{product.name}</DialogTitle>
                 <DialogDescription className="sr-only">Product details and reviews</DialogDescription>
               </DialogHeader>
+              <ProductDescription text={product.notes} density="dialog" />
 
               {/* Price */}
               <div className="flex items-end gap-3">
@@ -1521,6 +1546,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
                           {product.name}
                         </h3>
                       </button>
+                      <ProductDescription text={product.notes} density={isMini ? 'mini' : isCompact ? 'compact' : 'full'} />
 
                       {/* Stars (normal + compact) */}
                       {!isMini && rating && rating.totalCount > 0 && (
@@ -1692,6 +1718,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
           </DialogHeader>
           {preOrderTarget && (
             <div className="flex flex-col gap-4">
+              <ProductDescription text={preOrderTarget.notes} density="dialog" />
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Price</span>
                 <span className="font-semibold tabular-nums">{fmt(preOrderPrice(preOrderTarget))}</span>
