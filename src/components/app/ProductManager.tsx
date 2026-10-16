@@ -1961,8 +1961,8 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
 
   return (
     <TooltipProvider>
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+    <div className="flex h-full min-h-0 flex-col gap-6">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
           <p className="text-sm text-muted-foreground">Manage daily inventory and product catalog</p>
@@ -2009,6 +2009,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         )}
       </div>
 
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto">
       <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as MainTab)}>
         <TabsList>
           <TabsTrigger value="products">Inventory</TabsTrigger>
@@ -3012,6 +3013,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
     </TooltipProvider>
   );
