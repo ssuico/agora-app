@@ -116,8 +116,12 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         const openListing = await PreOrderListing.findOne({
           productId: product._id,
           unlistedAt: null,
+          source: { $ne: 'inventory' },
         }).session(session);
-        const anyListing = await PreOrderListing.exists({ productId: product._id }).session(session);
+        const anyListing = await PreOrderListing.exists({
+          productId: product._id,
+          source: { $ne: 'inventory' },
+        }).session(session);
         if (anyListing && !openListing) {
           throw new Error(`"${product.name}" is no longer listed for pre-order`);
         }

@@ -22,6 +22,14 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -145,7 +153,10 @@ function formatEstDateTime(value?: string | null): string {
 interface PreOrderHistoryItem extends PreOrderProduct {
   timesListed: number;
   lastListedAt?: string | null;
+  lastListedDate?: string | null;
   unlistedAt?: string | null;
+  source?: 'inventory' | 'preorder';
+  status?: 'listed' | 'unlisted';
 }
 
 function ProductImage({ src, className }: { src?: string; className?: string }) {
@@ -198,6 +209,8 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [unlistTarget, setUnlistTarget] = useState<PreOrderProduct | null>(null);
   const [relistTarget, setRelistTarget] = useState<PreOrderHistoryItem | null>(null);
+  const [relistDestination, setRelistDestination] = useState<'inventory' | 'preorder'>('preorder');
+  const [relistQty, setRelistQty] = useState('');
   const [relistClosesAt, setRelistClosesAt] = useState('');
   const [relistExpected, setRelistExpected] = useState('');
   const [relistSaving, setRelistSaving] = useState(false);
@@ -398,34 +411,55 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
 
   const openRelist = (product: PreOrderHistoryItem) => {
     setRelistTarget(product);
+    setRelistDestination('preorder');
+    setRelistQty('');
     setRelistClosesAt('');
     setRelistExpected(toLocalDateTimeInput(product.preOrderExpectedDate));
   };
 
   const confirmRelist = async () => {
     if (!relistTarget) return;
-    if (!relistClosesAt) {
+    const asInventory = relistDestination === 'inventory';
+    const qty = parseInt(relistQty, 10);
+    if (asInventory && (!qty || qty <= 0)) {
+      toast.error('Enter a valid quantity');
+      return;
+    }
+    if (!asInventory && !relistClosesAt) {
       toast.error('Set the date and time when pre-orders close');
       return;
     }
     setRelistSaving(true);
     try {
-      const res = await fetch(`/api/preorders/${relistTarget._id}/relist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          preOrderClosesAt: localDateTimeToIso(relistClosesAt),
-          preOrderExpectedDate: relistExpected ? localDateTimeToIso(relistExpected) : null,
-        }),
-      });
+      const res = asInventory
+        ? await fetch('/api/inventory/relist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              productId: relistTarget._id,
+              storeId,
+              quantity: qty,
+              costPrice: relistTarget.costPrice,
+              sellingPrice: relistTarget.sellingPrice,
+              discountPrice: relistTarget.discountPrice ?? null,
+            }),
+          })
+        : await fetch(`/api/preorders/${relistTarget._id}/relist`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              preOrderClosesAt: localDateTimeToIso(relistClosesAt),
+              preOrderExpectedDate: relistExpected ? localDateTimeToIso(relistExpected) : null,
+            }),
+          });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error((data as { message?: string }).message ?? 'Could not relist');
         return;
       }
-      toast.success('Pre-order listed again');
+      toast.success(asInventory ? 'Listed in inventory' : 'Listed as a pre-order');
       setRelistTarget(null);
-      setPageTab('current');
+      setPageTab(asInventory ? 'history' : 'current');
       await Promise.all([fetchProducts(), fetchHistory()]);
     } catch {
       toast.error('Could not relist');
@@ -502,6 +536,8 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
                 <thead>
                   <tr>
                     <th className="px-4 py-3 text-left font-semibold">Product</th>
+                    <th className="px-4 py-3 text-left font-semibold">Listing</th>
+                    <th className="px-4 py-3 text-left font-semibold">Status</th>
                     <th className="px-4 py-3 text-right font-semibold">Price</th>
                     <th className="px-4 py-3 text-left font-semibold">Last listed</th>
                     <th className="px-4 py-3 text-left font-semibold">Unlisted</th>
@@ -513,50 +549,73 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
                 <tbody>
                   {historyLoading ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center"><Spinner className="mx-auto" /></td>
+                      <td colSpan={9} className="px-4 py-12 text-center"><Spinner className="mx-auto" /></td>
                     </tr>
                   ) : history.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12">
+                      <td colSpan={9} className="px-4 py-12">
                         <Empty className="border-0">
                           <EmptyHeader>
                             <EmptyMedia variant="icon"><History /></EmptyMedia>
-                            <EmptyTitle>No unlisted pre-orders</EmptyTitle>
-                            <EmptyDescription>Unlist a current pre-order to keep it here and list it again later.</EmptyDescription>
+                            <EmptyTitle>No listings yet</EmptyTitle>
+                            <EmptyDescription>Inventory and pre-order listings show up here as soon as a product is listed.</EmptyDescription>
                           </EmptyHeader>
                         </Empty>
                       </td>
                     </tr>
-                  ) : history.map((product) => (
-                    <tr key={product._id}>
+                  ) : history.map((product) => {
+                    const stillListed = history.some((row) => row._id === product._id && row.status === 'listed');
+                    return (
+                    <tr key={`${product._id}-${product.source ?? 'preorder'}`}>
                       <td className="px-4 py-3 font-medium">{product.name}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant={product.source === 'inventory' ? 'secondary' : 'warning'}>
+                          {product.source === 'inventory' ? 'Inventory' : 'Pre-order'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={product.status === 'listed' ? 'success' : 'outline'}>
+                          {product.status === 'listed' ? 'Listed' : 'Unlisted'}
+                        </Badge>
+                      </td>
                       <td className="px-4 py-3 text-right tabular-nums">{fmt(effectivePrice(product))}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">{formatEstDateTime(product.lastListedAt)}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">{formatEstDateTime(product.unlistedAt)}</td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                        {product.status === 'listed' ? '—' : formatEstDateTime(product.unlistedAt)}
+                      </td>
                       <td className="px-4 py-3 text-right tabular-nums">{product.timesListed}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{product.totalUnits}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {product.source === 'inventory' ? '—' : product.totalUnits}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1.5">
-                          <Button variant="outline" size="sm" onClick={() => openOrders(product)}>
-                            <Users data-icon="inline-start" />
-                            View Orders
-                          </Button>
-                          <Button variant="default" size="sm" onClick={() => openRelist(product)}>
-                            <RotateCcw data-icon="inline-start" />
-                            Relist
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => setDeleteTarget(product)}
-                          >
-                            <Trash2 />
-                          </Button>
+                          {product.source !== 'inventory' && (
+                            <Button variant="outline" size="sm" onClick={() => openOrders(product)}>
+                              <Users data-icon="inline-start" />
+                              View Orders
+                            </Button>
+                          )}
+                          {product.status !== 'listed' && (
+                            <Button variant="default" size="sm" onClick={() => openRelist(product)}>
+                              <RotateCcw data-icon="inline-start" />
+                              Relist
+                            </Button>
+                          )}
+                          {!stillListed && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => setDeleteTarget(product)}
+                            >
+                              <Trash2 />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -906,10 +965,35 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
           <DialogHeader>
             <DialogTitle>Relist {relistTarget?.name}</DialogTitle>
             <DialogDescription>
-              Set a new local deadline. Ordering opens again, and the product goes back to pending.
+              Choose where this product is listed again. Inventory needs a starting quantity. Pre-order needs a new local deadline and goes back to pending. Stock is not carried into a pre-order.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>List in</Label>
+              <Select value={relistDestination} onValueChange={(value) => setRelistDestination(value as 'inventory' | 'preorder')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="inventory">Inventory</SelectItem>
+                    <SelectItem value="preorder">Pre-order</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            {relistDestination === 'inventory' ? (
+              <div className="flex flex-col gap-1.5">
+                <Label>Quantity</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={relistQty}
+                  onChange={(event) => setRelistQty(event.target.value)}
+                  placeholder="Starting stock"
+                />
+              </div>
+            ) : (
+              <>
             <div className="flex flex-col gap-1.5">
               <Label>Orders close</Label>
               <LocalDateTimeField
@@ -926,10 +1010,15 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
                 onChange={setRelistExpected}
               />
             </div>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRelistTarget(null)}>Cancel</Button>
-            <Button onClick={confirmRelist} disabled={relistSaving}>
+            <Button
+              onClick={confirmRelist}
+              disabled={relistSaving || (relistDestination === 'inventory' ? !relistQty.trim() : !relistClosesAt)}
+            >
               {relistSaving ? <Spinner data-icon="inline-start" /> : <RotateCcw data-icon="inline-start" />}
               Relist
             </Button>

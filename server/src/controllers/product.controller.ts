@@ -154,6 +154,7 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
       await PreOrderListing.create({
         productId: product._id,
         storeId: product.storeId,
+        source: 'preorder',
         listedAt: new Date(),
         unlistedAt: null,
       });
@@ -167,6 +168,13 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
         initialStock: product.stockQuantity,
         restock: 0,
       }).catch(() => {});
+      await PreOrderListing.create({
+        productId: product._id,
+        storeId: product.storeId,
+        source: 'inventory',
+        listedAt: new Date(),
+        unlistedAt: null,
+      });
     }
 
     res.status(201).json(product);

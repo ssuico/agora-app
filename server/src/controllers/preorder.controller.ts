@@ -1,9 +1,12 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
+import { InventoryRecord } from '../models/InventoryRecord.js';
 import { PreOrderListing } from '../models/PreOrderListing.js';
 import { Product } from '../models/Product.js';
 import { getPreOrderDisplayStatus, Transaction } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
+import { toLocalDateStr } from '../config/timezone.js';
+import { sharedListingHistory } from '../services/listingHistory.js';
 import { cutoffError, parseExpectedDate, parsePreOrderClosesAt } from '../services/preorderWindow.js';
 import { UserRole } from '../types/index.js';
 
@@ -171,7 +174,7 @@ type ListingStat = { timesListed: number; lastListedAt: Date; unlistedAt: Date |
 
 async function listingIndex(productIds: mongoose.Types.ObjectId[]) {
   const listings = productIds.length
-    ? await PreOrderListing.find({ productId: { $in: productIds } }).lean()
+    ? await PreOrderListing.find({ productId: { $in: productIds }, source: { $ne: 'inventory' } }).lean()
     : [];
   const openIds = new Set<string>();
   const knownIds = new Set<string>();
@@ -228,29 +231,8 @@ export const getPreOrderHistory = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    const products = await Product.find({ storeId, productType: 'preorder' }).sort({ createdAt: -1 }).lean();
-    const { openIds, knownIds, stats } = await listingIndex(products.map((product) => product._id));
-    const history = products.filter((product) => {
-      const id = String(product._id);
-      return knownIds.has(id) && !openIds.has(id);
-    });
-    const demand = await demandForProducts(history.map((product) => product._id));
-
-    res.json(
-      history.map((product) => {
-        const id = String(product._id);
-        const stat = stats.get(id);
-        const summary = demand.get(id) ?? { totalUnits: 0, customerCount: 0 };
-        return {
-          ...product,
-          totalUnits: summary.totalUnits,
-          customerCount: summary.customerCount,
-          timesListed: stat?.timesListed ?? 0,
-          lastListedAt: stat?.lastListedAt ?? null,
-          unlistedAt: stat?.unlistedAt ?? null,
-        };
-      })
-    );
+    const history = await sharedListingHistory(storeId);
+    res.json(history);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
   }
@@ -265,12 +247,19 @@ export const unlistPreOrder = async (req: Request, res: Response): Promise<void>
     }
     if (!managerCanAccess(req, String(product.storeId), res)) return;
 
-    const open = await PreOrderListing.findOne({ productId: product._id, unlistedAt: null });
+    const open = await PreOrderListing.findOne({
+      productId: product._id,
+      unlistedAt: null,
+      source: { $ne: 'inventory' },
+    });
     if (open) {
       open.unlistedAt = new Date();
       await open.save();
     } else {
-      const anyListing = await PreOrderListing.exists({ productId: product._id });
+      const anyListing = await PreOrderListing.exists({
+        productId: product._id,
+        source: { $ne: 'inventory' },
+      });
       if (anyListing) {
         res.status(400).json({ message: 'This pre-order is already unlisted' });
         return;
@@ -279,6 +268,7 @@ export const unlistPreOrder = async (req: Request, res: Response): Promise<void>
       await PreOrderListing.create({
         productId: product._id,
         storeId: product.storeId,
+        source: 'preorder',
         listedAt: createdAt instanceof Date ? createdAt : new Date(),
         unlistedAt: new Date(),
       });
@@ -295,13 +285,23 @@ export const unlistPreOrder = async (req: Request, res: Response): Promise<void>
 export const relistPreOrder = async (req: Request, res: Response): Promise<void> => {
   try {
     const product = await Product.findById(req.params.productId);
-    if (!product || product.productType !== 'preorder') {
-      res.status(404).json({ message: 'Pre-order product not found' });
+    if (!product) {
+      res.status(404).json({ message: 'Product not found' });
       return;
     }
     if (!managerCanAccess(req, String(product.storeId), res)) return;
 
-    const alreadyListed = await PreOrderListing.findOne({ productId: product._id, unlistedAt: null }).lean();
+    const today = new Date(`${toLocalDateStr(new Date())}T00:00:00.000Z`);
+    const inInventory = await InventoryRecord.exists({ productId: product._id, date: today });
+    if (inInventory) {
+      res.status(409).json({ message: 'This product is still in today\'s inventory. Move it to pre-order from the inventory list.' });
+      return;
+    }
+    const alreadyListed = await PreOrderListing.findOne({
+      productId: product._id,
+      unlistedAt: null,
+      source: { $ne: 'inventory' },
+    }).lean();
     if (alreadyListed) {
       res.status(409).json({ message: 'This pre-order is already listed' });
       return;
@@ -312,9 +312,7 @@ export const relistPreOrder = async (req: Request, res: Response): Promise<void>
       res.status(400).json({ message: closes.message });
       return;
     }
-    const expected = parseExpectedDate(
-      req.body.preOrderExpectedDate === undefined ? product.preOrderExpectedDate : req.body.preOrderExpectedDate
-    );
+    const expected = parseExpectedDate(req.body.preOrderExpectedDate);
     if (!expected.ok) {
       res.status(400).json({ message: expected.message });
       return;
@@ -325,6 +323,13 @@ export const relistPreOrder = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    await PreOrderListing.updateMany(
+      { productId: product._id, source: 'inventory', unlistedAt: null },
+      { $set: { unlistedAt: new Date() } }
+    );
+
+    product.productType = 'preorder';
+    product.stockQuantity = 0;
     product.preOrderClosesAt = closes.date;
     product.preOrderExpectedDate = expected.date;
     product.preOrderOpen = true;
@@ -333,6 +338,7 @@ export const relistPreOrder = async (req: Request, res: Response): Promise<void>
     await PreOrderListing.create({
       productId: product._id,
       storeId: product.storeId,
+      source: 'preorder',
       listedAt: new Date(),
       unlistedAt: null,
     });

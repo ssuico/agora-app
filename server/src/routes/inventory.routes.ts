@@ -4,6 +4,7 @@ import {
   getDailyInventory,
   getListingHistory,
   getStoreClosingStatus,
+  moveToPreOrder,
   reduceStock,
   relistProduct,
   reopenStore,
@@ -57,6 +58,12 @@ inventoryRoutes.get(
   '/listing-history',
   authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
   getListingHistory
+);
+
+inventoryRoutes.post(
+  '/move-to-preorder',
+  authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  moveToPreOrder
 );
 
 inventoryRoutes.post(

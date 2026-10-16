@@ -33,10 +33,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Activity, AlertCircle, AlertTriangle, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Lock, LockOpen, NotepadText, Package, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
+import { Activity, AlertCircle, AlertTriangle, CalendarClock, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Lock, LockOpen, NotepadText, Package, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { getSocket } from '@/lib/socket';
+import { LocalDateTimeField } from './LocalDateTimeField';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-pagination';
 
@@ -83,6 +83,7 @@ interface StoreClosingData {
   storeId: string;
   date: string;
   closedAt: string;
+  autoClosed?: boolean;
   carryOverSelections: Array<{
     productId: string;
     carryOver: boolean;
@@ -144,6 +145,9 @@ interface HistoryProduct {
   notes: string;
   lastListedDate: string | null;
   timesListed: number;
+  source?: 'inventory' | 'preorder';
+  status?: 'listed' | 'unlisted';
+  unlistedAt?: string | null;
 }
 
 interface ProductManagerProps {
@@ -887,7 +891,7 @@ function ListingHistoryPanel({
           />
         </div>
         <span className="text-xs text-muted-foreground">
-          {filtered.length} product{filtered.length !== 1 ? 's' : ''} not in today&apos;s inventory
+          {filtered.length} listing{filtered.length !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -900,7 +904,7 @@ function ListingHistoryPanel({
           <EmptyHeader>
             <EmptyDescription>
               {historyProducts.length === 0
-                ? 'All products are already listed in today\u2019s inventory.'
+                ? 'Listings show up here as soon as a product is in inventory or on pre-order.'
                 : 'No products match your search.'}
             </EmptyDescription>
           </EmptyHeader>
@@ -913,6 +917,8 @@ function ListingHistoryPanel({
               <thead>
                 <tr>
                   <th>Product</th>
+                  <th>Listing</th>
+                  <th>Status</th>
                   <th>Seller</th>
                   <th>Type</th>
                   <th>Cost</th>
@@ -924,8 +930,10 @@ function ListingHistoryPanel({
                 </tr>
               </thead>
               <tbody>
-                {paged.map((p) => (
-                  <tr key={p._id}>
+                {paged.map((p) => {
+                  const stillListed = historyProducts.some((row) => row._id === p._id && row.status === 'listed');
+                  return (
+                  <tr key={`${p._id}-${p.source ?? 'inventory'}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         {p.images.length > 0 ? (
@@ -941,6 +949,16 @@ function ListingHistoryPanel({
                         )}
                         <span className="font-medium">{p.name}</span>
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={p.source === 'preorder' ? 'warning' : 'secondary'}>
+                        {p.source === 'preorder' ? 'Pre-order' : 'Inventory'}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={p.status === 'listed' ? 'success' : 'outline'}>
+                        {p.status === 'listed' ? 'Listed' : 'Unlisted'}
+                      </Badge>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground text-sm">
                       {p.sellerName || '—'}
@@ -969,6 +987,7 @@ function ListingHistoryPanel({
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        {p.status !== 'listed' && (
                         <Button
                           size="sm"
                           variant="default"
@@ -977,6 +996,8 @@ function ListingHistoryPanel({
                           <RotateCcw data-icon="inline-start" />
                           Relist
                         </Button>
+                        )}
+                        {!stillListed && (
                         <Button
                           size="sm"
                           variant="ghost"
@@ -986,10 +1007,12 @@ function ListingHistoryPanel({
                         >
                           <Trash2 />
                         </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1059,6 +1082,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   // Store closing state
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [closingStatus, setClosingStatus] = useState<StoreClosingData | null>(null);
+  const [priorDayAutoClosed, setPriorDayAutoClosed] = useState(false);
   const [closeSelections, setCloseSelections] = useState<Map<string, boolean>>(new Map());
   const [closeSubmitting, setCloseSubmitting] = useState(false);
   const [reopenSubmitting, setReopenSubmitting] = useState(false);
@@ -1074,11 +1098,20 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const [historySearch, setHistorySearch] = useState('');
   const [historyPage, setHistoryPage] = useState(1);
   const [relistTarget, setRelistTarget] = useState<HistoryProduct | null>(null);
+  const [relistDestination, setRelistDestination] = useState<'inventory' | 'preorder'>('inventory');
   const [relistQty, setRelistQty] = useState('');
   const [relistCost, setRelistCost] = useState('');
   const [relistPrice, setRelistPrice] = useState('');
   const [relistDiscount, setRelistDiscount] = useState('');
+  const [relistClosesAt, setRelistClosesAt] = useState('');
+  const [relistExpected, setRelistExpected] = useState('');
   const [relistSubmitting, setRelistSubmitting] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [moveIds, setMoveIds] = useState<string[]>([]);
+  const [moveClosesAt, setMoveClosesAt] = useState('');
+  const [moveExpected, setMoveExpected] = useState('');
+  const [moveSaving, setMoveSaving] = useState(false);
 
   const [dupPromptProducts, setDupPromptProducts] = useState<Product[]>([]);
   const [dupPromptOpen, setDupPromptOpen] = useState(false);
@@ -1125,6 +1158,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     const eid = sid ?? effectiveStoreId;
     if (!eid) {
       setClosingStatus(null);
+      setPriorDayAutoClosed(false);
       return;
     }
     try {
@@ -1138,6 +1172,26 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       }
     } catch {
       setClosingStatus(null);
+    }
+
+    if (date !== todayStr) {
+      setPriorDayAutoClosed(false);
+      return;
+    }
+
+    try {
+      const [year, month, day] = date.split('-').map(Number);
+      const previous = new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10);
+      const prevParams = new URLSearchParams({ storeId: eid, date: previous });
+      const prevRes = await fetch(`/api/inventory/close-status?${prevParams}`);
+      if (!prevRes.ok) {
+        setPriorDayAutoClosed(false);
+        return;
+      }
+      const prevData = (await prevRes.json()) as StoreClosingData | null;
+      setPriorDayAutoClosed(Boolean(prevData?.autoClosed));
+    } catch {
+      setPriorDayAutoClosed(false);
     }
   };
 
@@ -1167,41 +1221,55 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
 
   const handleRelist = async () => {
     if (!relistTarget || !effectiveStoreId) return;
+    const asPreOrder = relistDestination === 'preorder';
+    if (asPreOrder && !relistClosesAt) {
+      toast.error('Set the date and time when pre-orders close');
+      return;
+    }
     const qty = parseInt(relistQty, 10);
-    if (!qty || qty <= 0) {
+    if (!asPreOrder && (!qty || qty <= 0)) {
       toast.error('Enter a valid quantity');
       return;
     }
     setRelistSubmitting(true);
     try {
-      const body: Record<string, unknown> = {
-        productId: relistTarget._id,
-        storeId: effectiveStoreId,
-        quantity: qty,
-      };
-      const cost = parseFloat(relistCost);
-      if (Number.isFinite(cost) && cost >= 0) body.costPrice = cost;
-      const price = parseFloat(relistPrice);
-      if (Number.isFinite(price) && price >= 0) body.sellingPrice = price;
-      const disc = relistDiscount.trim() === '' ? null : parseFloat(relistDiscount);
-      if (disc !== null && Number.isFinite(disc) && disc >= 0) {
-        body.discountPrice = disc;
-      } else if (disc === null || relistDiscount.trim() === '') {
-        body.discountPrice = null;
-      }
-
-      const res = await fetch('/api/inventory/relist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const res = asPreOrder
+        ? await fetch(`/api/preorders/${relistTarget._id}/relist`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              preOrderClosesAt: new Date(relistClosesAt).toISOString(),
+              preOrderExpectedDate: relistExpected ? new Date(relistExpected).toISOString() : null,
+            }),
+          })
+        : await fetch('/api/inventory/relist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify((() => {
+              const body: Record<string, unknown> = {
+                productId: relistTarget._id,
+                storeId: effectiveStoreId,
+                quantity: qty,
+              };
+              const cost = parseFloat(relistCost);
+              if (Number.isFinite(cost) && cost >= 0) body.costPrice = cost;
+              const price = parseFloat(relistPrice);
+              if (Number.isFinite(price) && price >= 0) body.sellingPrice = price;
+              const disc = relistDiscount.trim() === '' ? null : parseFloat(relistDiscount);
+              if (disc !== null && Number.isFinite(disc) && disc >= 0) body.discountPrice = disc;
+              else body.discountPrice = null;
+              return body;
+            })()),
+          });
       if (res.ok) {
-        toast.success(`${relistTarget.name} relisted successfully`);
+        toast.success(`${relistTarget.name} relisted as ${asPreOrder ? 'a pre-order' : 'inventory'}`);
         setRelistTarget(null);
         setRelistQty('');
         setRelistCost('');
         setRelistPrice('');
         setRelistDiscount('');
+        setRelistClosesAt('');
+        setRelistExpected('');
         fetchListingHistory();
         refreshData();
       } else {
@@ -1212,6 +1280,42 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       toast.error('Failed to relist product');
     } finally {
       setRelistSubmitting(false);
+    }
+  };
+
+  const handleMoveToPreOrder = async () => {
+    if (!effectiveStoreId || moveIds.length === 0) return;
+    if (!moveClosesAt) {
+      toast.error('Set the date and time when pre-orders close');
+      return;
+    }
+    setMoveSaving(true);
+    try {
+      const res = await fetch('/api/inventory/move-to-preorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeId: effectiveStoreId,
+          productIds: moveIds,
+          preOrderClosesAt: new Date(moveClosesAt).toISOString(),
+          preOrderExpectedDate: moveExpected ? new Date(moveExpected).toISOString() : null,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { message?: string; moved?: number };
+      if (!res.ok) {
+        toast.error(data.message ?? 'Could not move products');
+        return;
+      }
+      toast.success(`Moved ${data.moved ?? moveIds.length} product${(data.moved ?? moveIds.length) === 1 ? '' : 's'} to pre-order`);
+      setMoveOpen(false);
+      setSelectedProductIds([]);
+      setMoveIds([]);
+      refreshData();
+      fetchListingHistory();
+    } catch {
+      toast.error('Could not move products');
+    } finally {
+      setMoveSaving(false);
     }
   };
 
@@ -1232,6 +1336,9 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       timesListed: 0,
     };
     setRelistTarget(hp);
+    setRelistDestination('inventory');
+    setRelistClosesAt('');
+    setRelistExpected('');
     setRelistQty(dupPendingPayload ? String(dupPendingPayload.stockQuantity ?? '') : '');
     setRelistCost(dupPendingPayload ? String(dupPendingPayload.costPrice ?? product.costPrice) : String(product.costPrice));
     setRelistPrice(dupPendingPayload ? String(dupPendingPayload.sellingPrice ?? product.sellingPrice) : String(product.sellingPrice));
@@ -1861,6 +1968,30 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         </div>
         {isEditable && mainTab === 'products' && (
           <div className="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    variant={selectedProductIds.length > 0 ? 'default' : 'outline'}
+                    disabled={selectedProductIds.length === 0}
+                    onClick={() => {
+                      setMoveIds(selectedProductIds);
+                      setMoveClosesAt('');
+                      setMoveExpected('');
+                      setMoveOpen(true);
+                    }}
+                  >
+                    <CalendarClock data-icon="inline-start" />
+                    Move to pre-order{selectedProductIds.length > 0 ? ` (${selectedProductIds.length})` : ''}
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {selectedProductIds.length === 0
+                  ? 'Select products in the list. They share one expected availability and one time when orders close.'
+                  : 'Current stock is not carried over.'}
+              </TooltipContent>
+            </Tooltip>
             {effectiveStoreId && (
               <Button
                 variant={closingStatus ? 'outline' : 'default'}
@@ -1906,10 +2037,13 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           onPageChange={setHistoryPage}
           onRelist={(p) => {
             setRelistTarget(p);
+            setRelistDestination('inventory');
             setRelistQty('');
             setRelistCost(String(p.costPrice));
             setRelistPrice(String(p.sellingPrice));
             setRelistDiscount(p.discountPrice != null ? String(p.discountPrice) : '');
+            setRelistClosesAt('');
+            setRelistExpected('');
           }}
           onDelete={(p) => setHistoryDeleteTarget(p)}
         />
@@ -2029,12 +2163,36 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           </AlertDescription>
         </Alert>
       )}
+      {isEditable && (
+        <Alert>
+          <CalendarClock />
+          <AlertDescription>
+            Select products with the checkboxes, then use <strong className="text-foreground">Move to pre-order</strong>. They share one expected availability and one time when orders close. Stock on hand is not carried over.
+          </AlertDescription>
+        </Alert>
+      )}
+      {priorDayAutoClosed && selectedDate === todayStr && !closingStatus && (
+        <Alert>
+          <Info />
+          <AlertDescription>
+            The store will be closed automatically at the end of the day. Non-perishable items that still has stocks will be relisted the next day.
+          </AlertDescription>
+        </Alert>
+      )}
       {closingStatus && (
         <Alert>
           <Check />
           <AlertDescription className="flex w-full items-center gap-2">
             <span className="flex-1">
-              Store closed for <strong>{selectedDate}</strong>. Selected products have been carried over to the next day&apos;s inventory.
+              {closingStatus.autoClosed ? (
+                <>
+                  Store closed automatically at the end of <strong>{selectedDate}</strong>. Non-perishable items that still had stock were carried over to the next day.
+                </>
+              ) : (
+                <>
+                  Store closed for <strong>{selectedDate}</strong>. Selected products have been carried over to the next day&apos;s inventory.
+                </>
+              )}
             </span>
             {isEditable && (
               <Button
@@ -2058,6 +2216,18 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           <table className="data-table">
             <thead>
               <tr>
+                {isEditable && (
+                  <th className="w-10 text-center">
+                    <Checkbox
+                      checked={filteredAndSortedRows.length > 0 && filteredAndSortedRows.every((row) => selectedProductIds.includes(row.product._id))}
+                      onCheckedChange={(checked) => {
+                        const ids = filteredAndSortedRows.map((row) => row.product._id);
+                        setSelectedProductIds(checked ? ids : []);
+                      }}
+                      aria-label="Select all products"
+                    />
+                  </th>
+                )}
                 <th className="w-16 text-center">Image</th>
                 <th className="text-center">Name</th>
                 <th className="text-center">Seller</th>
@@ -2082,7 +2252,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               {filteredAndSortedRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={isScoped ? (isEditable ? 13 : 12) : (isEditable ? 14 : 13)}
+                    colSpan={(isScoped ? 12 : 13) + (isEditable ? 2 : 0)}
                     className="px-4 py-8 text-center text-muted-foreground"
                   >
                     {displayRows.length > 0
@@ -2097,6 +2267,19 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                   .slice((productsPage - 1) * ITEMS_PER_PAGE, productsPage * ITEMS_PER_PAGE)
                   .map(({ product, displayInitialStock, restock, sold, currentStock, isCarriedOver, carriedOverQty }) => (
                 <tr key={product._id}>
+                  {isEditable && (
+                    <td className="px-4 py-2 text-center">
+                      <Checkbox
+                        checked={selectedProductIds.includes(product._id)}
+                        onCheckedChange={(checked) => {
+                          setSelectedProductIds((current) =>
+                            checked ? [...current, product._id] : current.filter((id) => id !== product._id)
+                          );
+                        }}
+                        aria-label={`Select ${product.name}`}
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-2">
                     <ProductImage src={product.images?.[0]} className="size-10" />
                   </td>
@@ -2531,7 +2714,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           <DialogHeader>
             <DialogTitle>{closingStatus ? 'Edit Store Closing' : 'Close Store'}</DialogTitle>
             <DialogDescription>
-              Select which products should carry over their stock to tomorrow. Non-perishable items are checked by default; perishable items are unchecked by default. Previously saved selections are preserved.
+              Select which products should carry over their stock to tomorrow. Non-perishable items are checked by default; perishable items are unchecked by default. Previously saved selections are preserved. If the store is still open when the day ends, it closes on its own and carries only non-perishable items that still have stock.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-1">
@@ -2680,13 +2863,43 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Move selected inventory into one pre-order window */}
+      <Dialog open={moveOpen} onOpenChange={setMoveOpen}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Move to pre-order</DialogTitle>
+            <DialogDescription>
+              {moveIds.length} product{moveIds.length === 1 ? '' : 's'} will leave today&apos;s inventory. Their current stock is not carried over. They share one expected availability and one time when orders close.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>Orders close</Label>
+              <LocalDateTimeField id="move-closes" value={moveClosesAt} onChange={setMoveClosesAt} />
+              <p className="text-xs text-muted-foreground">Customers cannot pre-order after this time. Times use your local clock.</p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Expected availability</Label>
+              <LocalDateTimeField id="move-expected" value={moveExpected} onChange={setMoveExpected} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setMoveOpen(false)} disabled={moveSaving}>Cancel</Button>
+            <Button onClick={handleMoveToPreOrder} disabled={moveSaving || !moveClosesAt}>
+              {moveSaving ? <Spinner data-icon="inline-start" /> : <CalendarClock data-icon="inline-start" />}
+              Move
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Relist Product dialog */}
       <Dialog open={!!relistTarget} onOpenChange={(open) => { if (!open) setRelistTarget(null); }}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Relist Product</DialogTitle>
             <DialogDescription>
-              Re-add <strong>{relistTarget?.name}</strong> to today&apos;s inventory. Set the quantity and optionally adjust cost &amp; pricing. Historical records remain unchanged.
+              Choose where <strong>{relistTarget?.name}</strong> is listed again. Inventory asks for a quantity. Pre-order uses one expected availability and one time when orders close, and stock is not carried over.
             </DialogDescription>
           </DialogHeader>
           {relistTarget && (
@@ -2697,6 +2910,32 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             </div>
           )}
           <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>List in</Label>
+              <Select value={relistDestination} onValueChange={(value) => setRelistDestination(value as 'inventory' | 'preorder')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="inventory">Inventory</SelectItem>
+                    <SelectItem value="preorder">Pre-order</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            {relistDestination === 'preorder' ? (
+              <>
+                <div className="flex flex-col gap-2">
+                  <Label>Orders close</Label>
+                  <LocalDateTimeField id="relist-closes" value={relistClosesAt} onChange={setRelistClosesAt} />
+                  <p className="text-xs text-muted-foreground">Customers cannot pre-order after this time. Times use your local clock.</p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label>Expected availability</Label>
+                  <LocalDateTimeField id="relist-expected" value={relistExpected} onChange={setRelistExpected} />
+                </div>
+              </>
+            ) : (
+            <>
             <div className="flex flex-col gap-2">
               <Label>Quantity <span className="text-destructive">*</span></Label>
               <Input
@@ -2751,10 +2990,12 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 </p>
               )}
             </div>
+            </>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setRelistTarget(null)}>Cancel</Button>
-            <Button onClick={handleRelist} disabled={relistSubmitting || !relistQty.trim()}>
+            <Button onClick={handleRelist} disabled={relistSubmitting || (relistDestination === 'inventory' ? !relistQty.trim() : !relistClosesAt)}>
               {relistSubmitting ? (
                 <>
                   <Spinner data-icon="inline-start" />

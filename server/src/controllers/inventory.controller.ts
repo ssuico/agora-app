@@ -1,51 +1,19 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
-import { localDayRange, toLocalDateStr } from '../config/timezone.js';
 import { InventoryRecord } from '../models/InventoryRecord.js';
+import { PreOrderListing } from '../models/PreOrderListing.js';
 import { Product, REGULAR_PRODUCT_FILTER } from '../models/Product.js';
+import { moveInventoryToPreOrder, sharedListingHistory } from '../services/listingHistory.js';
+import {
+  closeStoreDay,
+  computeSoldMap,
+  StoreDayCloseError,
+  toDateOnly,
+  todayInAppTz,
+} from '../services/storeDayClose.js';
 import { Store } from '../models/Store.js';
 import { StoreClosing } from '../models/StoreClosing.js';
-import { Transaction } from '../models/Transaction.js';
-import { TransactionItem } from '../models/TransactionItem.js';
 import { getIO } from '../socket.js';
-
-function toDateOnly(input: string | Date): Date {
-  const d = new Date(input);
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
-}
-
-function todayInAppTz(): Date {
-  return toDateOnly(toLocalDateStr(new Date()));
-}
-
-async function computeSoldMap(
-  storeId: string | mongoose.Types.ObjectId,
-  date: Date,
-  productIds: mongoose.Types.ObjectId[]
-): Promise<Map<string, number>> {
-  const { dayStart, dayEnd } = localDayRange(date);
-
-  const activeTxIds = await Transaction.find({
-    storeId,
-    orderStatus: { $ne: 'cancelled' },
-    createdAt: { $gte: dayStart, $lte: dayEnd },
-  })
-    .select('_id')
-    .lean();
-
-  const txIds = activeTxIds.map((t) => t._id);
-  if (txIds.length === 0) return new Map();
-
-  const soldAgg = await TransactionItem.aggregate([
-    { $match: { transactionId: { $in: txIds }, productId: { $in: productIds } } },
-    { $group: { _id: '$productId', totalSold: { $sum: '$quantity' } } },
-  ]);
-
-  return new Map<string, number>(
-    soldAgg.map((s) => [String(s._id), s.totalSold])
-  );
-}
 
 // ---------------------------------------------------------------------------
 // GET /api/inventory/daily
@@ -297,103 +265,20 @@ export const closeStore = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const date = toDateOnly(dateStr);
+    const result = await closeStoreDay({
+      storeId,
+      date: toDateOnly(dateStr),
+      mode: 'manual',
+      selections,
+      closedBy: req.user!.userId,
+    });
 
-    const products = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
-    if (products.length === 0) {
-      res.status(400).json({ message: 'No products found for this store' });
+    res.json(result.closing);
+  } catch (err) {
+    if (err instanceof StoreDayCloseError) {
+      res.status(err.status).json({ message: err.message });
       return;
     }
-
-    const productIds = products.map((p) => p._id);
-
-    // Fetch today's records and compute sold to derive current stock
-    const records = await InventoryRecord.find({
-      productId: { $in: productIds },
-      date,
-    }).lean();
-
-    const soldMap = await computeSoldMap(storeId, date, productIds);
-
-    const recordMap = new Map(records.map((r) => [String(r.productId), r]));
-    const selectionMap = new Map(selections.map((s) => [s.productId, s.carryOver]));
-
-    // Build carry-over selections — only for products that have an inventory
-    // record for the closing date. Products without a record were never part
-    // of this day's inventory and must not be carried forward.
-    const carryOverSelections = products
-      .filter((product) => recordMap.has(String(product._id)))
-      .map((product) => {
-        const pid = String(product._id);
-        const rec = recordMap.get(pid)!;
-        const sold = soldMap.get(pid) ?? 0;
-        const reduction = (rec as { reduction?: number }).reduction ?? 0;
-        const currentStock = Math.max(0, rec.initialStock + rec.restock - reduction - sold);
-
-        return {
-          productId: product._id,
-          carryOver: selectionMap.get(pid) ?? !product.isPerishable,
-          currentStock,
-        };
-      });
-
-    // Upsert the StoreClosing record
-    const closing = await StoreClosing.findOneAndUpdate(
-      { storeId, date },
-      {
-        storeId,
-        date,
-        closedBy: req.user!.userId,
-        closedAt: new Date(),
-        carryOverSelections,
-      },
-      { upsert: true, new: true }
-    );
-
-    // Create / update next-day InventoryRecords based solely on the manager's
-    // carry-over selection — quantity (including 0) does not affect eligibility.
-    const nextDay = new Date(date.getTime() + 24 * 60 * 60 * 1000);
-
-    const carried = carryOverSelections.filter((sel) => sel.carryOver);
-    const notCarried = carryOverSelections.filter((sel) => !sel.carryOver);
-
-    // Remove next-day records for unchecked items (only if they haven't been
-    // modified with restocks — same guard as reopen).
-    if (notCarried.length > 0) {
-      await InventoryRecord.deleteMany({
-        productId: { $in: notCarried.map((s) => s.productId) },
-        date: nextDay,
-        restock: 0,
-      });
-    }
-
-    const bulkOps = carried.map((sel) => ({
-      updateOne: {
-        filter: { productId: sel.productId, date: nextDay },
-        update: {
-          $set: {
-            storeId: new mongoose.Types.ObjectId(storeId),
-            initialStock: sel.currentStock,
-          },
-          $setOnInsert: { restock: 0 },
-        },
-        upsert: true,
-      },
-    }));
-
-    if (bulkOps.length > 0) {
-      await InventoryRecord.bulkWrite(bulkOps);
-    }
-
-    await Store.findByIdAndUpdate(storeId, { isOpen: false });
-
-    try {
-      const io = getIO();
-      io.to(`store:${storeId}`).emit('store:status-changed', { storeId, isOpen: false });
-    } catch { /* socket broadcast is non-critical */ }
-
-    res.json(closing);
-  } catch (err) {
     const message = err instanceof Error ? err.message : 'Server error';
     console.error('[closeStore]', message);
     res.status(500).json({ message });
@@ -485,81 +370,36 @@ export const getListingHistory = async (req: Request, res: Response): Promise<vo
       res.status(400).json({ message: 'storeId is required' });
       return;
     }
-
-    const today = todayInAppTz();
-
-    const products = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
-    if (products.length === 0) {
-      res.json([]);
-      return;
-    }
-
-    const productIds = products.map((p) => p._id);
-
-    const todayRecords = await InventoryRecord.find({
-      productId: { $in: productIds },
-      date: today,
-    })
-      .select('productId')
-      .lean();
-
-    const activeToday = new Set(todayRecords.map((r) => String(r.productId)));
-
-    const inactiveProducts = products.filter(
-      (p) => !activeToday.has(String(p._id))
-    );
-
-    if (inactiveProducts.length === 0) {
-      res.json([]);
-      return;
-    }
-
-    const inactiveIds = inactiveProducts.map((p) => p._id);
-
-    const [lastListedAgg, timesListedAgg] = await Promise.all([
-      InventoryRecord.aggregate([
-        { $match: { productId: { $in: inactiveIds } } },
-        { $group: { _id: '$productId', lastDate: { $max: '$date' } } },
-      ]),
-      InventoryRecord.aggregate([
-        { $match: { productId: { $in: inactiveIds } } },
-        { $group: { _id: '$productId', count: { $sum: 1 } } },
-      ]),
-    ]);
-
-    const lastListedMap = new Map<string, Date>(
-      lastListedAgg.map((r) => [String(r._id), r.lastDate])
-    );
-    const timesListedMap = new Map<string, number>(
-      timesListedAgg.map((r) => [String(r._id), r.count])
-    );
-
-    const result = inactiveProducts.map((p) => ({
-      _id: String(p._id),
-      name: p.name,
-      images: p.images ?? [],
-      costPrice: p.costPrice,
-      sellingPrice: p.sellingPrice,
-      discountPrice: (p as { discountPrice?: number | null }).discountPrice ?? null,
-      isPerishable: p.isPerishable ?? false,
-      sellerName: (p as { sellerName?: string }).sellerName ?? '',
-      notes: (p as { notes?: string }).notes ?? '',
-      lastListedDate: lastListedMap.get(String(p._id)) ?? null,
-      timesListed: timesListedMap.get(String(p._id)) ?? 0,
-    }));
-
-    result.sort((a, b) => {
-      if (!a.lastListedDate && !b.lastListedDate) return 0;
-      if (!a.lastListedDate) return 1;
-      if (!b.lastListedDate) return -1;
-      return b.lastListedDate.getTime() - a.lastListedDate.getTime();
-    });
-
-    res.json(result);
+    res.json(await sharedListingHistory(storeId));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Server error';
     console.error('[getListingHistory]', message);
     res.status(500).json({ message });
+  }
+};
+
+export const moveToPreOrder = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { storeId, productIds, preOrderClosesAt, preOrderExpectedDate } = req.body as {
+      storeId?: string;
+      productIds?: string[];
+      preOrderClosesAt?: unknown;
+      preOrderExpectedDate?: unknown;
+    };
+    if (!storeId || !Array.isArray(productIds)) {
+      res.status(400).json({ message: 'storeId and productIds are required' });
+      return;
+    }
+    const moved = await moveInventoryToPreOrder(storeId, productIds, preOrderClosesAt, preOrderExpectedDate);
+    try {
+      const io = getIO();
+      const updatedProducts = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
+      io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+    } catch { /* socket broadcast is non-critical */ }
+    res.json({ moved });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not move products';
+    res.status(400).json({ message });
   }
 };
 
@@ -590,8 +430,15 @@ export const relistProduct = async (req: Request, res: Response): Promise<void> 
       return;
     }
     if (product.productType === 'preorder') {
-      res.status(400).json({ message: 'Pre-order products are not part of inventory' });
-      return;
+      const openPreOrder = await PreOrderListing.findOne({
+        productId: product._id,
+        unlistedAt: null,
+        source: { $ne: 'inventory' },
+      }).lean();
+      if (openPreOrder) {
+        res.status(409).json({ message: 'Unlist this pre-order before listing it in inventory' });
+        return;
+      }
     }
 
     const today = todayInAppTz();
@@ -602,7 +449,11 @@ export const relistProduct = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const priceUpdate: Record<string, unknown> = { stockQuantity: quantity };
+    const priceUpdate: Record<string, unknown> = {
+      stockQuantity: quantity,
+      productType: 'regular',
+      preOrderOpen: false,
+    };
     if (typeof costPrice === 'number' && costPrice >= 0) {
       priceUpdate.costPrice = costPrice;
     }
@@ -613,6 +464,18 @@ export const relistProduct = async (req: Request, res: Response): Promise<void> 
       priceUpdate.discountPrice = discountPrice === null || discountPrice === 0 ? null : discountPrice;
     }
     await Product.findByIdAndUpdate(productId, { $set: priceUpdate });
+
+    await PreOrderListing.updateMany(
+      { productId, source: 'inventory', unlistedAt: null },
+      { $set: { unlistedAt: new Date() } }
+    );
+    await PreOrderListing.create({
+      productId: new mongoose.Types.ObjectId(productId),
+      storeId: new mongoose.Types.ObjectId(storeId),
+      source: 'inventory',
+      listedAt: new Date(),
+      unlistedAt: null,
+    });
 
     const record = await InventoryRecord.create({
       productId: new mongoose.Types.ObjectId(productId),
