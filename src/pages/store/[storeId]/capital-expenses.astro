@@ -1,0 +1,10 @@
+---
+import { StoreSheetManager } from '../../../components/app/StoreSheetManager';
+import AppLayout from '../../../layouts/AppLayout.astro';
+
+const { storeId } = Astro.params;
+---
+
+<AppLayout title="Capital & Expenses" storeId={storeId}>
+  <StoreSheetManager storeId={storeId!} client:load />
+</AppLayout>

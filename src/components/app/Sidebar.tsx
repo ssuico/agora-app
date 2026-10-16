@@ -5,6 +5,7 @@ import {
   MapPin,
   Package,
   QrCode,
+  Sheet,
   ShoppingCart,
   Store,
   Users,
@@ -82,6 +83,12 @@ function getNavItems(storeId?: string): NavItem[] {
       label: 'Payment Options',
       href: `${storePrefix}/payment-options`,
       icon: <QrCode className="size-4" />,
+      roles: ['store_manager'],
+    },
+    {
+      label: 'Capital & Expenses',
+      href: `${storePrefix}/capital-expenses`,
+      icon: <Sheet className="size-4" />,
       roles: ['store_manager'],
     },
   ];
