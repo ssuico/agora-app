@@ -6,7 +6,7 @@ import { Product } from '../models/Product.js';
 import { getPreOrderDisplayStatus, Transaction } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { toLocalDateStr } from '../config/timezone.js';
-import { sharedListingHistory } from '../services/listingHistory.js';
+import { retargetListings, sharedListingHistory } from '../services/listingHistory.js';
 import { cutoffError, parseExpectedDate, parsePreOrderClosesAt } from '../services/preorderWindow.js';
 import { UserRole } from '../types/index.js';
 
@@ -323,11 +323,6 @@ export const relistPreOrder = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    await PreOrderListing.updateMany(
-      { productId: product._id, source: 'inventory', unlistedAt: null },
-      { $set: { unlistedAt: new Date() } }
-    );
-
     product.productType = 'preorder';
     product.stockQuantity = 0;
     product.preOrderClosesAt = closes.date;
@@ -335,13 +330,7 @@ export const relistPreOrder = async (req: Request, res: Response): Promise<void>
     product.preOrderOpen = true;
     product.preOrderStatus = 'pending';
     await product.save();
-    await PreOrderListing.create({
-      productId: product._id,
-      storeId: product.storeId,
-      source: 'preorder',
-      listedAt: new Date(),
-      unlistedAt: null,
-    });
+    await retargetListings(product._id, product.storeId, 'preorder', 'relist');
 
     res.json(product);
   } catch (err) {

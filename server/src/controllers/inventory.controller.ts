@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { InventoryRecord } from '../models/InventoryRecord.js';
 import { PreOrderListing } from '../models/PreOrderListing.js';
 import { Product, REGULAR_PRODUCT_FILTER } from '../models/Product.js';
-import { moveInventoryToPreOrder, sharedListingHistory } from '../services/listingHistory.js';
+import { moveInventoryToPreOrder, retargetListings, sharedListingHistory } from '../services/listingHistory.js';
 import {
   closeStoreDay,
   computeSoldMap,
@@ -465,17 +465,7 @@ export const relistProduct = async (req: Request, res: Response): Promise<void> 
     }
     await Product.findByIdAndUpdate(productId, { $set: priceUpdate });
 
-    await PreOrderListing.updateMany(
-      { productId, source: 'inventory', unlistedAt: null },
-      { $set: { unlistedAt: new Date() } }
-    );
-    await PreOrderListing.create({
-      productId: new mongoose.Types.ObjectId(productId),
-      storeId: new mongoose.Types.ObjectId(storeId),
-      source: 'inventory',
-      listedAt: new Date(),
-      unlistedAt: null,
-    });
+    await retargetListings(productId, storeId, 'inventory', 'relist');
 
     const record = await InventoryRecord.create({
       productId: new mongoose.Types.ObjectId(productId),

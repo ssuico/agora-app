@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { backfillInventoryListingPeriods } from '../services/listingHistory.js';
+import { backfillInventoryListingPeriods, collapseDualListingSources } from '../services/listingHistory.js';
 
 // Stale indexes removed from schemas that must be dropped from existing collections.
 const STALE_INDEXES: Record<string, string[]> = {
@@ -124,5 +124,6 @@ export const connectDB = async (): Promise<void> => {
   await migrateOrderTypesToWalkIn();
   await repairActivityActorNames();
   await backfillInventoryListingPeriods();
+  await collapseDualListingSources();
   await backfillReportGeneratedAt();
 };

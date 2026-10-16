@@ -51,6 +51,93 @@ export async function backfillInventoryListingPeriods(): Promise<void> {
   console.log(`Inventory listing periods recorded: ${docs.length}`);
 }
 
+/**
+ * A product belongs to one catalog. Listings of the other source are removed
+ * when the current source already has records; otherwise those listings are
+ * relabeled. Extra open listings are closed so only one stays listed.
+ */
+export async function collapseDualListingSources(): Promise<void> {
+  const migrations = mongoose.connection.collection('migrations');
+  const key = '2026-10-17-single-listing-source';
+  if (await migrations.findOne({ key })) return;
+
+  const dual = await PreOrderListing.aggregate<{ _id: mongoose.Types.ObjectId }>([
+    { $addFields: { resolvedSource: { $ifNull: ['$source', 'preorder'] } } },
+    { $group: { _id: '$productId', sources: { $addToSet: '$resolvedSource' } } },
+    { $match: { sources: { $all: ['inventory', 'preorder'] } } },
+  ]);
+  const products = await Product.find({ _id: { $in: dual.map((row) => row._id) } }).select('_id productType').lean();
+  let removed = 0;
+  for (const product of products) {
+    const canonical: ListingSource = product.productType === 'preorder' ? 'preorder' : 'inventory';
+    const result = await PreOrderListing.deleteMany(
+      canonical === 'inventory'
+        ? { productId: product._id, source: { $ne: 'inventory' } }
+        : { productId: product._id, source: 'inventory' }
+    );
+    removed += result.deletedCount ?? 0;
+  }
+
+  const extraOpens = await PreOrderListing.aggregate<{ ids: mongoose.Types.ObjectId[] }>([
+    { $match: { unlistedAt: null } },
+    { $sort: { listedAt: -1 } },
+    { $group: { _id: '$productId', ids: { $push: '$_id' }, count: { $sum: 1 } } },
+    { $match: { count: { $gt: 1 } } },
+  ]);
+  for (const row of extraOpens) {
+    await PreOrderListing.updateMany(
+      { _id: { $in: row.ids.slice(1) } },
+      { $set: { unlistedAt: new Date() } }
+    );
+  }
+
+  await migrations.insertOne({ key, appliedAt: new Date() });
+  console.log(`Duplicate listing sources removed: ${removed}`);
+}
+
+/**
+ * Point every listing for a product at one source.
+ * `convert` keeps the current open listing (a move between catalogs).
+ * `relist` closes it and starts a new period, still under that one source.
+ */
+export async function retargetListings(
+  productId: mongoose.Types.ObjectId | string,
+  storeId: mongoose.Types.ObjectId | string,
+  source: ListingSource,
+  mode: 'convert' | 'relist',
+  session?: mongoose.ClientSession
+): Promise<void> {
+  const writeOpts = session ? { session } : undefined;
+  await PreOrderListing.updateMany({ productId }, { $set: { source } }, writeOpts);
+  if (mode === 'relist') {
+    await PreOrderListing.updateMany(
+      { productId, unlistedAt: null },
+      { $set: { unlistedAt: new Date() } },
+      writeOpts
+    );
+  }
+  const openQuery = PreOrderListing.find({ productId, unlistedAt: null }).sort({ listedAt: -1 });
+  if (session) openQuery.session(session);
+  const open = await openQuery;
+  if (open.length === 0) {
+    await PreOrderListing.create([{
+      productId,
+      storeId,
+      source,
+      listedAt: new Date(),
+      unlistedAt: null,
+    }], writeOpts);
+    return;
+  }
+  if (open.length > 1) {
+    await PreOrderListing.updateMany(
+      { _id: { $in: open.slice(1).map((row) => row._id) } },
+      { $set: { unlistedAt: new Date() } },
+      writeOpts
+    );
+  }
+}
+
 export interface SharedHistoryRow {
   _id: string;
   name: string;
@@ -99,53 +186,51 @@ export async function sharedListingHistory(storeId: string): Promise<SharedHisto
     const id = String(product._id);
     const periods = byProduct.get(id) ?? [];
     const summary = demand.get(id) ?? { totalUnits: 0, customerCount: 0 };
-    for (const source of ['inventory', 'preorder'] as const) {
-      const own = periods.filter((period) => listingSource(period.source) === source);
-      const stamp = (product as { createdAt?: unknown }).createdAt;
-      const createdAt = stamp instanceof Date ? stamp : new Date();
-      const legacyListed = own.length === 0 && (
-        source === 'inventory'
-          ? product.productType !== 'preorder' && activeToday.has(id)
-          : product.productType === 'preorder'
+    const source: ListingSource = product.productType === 'preorder' ? 'preorder' : 'inventory';
+    const own = periods.filter((period) => listingSource(period.source) === source);
+    const counted = own.length > 0 ? own : periods;
+    const stamp = (product as { createdAt?: unknown }).createdAt;
+    const createdAt = stamp instanceof Date ? stamp : new Date();
+    const legacyListed = counted.length === 0 && (
+      source === 'inventory' ? activeToday.has(id) : product.productType === 'preorder'
+    );
+    if (counted.length === 0 && !legacyListed) continue;
+    const lastListedAt = counted.length === 0
+      ? createdAt
+      : counted.reduce(
+        (latest, period) => (period.listedAt.getTime() > latest.getTime() ? period.listedAt : latest),
+        counted[0].listedAt
       );
-      if (own.length === 0 && !legacyListed) continue;
-      const lastListedAt = own.length === 0
-        ? createdAt
-        : own.reduce(
-          (latest, period) => (period.listedAt.getTime() > latest.getTime() ? period.listedAt : latest),
-          own[0].listedAt
-        );
-      const open = own.some((period) => !period.unlistedAt);
-      const listed = source === 'inventory'
-        ? product.productType !== 'preorder' && activeToday.has(id)
-        : product.productType === 'preorder' && (open || own.length === 0);
-      const closedAt = own.reduce<Date | null>((latest, period) => {
-        if (!period.unlistedAt) return latest;
-        if (!latest || period.unlistedAt.getTime() > latest.getTime()) return period.unlistedAt;
-        return latest;
-      }, null);
-      rows.push({
-        _id: id,
-        name: product.name,
-        images: product.images ?? [],
-        costPrice: product.costPrice,
-        sellingPrice: product.sellingPrice,
-        discountPrice: product.discountPrice ?? null,
-        isPerishable: product.isPerishable ?? false,
-        sellerName: product.sellerName ?? '',
-        notes: product.notes ?? '',
-        source,
-        status: listed ? 'listed' : 'unlisted',
-        lastListedAt,
-        lastListedDate: lastListedAt,
-        unlistedAt: listed ? null : closedAt,
-        timesListed: Math.max(own.length, legacyListed ? 1 : 0),
-        totalUnits: source === 'preorder' ? summary.totalUnits : 0,
-        customerCount: source === 'preorder' ? summary.customerCount : 0,
-        preOrderExpectedDate: product.preOrderExpectedDate ?? null,
-        preOrderClosesAt: product.preOrderClosesAt ?? null,
-      });
-    }
+    const open = counted.some((period) => !period.unlistedAt);
+    const listed = source === 'inventory'
+      ? activeToday.has(id)
+      : open || counted.length === 0;
+    const closedAt = counted.reduce<Date | null>((latest, period) => {
+      if (!period.unlistedAt) return latest;
+      if (!latest || period.unlistedAt.getTime() > latest.getTime()) return period.unlistedAt;
+      return latest;
+    }, null);
+    rows.push({
+      _id: id,
+      name: product.name,
+      images: product.images ?? [],
+      costPrice: product.costPrice,
+      sellingPrice: product.sellingPrice,
+      discountPrice: product.discountPrice ?? null,
+      isPerishable: product.isPerishable ?? false,
+      sellerName: product.sellerName ?? '',
+      notes: product.notes ?? '',
+      source,
+      status: listed ? 'listed' : 'unlisted',
+      lastListedAt,
+      lastListedDate: lastListedAt,
+      unlistedAt: listed ? null : closedAt,
+      timesListed: Math.max(counted.length, legacyListed ? 1 : 0),
+      totalUnits: source === 'preorder' ? summary.totalUnits : 0,
+      customerCount: source === 'preorder' ? summary.customerCount : 0,
+      preOrderExpectedDate: product.preOrderExpectedDate ?? null,
+      preOrderClosesAt: product.preOrderClosesAt ?? null,
+    });
   }
 
   rows.sort((a, b) => {
@@ -192,26 +277,11 @@ export async function moveInventoryToPreOrder(
     }
   }
 
-  const now = new Date();
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
     for (const product of products) {
-      const closed = await PreOrderListing.updateMany(
-        { productId: product._id, source: 'inventory', unlistedAt: null },
-        { $set: { unlistedAt: now } },
-        { session }
-      );
-      if (closed.modifiedCount === 0) {
-        const createdAt = product.get('createdAt');
-        await PreOrderListing.create([{
-          productId: product._id,
-          storeId: product.storeId,
-          source: 'inventory',
-          listedAt: createdAt instanceof Date ? createdAt : now,
-          unlistedAt: now,
-        }], { session });
-      }
+      await retargetListings(product._id, product.storeId, 'preorder', 'convert', session);
       await InventoryRecord.deleteMany({ productId: product._id, date: today }).session(session);
       product.productType = 'preorder';
       product.stockQuantity = 0;
@@ -220,13 +290,6 @@ export async function moveInventoryToPreOrder(
       product.preOrderClosesAt = closes.date;
       product.preOrderExpectedDate = expected.date;
       await product.save({ session });
-      await PreOrderListing.create([{
-        productId: product._id,
-        storeId: product.storeId,
-        source: 'preorder',
-        listedAt: now,
-        unlistedAt: null,
-      }], { session });
     }
     await session.commitTransaction();
   } catch (err) {
