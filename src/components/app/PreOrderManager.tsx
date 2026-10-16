@@ -826,9 +826,10 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="preorder-notes">Notes</Label>
+              <Label htmlFor="preorder-notes">Description</Label>
               <Textarea
                 id="preorder-notes"
+                placeholder="What customers should know about this product..."
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
               />

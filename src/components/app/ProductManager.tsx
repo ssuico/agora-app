@@ -467,7 +467,7 @@ function ProductManagerInventoryReport({
                     <tr>
                       <th>Product</th>
                       <th>Seller</th>
-                      <th className="w-10">Notes</th>
+                      <th className="text-center">Description</th>
                       <th>Type</th>
                       <th>Cost</th>
                       <th>Selling</th>
@@ -2232,7 +2232,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
                 <th className="w-16 text-center">Image</th>
                 <th className="text-center">Name</th>
                 <th className="text-center">Seller</th>
-                <th className="w-10 text-center">Notes</th>
+                <th className="text-center">Description</th>
                 <th className="text-center">Type</th>
                 {!isScoped && (
                   <th className="text-center">Store</th>
@@ -2451,11 +2451,11 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="product-notes">Additional Notes</Label>
+              <Label htmlFor="product-notes">Description</Label>
               <Textarea
                 id="product-notes"
                 className="min-h-20"
-                placeholder="Any additional notes about this product..."
+                placeholder="What customers should know about this product..."
                 value={form.notes}
                 onChange={(e) => updateField('notes', e.target.value)}
               />
@@ -2907,7 +2907,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             <div className="flex flex-col gap-0.5 rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
               <div>Type: <span className="font-medium">{relistTarget.isPerishable ? 'Perishable' : 'Non-perishable'}</span></div>
               {relistTarget.sellerName && <div>Seller: <span className="font-medium">{relistTarget.sellerName}</span></div>}
-              {relistTarget.notes && <div>Notes: <span className="font-medium">{relistTarget.notes}</span></div>}
+              {relistTarget.notes && <div>Description: <span className="font-medium">{relistTarget.notes}</span></div>}
             </div>
           )}
           <div className="flex flex-col gap-4">
