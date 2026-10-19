@@ -84,6 +84,8 @@ interface PaymentOption {
   isActive: boolean;
 }
 
+type CustomerPayStep = 'details' | 'method' | 'qr' | 'reference';
+
 interface ShopViewProps {
   storeId: string;
   storeName: string;
@@ -888,6 +890,10 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
   const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
   const [paymentOptionsLoading, setPaymentOptionsLoading] = useState(false);
   const [selectedPaymentOption, setSelectedPaymentOption] = useState<PaymentOption | null>(null);
+  const [cartPayStep, setCartPayStep] = useState<CustomerPayStep>('details');
+  const [preOrderPayStep, setPreOrderPayStep] = useState<CustomerPayStep>('details');
+  const [payDigits, setPayDigits] = useState('');
+  const [placedPayKind, setPlacedPayKind] = useState<'cash' | 'qr' | null>(null);
 
   const dismissAlert = (id: number) => {
     setStockAlerts((prev) => prev.filter((a) => a.id !== id));
@@ -968,21 +974,29 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
     } catch { /* ignore */ }
   };
 
-  const openPaymentOptions = async () => {
-    setPaymentOptionsOpen(true);
-    setSelectedPaymentOption(null);
-    if (paymentOptions.length > 0) return;
+  const loadPaymentOptions = async () => {
+    if (paymentOptions.length > 0) {
+      if (!selectedPaymentOption) setSelectedPaymentOption(paymentOptions[0] ?? null);
+      return paymentOptions;
+    }
     setPaymentOptionsLoading(true);
     try {
       const res = await fetch(`/api/payment-options/store/${storeId}/active`);
-      if (res.ok) {
-        const data: PaymentOption[] = await res.json();
-        setPaymentOptions(data);
-        if (data.length > 0) setSelectedPaymentOption(data[0]);
-      }
-    } catch { /* ignore */ } finally {
+      if (!res.ok) return [];
+      const data: PaymentOption[] = await res.json();
+      setPaymentOptions(data);
+      setSelectedPaymentOption((current) => current ?? data[0] ?? null);
+      return data;
+    } catch {
+      return [];
+    } finally {
       setPaymentOptionsLoading(false);
     }
+  };
+
+  const openPaymentOptions = async () => {
+    setPaymentOptionsOpen(true);
+    await loadPaymentOptions();
   };
 
   const fetchMyProductRatings = async () => {
@@ -1148,41 +1162,57 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
 
   // --- Reserve / checkout ---
 
-  const handleCheckout = async () => {
+  const placeCustomerOrder = async (input: {
+    items: Array<{ productId: string; quantity: number }>;
+    orderType?: 'preorder';
+    customerNotes?: string;
+    payment: { paymentMethod: 'cash' } | { paymentMethod: 'bank_qr'; paymentOptionId: string; paymentReferenceLast4: string };
+  }) => {
+    const res = await fetch('/api/transactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        storeId,
+        items: input.items,
+        ...(input.orderType ? { orderType: input.orderType } : {}),
+        ...(input.customerNotes ? { customerNotes: input.customerNotes } : {}),
+        placedFrom: 'shop',
+        ...input.payment,
+      }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { message?: string };
+    if (!res.ok) {
+      throw new Error(data.message ?? 'Could not place the order');
+    }
+    return input.payment.paymentMethod;
+  };
+
+  const handleCheckout = async (payment: { paymentMethod: 'cash' } | { paymentMethod: 'bank_qr'; paymentOptionId: string; paymentReferenceLast4: string }) => {
     const validItems = cart.filter((c) => c.product.stockQuantity > 0);
     if (validItems.length === 0) return;
     setCheckoutLoading(true);
     setError('');
 
     try {
-      const res = await fetch('/api/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeId,
-          items: validItems.map((c) => ({ productId: c.product._id, quantity: c.quantity })),
-          ...(reservationNotes.trim() && { customerNotes: reservationNotes.trim() }),
-        }),
+      const kind = await placeCustomerOrder({
+        items: validItems.map((c) => ({ productId: c.product._id, quantity: c.quantity })),
+        ...(reservationNotes.trim() && { customerNotes: reservationNotes.trim() }),
+        payment,
       });
-
-      if (!res.ok) {
-        const data = (await res.json()) as { message?: string };
-        const msg = data.message ?? 'Reservation failed';
-        setError(msg);
-        toast.error(msg);
-        return;
-      }
-
-      toast.success('Reservation placed!');
+      setPlacedPayKind(kind === 'cash' ? 'cash' : 'qr');
+      toast.success(kind === 'cash' ? 'Order placed. Pay cash when you claim it.' : 'Payment sent for the store to review.');
       setCart([]);
       setCartOpen(false);
+      setCartPayStep('details');
+      setPayDigits('');
       setSuccessOpen(true);
       setCardQuantities({});
       setReservationNotes('');
       await fetchProducts();
-    } catch {
-      setError('Network error');
-      toast.error('Network error');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setCheckoutLoading(false);
     }
@@ -1203,30 +1233,25 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
     setPreOrderNotes('');
   };
 
-  const submitPreOrder = async () => {
+  const submitPreOrder = async (payment: { paymentMethod: 'cash' } | { paymentMethod: 'bank_qr'; paymentOptionId: string; paymentReferenceLast4: string }) => {
     if (!preOrderTarget || preOrderQty < 1) return;
     setPreOrderSubmitting(true);
     try {
-      const res = await fetch('/api/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeId,
-          items: [{ productId: preOrderTarget._id, quantity: preOrderQty }],
-          orderType: 'preorder',
-          ...(preOrderNotes.trim() && { customerNotes: preOrderNotes.trim() }),
-        }),
+      const kind = await placeCustomerOrder({
+        items: [{ productId: preOrderTarget._id, quantity: preOrderQty }],
+        orderType: 'preorder',
+        ...(preOrderNotes.trim() && { customerNotes: preOrderNotes.trim() }),
+        payment,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error((data as { message?: string }).message ?? 'Could not place pre-order');
-        return;
-      }
-      toast.success(`Pre-order placed for ${preOrderQty} × "${preOrderTarget.name}"`);
+      toast.success(kind === 'cash'
+        ? `Pre-order placed for ${preOrderQty} × "${preOrderTarget.name}". Pay cash when you claim it.`
+        : `Pre-order placed for ${preOrderQty} × "${preOrderTarget.name}". The store will review your QR payment.`);
       setPreOrderTarget(null);
+      setPreOrderPayStep('details');
+      setPayDigits('');
       fetchPreOrders();
-    } catch {
-      toast.error('Could not place pre-order');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not place pre-order');
     } finally {
       setPreOrderSubmitting(false);
     }
@@ -1315,7 +1340,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
           </div>
           <p className="text-sm text-muted-foreground">
             {isStoreOpen
-              ? 'Browse and reserve items — pay when you claim'
+              ? 'Choose cash in person, or pay by QR before you place the order.'
               : 'Reservations are paused. Pre-orders stay open.'}
           </p>
           {storeAverage && storeAverage.totalCount > 0 ? (
@@ -1708,15 +1733,23 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
         </div>
       </div>
 
-      <Dialog open={preOrderTarget != null} onOpenChange={(open) => { if (!open) setPreOrderTarget(null); }}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={preOrderTarget != null} onOpenChange={(open) => {
+        if (!open) {
+          setPreOrderTarget(null);
+          setPreOrderPayStep('details');
+          setPayDigits('');
+        }
+      }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Pre-order {preOrderTarget?.name}</DialogTitle>
             <DialogDescription>
-              This item is not in stock yet. Your order is recorded as a pre-order and does not come out of inventory.
+              {preOrderPayStep === 'details'
+                ? 'This item is not in stock yet. Choose how you will pay before the pre-order is placed.'
+                : 'Pay cash when you claim it, or send a QR payment for the store to confirm.'}
             </DialogDescription>
           </DialogHeader>
-          {preOrderTarget && (
+          {preOrderTarget && preOrderPayStep === 'details' && (
             <div className="flex flex-col gap-4">
               <ProductDescription text={preOrderTarget.notes} density="dialog" />
               <div className="flex items-center justify-between text-sm">
@@ -1759,13 +1792,46 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
               </p>
             </div>
           )}
+          {preOrderTarget && preOrderPayStep !== 'details' && (
+            <CustomerPayPanel
+              step={preOrderPayStep}
+              total={preOrderPrice(preOrderTarget) * preOrderQty}
+              options={paymentOptions}
+              optionsLoading={paymentOptionsLoading}
+              selected={selectedPaymentOption}
+              onSelect={setSelectedPaymentOption}
+              digits={payDigits}
+              onDigits={setPayDigits}
+              submitting={preOrderSubmitting}
+              onCash={() => { void submitPreOrder({ paymentMethod: 'cash' }); }}
+              onChooseQr={() => { void loadPaymentOptions().then(() => setPreOrderPayStep('qr')); }}
+              onContinue={() => setPreOrderPayStep('reference')}
+              onSubmitQr={() => {
+                if (!selectedPaymentOption || payDigits.trim().length !== 4) return;
+                void submitPreOrder({
+                  paymentMethod: 'bank_qr',
+                  paymentOptionId: selectedPaymentOption._id,
+                  paymentReferenceLast4: payDigits.trim(),
+                });
+              }}
+              onBack={() => {
+                setPreOrderPayStep((step) => (step === 'reference' ? 'qr' : step === 'qr' ? 'method' : 'details'));
+                setPayDigits('');
+              }}
+            />
+          )}
+          {preOrderPayStep === 'details' && (
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreOrderTarget(null)}>Cancel</Button>
-            <Button onClick={submitPreOrder} disabled={preOrderSubmitting || !preOrderTarget || !canPreOrder(preOrderTarget, now)}>
-              {preOrderSubmitting ? <Spinner data-icon="inline-start" /> : <CalendarClock data-icon="inline-start" />}
-              Pre-Order Now
+            <Button
+              onClick={() => setPreOrderPayStep('method')}
+              disabled={preOrderSubmitting || !preOrderTarget || !canPreOrder(preOrderTarget, now)}
+            >
+              <CalendarClock data-icon="inline-start" />
+              Choose payment
             </Button>
           </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1802,7 +1868,14 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
       />
 
       {/* ── Cart Dialog ── */}
-      <Dialog open={cartOpen} onOpenChange={setCartOpen}>
+      <Dialog open={cartOpen} onOpenChange={(open) => {
+        setCartOpen(open);
+        if (!open) {
+          setCartPayStep('details');
+          setPayDigits('');
+          setError('');
+        }
+      }}>
         <DialogContent className="max-w-lg gap-0 p-0 overflow-hidden">
           <DialogHeader className="px-5 pt-5 pb-4 border-b">
             <div className="flex items-center justify-between">
@@ -1817,7 +1890,9 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
                   )}
                 </DialogTitle>
                 <DialogDescription className="mt-0.5 text-xs">
-                  Payment is made when you claim at the store.
+                  {cartPayStep === 'details'
+                    ? 'Choose cash in person or a QR payment before you place the order.'
+                    : 'The store confirms a QR payment before it is marked paid.'}
                 </DialogDescription>
               </div>
               {cart.length > 0 && (
@@ -1854,8 +1929,43 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
               </Alert>
             )}
 
-            {/* Cart items */}
-            {cart.length === 0 ? (
+            {cartPayStep !== 'details' && cart.length > 0 ? (
+              <div className="overflow-y-auto flex-1 px-4 py-3">
+                <CustomerPayPanel
+                  step={cartPayStep}
+                  total={hasUnavailable ? validCartTotal : cartTotal}
+                  options={paymentOptions}
+                  optionsLoading={paymentOptionsLoading}
+                  selected={selectedPaymentOption}
+                  onSelect={setSelectedPaymentOption}
+                  digits={payDigits}
+                  onDigits={setPayDigits}
+                  submitting={checkoutLoading}
+                  onCash={() => { void handleCheckout({ paymentMethod: 'cash' }); }}
+                  onChooseQr={() => { void loadPaymentOptions().then(() => setCartPayStep('qr')); }}
+                  onContinue={() => setCartPayStep('reference')}
+                  onSubmitQr={() => {
+                    if (!selectedPaymentOption || payDigits.trim().length !== 4) return;
+                    void handleCheckout({
+                      paymentMethod: 'bank_qr',
+                      paymentOptionId: selectedPaymentOption._id,
+                      paymentReferenceLast4: payDigits.trim(),
+                    });
+                  }}
+                  onBack={() => {
+                    setCartPayStep((step) => (step === 'reference' ? 'qr' : step === 'qr' ? 'method' : 'details'));
+                    setPayDigits('');
+                    setError('');
+                  }}
+                />
+                {error && (
+                  <Alert variant="destructive" className="mt-3">
+                    <AlertCircle />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            ) : cart.length === 0 ? (
               <Empty className="border-0 py-12">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
@@ -1932,7 +2042,7 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
             )}
 
             {/* Footer */}
-            {cart.length > 0 && (
+            {cart.length > 0 && cartPayStep === 'details' && (
               <>
                 <Separator />
                 <div className="flex flex-col gap-3 px-4 py-3">
@@ -1968,15 +2078,13 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
                     </Button>
                     <Button
                       className="rounded-xl flex-1"
-                      onClick={handleCheckout}
+                      onClick={() => setCartPayStep('method')}
                       disabled={checkoutLoading || hasUnavailable}
                     >
-                      {checkoutLoading ? (
-                        <><Spinner data-icon="inline-start" />Placing...</>
-                      ) : hasUnavailable ? (
+                      {hasUnavailable ? (
                         'Remove unavailable items first'
                       ) : (
-                        `Reserve (${fmt(cartTotal)})`
+                        `Choose payment (${fmt(cartTotal)})`
                       )}
                     </Button>
                   </div>
@@ -2244,9 +2352,13 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
               <CheckCircle2 className="size-8 text-success" />
             </div>
             <DialogHeader className="items-center gap-1.5 text-center sm:text-center">
-              <DialogTitle className="text-xl font-bold leading-normal">Reservation Confirmed!</DialogTitle>
+              <DialogTitle className="text-xl font-bold leading-normal">
+                {placedPayKind === 'qr' ? 'Payment sent for review' : 'Order placed'}
+              </DialogTitle>
               <DialogDescription>
-                Your items have been reserved. Head to the store to claim and pay at your convenience.
+                {placedPayKind === 'qr'
+                  ? 'The store will check that the last 4 digits match the payment they received. The order stays pending until then.'
+                  : 'Your items are reserved. Pay cash when you claim them at the store.'}
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -2337,6 +2449,134 @@ export function ShopView({ storeId, storeName, initialIsOpen = true, initialIsMa
 // ---------------------------------------------------------------------------
 // Payment option detail sub-component
 // ---------------------------------------------------------------------------
+
+function CustomerPayPanel({
+  step,
+  total,
+  options,
+  optionsLoading,
+  selected,
+  onSelect,
+  digits,
+  onDigits,
+  submitting,
+  onCash,
+  onChooseQr,
+  onContinue,
+  onSubmitQr,
+  onBack,
+}: {
+  step: Exclude<CustomerPayStep, 'details'>;
+  total: number;
+  options: PaymentOption[];
+  optionsLoading: boolean;
+  selected: PaymentOption | null;
+  onSelect: (option: PaymentOption) => void;
+  digits: string;
+  onDigits: (value: string) => void;
+  submitting: boolean;
+  onCash: () => void;
+  onChooseQr: () => void;
+  onContinue: () => void;
+  onSubmitQr: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">Order total</span>
+        <span className="text-lg font-bold">{fmt(total)}</span>
+      </div>
+
+      {step === 'method' && (
+        <div className="grid gap-2">
+          <Button className="h-auto justify-start rounded-xl px-4 py-3" onClick={onCash} disabled={submitting}>
+            <Wallet data-icon="inline-start" />
+            <span className="flex flex-col items-start">
+              <span>Pay in person</span>
+              <span className="text-xs font-normal opacity-80">Cash when you claim the order</span>
+            </span>
+          </Button>
+          <Button variant="outline" className="h-auto justify-start rounded-xl px-4 py-3" onClick={onChooseQr} disabled={submitting}>
+            <QrCode data-icon="inline-start" />
+            <span className="flex flex-col items-start">
+              <span>Pay with QR or bank</span>
+              <span className="text-xs font-normal text-muted-foreground">Pay now, then the store confirms the last 4 digits</span>
+            </span>
+          </Button>
+        </div>
+      )}
+
+      {step === 'qr' && (
+        optionsLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner /> Loading payment options...
+          </div>
+        ) : options.length === 0 ? (
+          <Alert>
+            <QrCode />
+            <AlertDescription>This store has no QR or bank option yet. Pay in person instead.</AlertDescription>
+          </Alert>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {options.length > 1 && (
+              <div className="flex flex-col gap-1.5">
+                {options.map((option) => (
+                  <Button
+                    key={option._id}
+                    type="button"
+                    variant={selected?._id === option._id ? 'default' : 'outline'}
+                    className="justify-start rounded-xl"
+                    onClick={() => onSelect(option)}
+                  >
+                    {option.type === 'e-wallet' ? <Wallet data-icon="inline-start" /> : <CreditCard data-icon="inline-start" />}
+                    {option.label || option.recipientName}
+                  </Button>
+                ))}
+              </div>
+            )}
+            {selected && <PaymentOptionDetail option={selected} />}
+          </div>
+        )
+      )}
+
+      {step === 'reference' && (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="customer-payment-reference">Last 4 digits of the reference number</Label>
+          <Input
+            id="customer-payment-reference"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={4}
+            value={digits}
+            onChange={(event) => onDigits(event.target.value.replace(/\D/g, '').slice(0, 4))}
+            placeholder="1234"
+          />
+          <p className="text-xs text-muted-foreground">
+            The order stays pending until the store confirms these digits match the payment.
+          </p>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Button variant="outline" className="rounded-xl flex-1" onClick={onBack} disabled={submitting}>
+          Back
+        </Button>
+        {step === 'qr' && options.length > 0 && (
+          <Button className="rounded-xl flex-1" onClick={onContinue} disabled={submitting || !selected}>
+            I have paid
+          </Button>
+        )}
+        {step === 'reference' && (
+          <Button className="rounded-xl flex-1" onClick={onSubmitQr} disabled={submitting || digits.trim().length !== 4}>
+            {submitting ? <Spinner data-icon="inline-start" /> : null}
+            {submitting ? 'Sending...' : 'Submit for review'}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function PaymentOptionDetail({ option }: { option: PaymentOption }) {
   return (
