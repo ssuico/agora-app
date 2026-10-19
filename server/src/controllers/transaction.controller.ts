@@ -34,6 +34,8 @@ interface CreateTransactionBody {
   paymentMethod?: PaymentMethod;
   paymentOptionId?: string;
   paymentReferenceLast4?: string;
+  /** Shop checkout. Uses the customer payment rules even when the account also has a staff role. */
+  placedFrom?: 'shop';
 }
 
 interface ResolvedPayment {
@@ -122,6 +124,47 @@ async function resolveStaffPayment(input: {
   };
 }
 
+/**
+ * Customers choose before the order exists.
+ * Cash means they will pay in person, so the order stays unpaid.
+ * Bank/QR still requires the reference digits, but the order stays unpaid
+ * until a manager confirms those digits match the payment they received.
+ */
+async function resolveCustomerPayment(input: {
+  storeId: mongoose.Types.ObjectId | string;
+  paymentMethod?: unknown;
+  paymentOptionId?: unknown;
+  paymentReferenceLast4?: unknown;
+  session?: mongoose.ClientSession;
+}): Promise<{ paymentStatus: PaymentStatus; amountPaid: number; capture: ResolvedPayment }> {
+  if (input.paymentMethod === 'cash') {
+    return {
+      paymentStatus: 'unpaid',
+      amountPaid: 0,
+      capture: { ...EMPTY_PAYMENT, paymentMethod: 'cash' },
+    };
+  }
+
+  if (input.paymentMethod !== 'bank_qr') {
+    throw new Error('Choose cash or a bank/QR payment');
+  }
+
+  const capture = await resolveStaffPayment({
+    storeId: input.storeId,
+    paymentStatus: 'paid',
+    paymentMethod: 'bank_qr',
+    paymentOptionId: input.paymentOptionId,
+    paymentReferenceLast4: input.paymentReferenceLast4,
+    session: input.session,
+  });
+
+  return {
+    paymentStatus: 'unpaid',
+    amountPaid: 0,
+    capture,
+  };
+}
+
 async function broadcastPreOrderDemand(
   storeId: string,
   productIds: mongoose.Types.ObjectId[]
@@ -161,9 +204,10 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
       return;
     }
     const isPreOrder = body.orderType === 'preorder';
+    const shopCheckout = body.placedFrom === 'shop';
     const orderType: OrderType = isPreOrder
       ? 'preorder'
-      : req.user!.role === UserRole.CUSTOMER
+      : req.user!.role === UserRole.CUSTOMER || shopCheckout
         ? 'regular'
         : 'walk-in';
 
@@ -255,9 +299,10 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
     const grossProfit = totalAmount - totalCost;
 
-    const isStaff = req.user!.role === UserRole.ADMIN || req.user!.role === UserRole.STORE_MANAGER;
+    const isStaff =
+      (req.user!.role === UserRole.ADMIN || req.user!.role === UserRole.STORE_MANAGER) && !shopCheckout;
     const customerId =
-      req.user!.role === UserRole.CUSTOMER
+      req.user!.role === UserRole.CUSTOMER || shopCheckout
         ? req.user!.userId
         : isStaff && body.customerId
           ? body.customerId
@@ -272,26 +317,37 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         : 'unclaimed';
     let paymentStatus: PaymentStatus = 'unpaid';
     let amountPaid = 0;
-    if (isStaff && body.paymentStatus && ['unpaid', 'paid', 'partial'].includes(body.paymentStatus)) {
-      paymentStatus = body.paymentStatus as PaymentStatus;
-      if (paymentStatus === 'partial') {
-        const raw = typeof body.amountPaid === 'number' ? body.amountPaid : Number(body.amountPaid);
-        amountPaid = Number.isFinite(raw) ? Math.max(0, Math.min(raw, totalAmount - 0.01)) : 0;
-      } else if (paymentStatus === 'paid') {
-        amountPaid = totalAmount;
+    let paymentCapture: ResolvedPayment;
+    if (isStaff) {
+      if (body.paymentStatus && ['unpaid', 'paid', 'partial'].includes(body.paymentStatus)) {
+        paymentStatus = body.paymentStatus as PaymentStatus;
+        if (paymentStatus === 'partial') {
+          const raw = typeof body.amountPaid === 'number' ? body.amountPaid : Number(body.amountPaid);
+          amountPaid = Number.isFinite(raw) ? Math.max(0, Math.min(raw, totalAmount - 0.01)) : 0;
+        } else if (paymentStatus === 'paid') {
+          amountPaid = totalAmount;
+        }
       }
+      paymentCapture = await resolveStaffPayment({
+        storeId,
+        paymentStatus,
+        paymentMethod: body.paymentMethod,
+        paymentOptionId: body.paymentOptionId,
+        paymentReferenceLast4: body.paymentReferenceLast4,
+        session,
+      });
+    } else {
+      const customerPayment = await resolveCustomerPayment({
+        storeId,
+        paymentMethod: body.paymentMethod,
+        paymentOptionId: body.paymentOptionId,
+        paymentReferenceLast4: body.paymentReferenceLast4,
+        session,
+      });
+      paymentStatus = customerPayment.paymentStatus;
+      amountPaid = customerPayment.amountPaid;
+      paymentCapture = customerPayment.capture;
     }
-
-    const paymentCapture = isStaff
-      ? await resolveStaffPayment({
-          storeId,
-          paymentStatus,
-          paymentMethod: body.paymentMethod,
-          paymentOptionId: body.paymentOptionId,
-          paymentReferenceLast4: body.paymentReferenceLast4,
-          session,
-        })
-      : EMPTY_PAYMENT;
 
     const notes =
       typeof body.notes === 'string' && body.notes.trim()
@@ -356,14 +412,23 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         actorAvatar = userDoc?.avatar || null;
       }
 
+      const payPhrase = paymentCapture.paymentMethod === 'bank_qr' && paymentCapture.paymentReferenceLast4 && paymentStatus === 'unpaid'
+        ? ' and sent a QR payment for review'
+        : paymentCapture.paymentMethod === 'bank_qr' && paymentStatus === 'paid'
+          ? ' and paid by QR'
+          : paymentCapture.paymentMethod === 'cash' && paymentStatus === 'unpaid'
+            ? ' to pay cash in person'
+            : paymentCapture.paymentMethod === 'cash' && paymentStatus === 'paid'
+              ? ' and paid in cash'
+              : '';
       const activityDoc = await ActivityLog.create({
         storeId,
         type: isPreOrder ? 'preorder_placed' : 'reservation_created',
         actorName,
         actorAvatar,
         message: isPreOrder
-          ? `${actorName} placed a pre-order`
-          : `${actorName} placed a reservation`,
+          ? `${actorName} placed a pre-order${payPhrase}`
+          : `${actorName} placed a reservation${payPhrase}`,
         metadata: { transactionId: String(transaction._id), totalAmount, orderType },
       });
       io.to(`store:${storeId}`).emit('activity:new', activityDoc);
@@ -661,18 +726,19 @@ export const updateTransactionItems = async (req: Request, res: Response): Promi
 
 export const updateTransactionStatus = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { claimStatus, paymentStatus, amountPaid: bodyAmountPaid, paymentMethod, paymentOptionId, paymentReferenceLast4 } = req.body as {
+    const { claimStatus, paymentStatus, amountPaid: bodyAmountPaid, paymentMethod, paymentOptionId, paymentReferenceLast4, confirmStoredReference } = req.body as {
       claimStatus?: string;
       paymentStatus?: string;
       amountPaid?: number;
       paymentMethod?: string;
       paymentOptionId?: string;
       paymentReferenceLast4?: string;
+      confirmStoredReference?: boolean;
     };
     const update: Record<string, unknown> = {};
 
     const existing = await Transaction.findById(req.params.id)
-      .select('totalAmount claimStatus paymentStatus claimedAt paidAt storeId orderType')
+      .select('totalAmount claimStatus paymentStatus paymentMethod paymentReferenceLast4 claimedAt paidAt storeId orderType')
       .lean();
     if (!existing) {
       res.status(404).json({ message: 'Transaction not found' });
@@ -696,7 +762,15 @@ export const updateTransactionStatus = async (req: Request, res: Response): Prom
       }
     }
     if (paymentStatus && ['unpaid', 'paid', 'partial'].includes(paymentStatus)) {
-      if (paymentStatus === 'paid' || postponingQr) {
+      if (paymentStatus === 'paid' && confirmStoredReference === true) {
+        if (existing.paymentMethod !== 'bank_qr' || !existing.paymentReferenceLast4) {
+          res.status(400).json({ message: 'This order has no QR reference to confirm' });
+          return;
+        }
+        update.paymentStatus = 'paid';
+        update.amountPaid = existing.totalAmount;
+        update.paidAt = existing.paidAt ?? new Date();
+      } else if (paymentStatus === 'paid' || postponingQr) {
         const captured = await resolveStaffPayment({
           storeId: existing.storeId as mongoose.Types.ObjectId,
           paymentStatus: paymentStatus as PaymentStatus,
