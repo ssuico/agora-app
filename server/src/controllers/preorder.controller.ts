@@ -6,6 +6,7 @@ import { Product } from '../models/Product.js';
 import { getPreOrderDisplayStatus, Transaction } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { toLocalDateStr } from '../config/timezone.js';
+import { physicalOnHand, recordMovement } from '../services/inventoryReconciliation.js';
 import { retargetListings, sharedListingHistory } from '../services/listingHistory.js';
 import { cutoffError, parseExpectedDate, parsePreOrderClosesAt } from '../services/preorderWindow.js';
 import { UserRole } from '../types/index.js';
@@ -323,16 +324,45 @@ export const relistPreOrder = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    product.productType = 'preorder';
-    product.stockQuantity = 0;
-    product.preOrderClosesAt = closes.date;
-    product.preOrderExpectedDate = expected.date;
-    product.preOrderOpen = true;
-    product.preOrderStatus = 'pending';
-    await product.save();
-    await retargetListings(product._id, product.storeId, 'preorder', 'relist');
+    const leavingRegular = product.productType !== 'preorder';
+    const physical = physicalOnHand(product);
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+      const current = await Product.findById(product._id).session(session);
+      if (!current) {
+        await session.abortTransaction();
+        res.status(404).json({ message: 'Product not found' });
+        return;
+      }
+      current.productType = 'preorder';
+      current.preOrderClosesAt = closes.date;
+      current.preOrderExpectedDate = expected.date;
+      current.preOrderOpen = true;
+      current.preOrderStatus = 'pending';
+      await current.save({ session });
+      await retargetListings(current._id, current.storeId, 'preorder', 'relist', session);
+      if (leavingRegular) {
+        await recordMovement({
+          productId: current._id,
+          storeId: current.storeId,
+          quantity: physical,
+          kind: 'transfer_to_preorder',
+          sourceMode: 'inventory',
+          destinationMode: 'preorder',
+          actor: { userId: req.user?.userId },
+        }, session);
+      }
+      await session.commitTransaction();
+    } catch (err) {
+      await session.abortTransaction();
+      throw err;
+    } finally {
+      session.endSession();
+    }
 
-    res.json(product);
+    const saved = await Product.findById(product._id);
+    res.json(saved);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
   }

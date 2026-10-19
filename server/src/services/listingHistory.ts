@@ -3,6 +3,7 @@ import { toLocalDateStr } from '../config/timezone.js';
 import { InventoryRecord } from '../models/InventoryRecord.js';
 import { PreOrderListing, type ListingSource } from '../models/PreOrderListing.js';
 import { Product } from '../models/Product.js';
+import { physicalOnHand, recordMovement } from './inventoryReconciliation.js';
 import { cutoffError, parseExpectedDate, parsePreOrderClosesAt } from './preorderWindow.js';
 
 /** Listings written before `source` existed are pre-order periods. */
@@ -246,7 +247,8 @@ export async function moveInventoryToPreOrder(
   storeId: string,
   productIds: string[],
   closesRaw: unknown,
-  expectedRaw: unknown
+  expectedRaw: unknown,
+  actorUserId?: string | null
 ): Promise<number> {
   const uniqueIds = [...new Set(productIds.filter((id) => mongoose.Types.ObjectId.isValid(id)))];
   if (uniqueIds.length === 0) throw new Error('Select at least one product');
@@ -283,13 +285,22 @@ export async function moveInventoryToPreOrder(
     for (const product of products) {
       await retargetListings(product._id, product.storeId, 'preorder', 'convert', session);
       await InventoryRecord.deleteMany({ productId: product._id, date: today }).session(session);
+      const physical = physicalOnHand(product);
       product.productType = 'preorder';
-      product.stockQuantity = 0;
       product.preOrderOpen = true;
       product.preOrderStatus = 'pending';
       product.preOrderClosesAt = closes.date;
       product.preOrderExpectedDate = expected.date;
       await product.save({ session });
+      await recordMovement({
+        productId: product._id,
+        storeId: product.storeId,
+        quantity: physical,
+        kind: 'transfer_to_preorder',
+        sourceMode: 'inventory',
+        destinationMode: 'preorder',
+        actor: { userId: actorUserId },
+      }, session);
     }
     await session.commitTransaction();
   } catch (err) {

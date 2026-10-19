@@ -54,6 +54,7 @@ export async function computeSoldMap(
   const activeTxIds = await Transaction.find({
     storeId,
     orderStatus: { $ne: 'cancelled' },
+    orderType: { $ne: 'preorder' },
     createdAt: { $gte: dayStart, $lte: dayEnd },
   })
     .select('_id')

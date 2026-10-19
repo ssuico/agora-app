@@ -34,6 +34,12 @@ import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  InventoryReconciliationSummary,
+  liveReconciliation,
+  receivedUnits,
+  useReconciliationPreview,
+} from '@/components/app/InventoryReconciliationSummary';
 import { CalendarClock, History, ImageIcon, Pencil, Plus, RotateCcw, Trash2, Users, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -215,6 +221,8 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
   const [relistExpected, setRelistExpected] = useState('');
   const [relistSaving, setRelistSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PreOrderHistoryItem | null>(null);
+  const unlistStock = useReconciliationPreview(unlistTarget?._id ?? null);
+  const relistStock = useReconciliationPreview(relistTarget?._id ?? null);
 
   const fetchProducts = async () => {
     try {
@@ -389,6 +397,12 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
     }
   };
 
+  useEffect(() => {
+    if (relistDestination === 'inventory' && relistStock.preview) {
+      setRelistQty(String(relistStock.preview.additionalNeeded));
+    }
+  }, [relistDestination, relistStock.preview]);
+
   const confirmUnlist = async () => {
     if (!unlistTarget) return;
     setBusyId(unlistTarget._id);
@@ -420,10 +434,17 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
   const confirmRelist = async () => {
     if (!relistTarget) return;
     const asInventory = relistDestination === 'inventory';
-    const qty = parseInt(relistQty, 10);
-    if (asInventory && (!qty || qty <= 0)) {
-      toast.error('Enter a valid quantity');
+    const received = receivedUnits(relistQty);
+    if (asInventory && (received == null || !relistStock.preview)) {
+      toast.error('Enter the units received, or 0');
       return;
+    }
+    if (asInventory && relistStock.preview && received != null) {
+      const live = liveReconciliation(relistStock.preview.physical, relistStock.preview.outstanding, received);
+      if (live.shortage > 0) {
+        toast.error(`Short by ${live.shortage}`);
+        return;
+      }
     }
     if (!asInventory && !relistClosesAt) {
       toast.error('Set the date and time when pre-orders close');
@@ -438,7 +459,7 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
             body: JSON.stringify({
               productId: relistTarget._id,
               storeId,
-              quantity: qty,
+              received,
               costPrice: relistTarget.costPrice,
               sellingPrice: relistTarget.sellingPrice,
               discountPrice: relistTarget.discountPrice ?? null,
@@ -509,7 +530,7 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Pre-Orders</h1>
           <p className="text-sm text-muted-foreground">
-            Demand for items you do not have in stock yet. These products are not part of inventory.
+            Customers can pre-order the same product. Physical stock stays held and is not sold until you list it for regular sales.
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -951,9 +972,15 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Unlist {unlistTarget?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              It leaves the storefront and moves to listing history. Existing pre-orders stay on the books. You can list it again later.
+              It leaves the storefront and moves to listing history. Existing pre-orders stay open. Stock is not changed here.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <InventoryReconciliationSummary
+            preview={unlistStock.preview}
+            loading={unlistStock.loading}
+            error={unlistStock.error}
+            mode="hold"
+          />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmUnlist}>Unlist</AlertDialogAction>
@@ -966,7 +993,7 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
           <DialogHeader>
             <DialogTitle>Relist {relistTarget?.name}</DialogTitle>
             <DialogDescription>
-              Choose where this product is listed again. Inventory needs a starting quantity. Pre-order needs a new local deadline and goes back to pending. Stock is not carried into a pre-order.
+              Inventory adds the units you just received and reserves outstanding pre-orders first. Listing it as a pre-order again keeps the physical stock and only needs a new window.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
@@ -983,18 +1010,33 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
               </Select>
             </div>
             {relistDestination === 'inventory' ? (
-              <div className="flex flex-col gap-1.5">
-                <Label>Quantity</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={relistQty}
-                  onChange={(event) => setRelistQty(event.target.value)}
-                  placeholder="Starting stock"
+              <>
+                <InventoryReconciliationSummary
+                  preview={relistStock.preview}
+                  loading={relistStock.loading}
+                  error={relistStock.error}
+                  received={receivedUnits(relistQty)}
+                  mode="inventory"
                 />
-              </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Physical stock received</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={relistQty}
+                    onChange={(event) => setRelistQty(event.target.value)}
+                    placeholder="0 if nothing new arrived"
+                  />
+                </div>
+              </>
             ) : (
               <>
+                <InventoryReconciliationSummary
+                  preview={relistStock.preview}
+                  loading={relistStock.loading}
+                  error={relistStock.error}
+                  mode="hold"
+                />
             <div className="flex flex-col gap-1.5">
               <Label>Orders close</Label>
               <LocalDateTimeField
@@ -1018,7 +1060,20 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
             <Button variant="outline" onClick={() => setRelistTarget(null)}>Cancel</Button>
             <Button
               onClick={confirmRelist}
-              disabled={relistSaving || (relistDestination === 'inventory' ? !relistQty.trim() : !relistClosesAt)}
+              disabled={
+                relistSaving
+                || (relistDestination === 'inventory'
+                  ? relistStock.loading
+                    || Boolean(relistStock.error)
+                    || !relistStock.preview
+                    || receivedUnits(relistQty) == null
+                    || liveReconciliation(
+                      relistStock.preview?.physical ?? 0,
+                      relistStock.preview?.outstanding ?? 0,
+                      receivedUnits(relistQty) ?? 0
+                    ).shortage > 0
+                  : !relistClosesAt)
+              }
             >
               {relistSaving ? <Spinner data-icon="inline-start" /> : <RotateCcw data-icon="inline-start" />}
               Relist

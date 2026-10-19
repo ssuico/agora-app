@@ -3,6 +3,7 @@ import {
   closeStore,
   getDailyInventory,
   getListingHistory,
+  getReconciliation,
   getStoreClosingStatus,
   moveToPreOrder,
   reduceStock,
@@ -64,6 +65,12 @@ inventoryRoutes.post(
   '/move-to-preorder',
   authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
   moveToPreOrder
+);
+
+inventoryRoutes.get(
+  '/reconciliation/:productId',
+  authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  getReconciliation
 );
 
 inventoryRoutes.post(

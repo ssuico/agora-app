@@ -5,6 +5,12 @@ import { PreOrderListing } from '../models/PreOrderListing.js';
 import { Product, REGULAR_PRODUCT_FILTER } from '../models/Product.js';
 import { moveInventoryToPreOrder, retargetListings, sharedListingHistory } from '../services/listingHistory.js';
 import {
+  physicalOnHand,
+  planReconciliation,
+  preOrderBreakdown,
+  recordMovement,
+} from '../services/inventoryReconciliation.js';
+import {
   closeStoreDay,
   computeSoldMap,
   StoreDayCloseError,
@@ -390,7 +396,13 @@ export const moveToPreOrder = async (req: Request, res: Response): Promise<void>
       res.status(400).json({ message: 'storeId and productIds are required' });
       return;
     }
-    const moved = await moveInventoryToPreOrder(storeId, productIds, preOrderClosesAt, preOrderExpectedDate);
+    const moved = await moveInventoryToPreOrder(
+      storeId,
+      productIds,
+      preOrderClosesAt,
+      preOrderExpectedDate,
+      req.user?.userId
+    );
     try {
       const io = getIO();
       const updatedProducts = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
@@ -408,23 +420,52 @@ export const moveToPreOrder = async (req: Request, res: Response): Promise<void>
 // Creates a new daily InventoryRecord for an existing product.
 // ---------------------------------------------------------------------------
 
+export const getReconciliation = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const product = await Product.findById(req.params.productId).lean();
+    if (!product) {
+      res.status(404).json({ message: 'Product not found' });
+      return;
+    }
+    const physical = physicalOnHand(product);
+    const breakdown = await preOrderBreakdown(product._id);
+    res.json({
+      productId: product._id,
+      name: product.name,
+      stockQuantity: product.stockQuantity,
+      reservedQuantity: product.reservedQuantity ?? 0,
+      physical,
+      ...breakdown,
+      additionalNeeded: Math.max(0, breakdown.outstanding - physical),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Server error';
+    console.error('[getReconciliation]', message);
+    res.status(500).json({ message });
+  }
+};
+
 export const relistProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { productId, storeId, quantity, sellingPrice, discountPrice, costPrice } = req.body as {
-      productId: string;
-      storeId: string;
-      quantity: number;
+    const body = req.body as {
+      productId?: string;
+      storeId?: string;
+      received?: unknown;
+      quantity?: unknown;
       sellingPrice?: number;
       discountPrice?: number | null;
       costPrice?: number;
     };
+    const { productId, storeId, sellingPrice, discountPrice, costPrice } = body;
+    const rawReceived = body.received ?? body.quantity;
+    const received = typeof rawReceived === 'number' ? rawReceived : Number(rawReceived);
 
-    if (!productId || !storeId || !quantity || quantity <= 0) {
-      res.status(400).json({ message: 'productId, storeId, and a positive quantity are required' });
+    if (!productId || !storeId || !Number.isInteger(received) || received < 0) {
+      res.status(400).json({ message: 'productId, storeId, and received units (0 or more) are required' });
       return;
     }
 
-    const product = await Product.findOne({ _id: productId, storeId }).lean();
+    const product = await Product.findOne({ _id: productId, storeId });
     if (!product) {
       res.status(404).json({ message: 'Product not found in this store' });
       return;
@@ -442,39 +483,90 @@ export const relistProduct = async (req: Request, res: Response): Promise<void> 
     }
 
     const today = todayInAppTz();
-
     const existing = await InventoryRecord.findOne({ productId, date: today }).lean();
     if (existing) {
       res.status(409).json({ message: 'This product already has an active listing for today' });
       return;
     }
 
-    const priceUpdate: Record<string, unknown> = {
-      stockQuantity: quantity,
-      productType: 'regular',
-      preOrderOpen: false,
-    };
-    if (typeof costPrice === 'number' && costPrice >= 0) {
-      priceUpdate.costPrice = costPrice;
+    const breakdown = await preOrderBreakdown(product._id);
+    const plan = planReconciliation(physicalOnHand(product), breakdown.outstanding, received);
+    if (plan.shortage > 0) {
+      res.status(409).json({
+        message: `Short by ${plan.shortage}. Receive enough stock to cover outstanding pre-orders before listing this for regular sales.`,
+        shortage: plan.shortage,
+      });
+      return;
     }
-    if (typeof sellingPrice === 'number' && sellingPrice >= 0) {
-      priceUpdate.sellingPrice = sellingPrice;
-    }
-    if (discountPrice !== undefined) {
-      priceUpdate.discountPrice = discountPrice === null || discountPrice === 0 ? null : discountPrice;
-    }
-    await Product.findByIdAndUpdate(productId, { $set: priceUpdate });
 
-    await retargetListings(productId, storeId, 'inventory', 'relist');
+    const session = await mongoose.startSession();
+    let record: unknown = null;
+    try {
+      session.startTransaction();
+      const current = await Product.findById(product._id).session(session);
+      if (!current) throw new Error('Product not found in this store');
+      const liveBreakdown = await preOrderBreakdown(current._id);
+      const live = planReconciliation(physicalOnHand(current), liveBreakdown.outstanding, received);
+      if (live.shortage > 0) {
+        await session.abortTransaction();
+        res.status(409).json({
+          message: `Short by ${live.shortage}. Receive enough stock to cover outstanding pre-orders before listing this for regular sales.`,
+          shortage: live.shortage,
+        });
+        return;
+      }
 
-    const record = await InventoryRecord.create({
-      productId: new mongoose.Types.ObjectId(productId),
-      storeId: new mongoose.Types.ObjectId(storeId),
-      date: today,
-      initialStock: quantity,
-      restock: 0,
-      reduction: 0,
-    });
+      const fromMode = current.productType === 'preorder' ? 'preorder' : 'inventory';
+      current.reservedQuantity = live.reserved;
+      current.stockQuantity = live.available;
+      current.productType = 'regular';
+      current.preOrderOpen = false;
+      if (typeof costPrice === 'number' && costPrice >= 0) current.costPrice = costPrice;
+      if (typeof sellingPrice === 'number' && sellingPrice >= 0) current.sellingPrice = sellingPrice;
+      if (discountPrice !== undefined) {
+        current.discountPrice = discountPrice === null || discountPrice === 0 ? null : discountPrice;
+      }
+      await current.save({ session });
+      await retargetListings(current._id, storeId, 'inventory', 'relist', session);
+      const created = await InventoryRecord.create([{
+        productId: current._id,
+        storeId: new mongoose.Types.ObjectId(storeId),
+        date: today,
+        initialStock: live.available,
+        restock: 0,
+        reduction: 0,
+      }], { session });
+      record = created[0];
+      await recordMovement({
+        productId: current._id,
+        storeId,
+        quantity: received,
+        kind: 'receipt',
+        sourceMode: fromMode,
+        destinationMode: 'inventory',
+        actor: { userId: req.user?.userId },
+      }, session);
+      await recordMovement({
+        productId: current._id,
+        storeId,
+        quantity: live.reserved,
+        kind: 'reserve',
+        sourceMode: fromMode,
+        destinationMode: 'inventory',
+        actor: { userId: req.user?.userId },
+      }, session);
+      await session.commitTransaction();
+    } catch (err) {
+      await session.abortTransaction();
+      const duplicate = typeof err === 'object' && err !== null && 'code' in err && (err as { code?: number }).code === 11000;
+      if (duplicate) {
+        res.status(409).json({ message: 'This product already has an active listing for today' });
+        return;
+      }
+      throw err;
+    } finally {
+      session.endSession();
+    }
 
     try {
       const io = getIO();
@@ -486,6 +578,6 @@ export const relistProduct = async (req: Request, res: Response): Promise<void> 
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Server error';
     console.error('[relistProduct]', message);
-    res.status(500).json({ message });
+    if (!res.headersSent) res.status(500).json({ message });
   }
 };

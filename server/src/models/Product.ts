@@ -14,6 +14,8 @@ export interface IProduct extends Document {
   sellingPrice: number;
   discountPrice?: number | null;
   stockQuantity: number;
+  /** Units promised to outstanding pre-orders. Not sellable. */
+  reservedQuantity: number;
   isPerishable: boolean;
   sellerName: string;
   notes: string;
@@ -57,6 +59,7 @@ const productSchema = new Schema<IProduct>(
       },
     },
     stockQuantity: { type: Number, required: true, default: 0, min: 0 },
+    reservedQuantity: { type: Number, default: 0, min: 0 },
     isPerishable: { type: Boolean, default: false },
     sellerName: { type: String, default: '', trim: true },
     notes: { type: String, default: '', trim: true },
