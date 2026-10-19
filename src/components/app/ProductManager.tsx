@@ -33,7 +33,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Activity, AlertCircle, AlertTriangle, CalendarClock, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Lock, LockOpen, NotepadText, Package, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
+import {
+  InventoryReconciliationSummary,
+  liveReconciliation,
+  receivedUnits,
+  useReconciliationPreview,
+} from '@/components/app/InventoryReconciliationSummary';
+import { Activity, AlertCircle, AlertTriangle, CalendarClock, Check, ChevronLeft, ChevronRight, Download, Grid2x2, Grid3x3, History, ImageIcon, Info, LayoutGrid, Lock, LockOpen, Maximize2, Minimize2, NotepadText, Package, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -55,6 +61,7 @@ interface Product {
   sellingPrice: number;
   discountPrice?: number | null;
   stockQuantity: number;
+  reservedQuantity?: number;
   isPerishable: boolean;
   sellerName: string;
   notes: string;
@@ -592,12 +599,58 @@ function RealtimeStocksImage({ src, className }: { src?: string; className?: str
 }
 
 function RealtimeStocks({ storeId }: { storeId: string }) {
+  const panelRef = useRef<HTMLDivElement>(null);
   const [products, setProducts] = useState<RtProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [cols, setCols] = useGridCols(6);
   const [search, setSearch] = useState('');
+  const [nativeFullscreen, setNativeFullscreen] = useState(false);
+  const [overlayFullscreen, setOverlayFullscreen] = useState(false);
   const flashSet = useRef<Set<string>>(new Set());
   const [, forceRender] = useState(0);
+  const isDisplay = nativeFullscreen || overlayFullscreen;
+
+  useEffect(() => {
+    const onChange = () => {
+      setNativeFullscreen(document.fullscreenElement === panelRef.current);
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!overlayFullscreen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOverlayFullscreen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [overlayFullscreen]);
+
+  const enterFullscreen = async () => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    try {
+      if (panel.requestFullscreen) {
+        await panel.requestFullscreen();
+        return;
+      }
+    } catch {
+      // The browser blocked the Fullscreen API. The overlay covers the page instead.
+    }
+    setOverlayFullscreen(true);
+  };
+
+  const exitFullscreen = async () => {
+    setOverlayFullscreen(false);
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch {
+        setNativeFullscreen(false);
+      }
+    }
+  };
 
   const applyUpdate = useCallback((updated: RtProduct[]) => {
     setProducts((prev) => {
@@ -696,12 +749,14 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
 
-  const gridClass =
-    cols === 3
-      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
-      : cols === 6
-        ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
-        : 'grid-cols-3 sm:grid-cols-5 lg:grid-cols-9';
+  const displayRows = Math.max(1, Math.ceil(filtered.length / cols));
+  const displayTight = isDisplay && (cols >= 9 || displayRows >= 4);
+  const displayCozy = isDisplay && cols <= 3 && displayRows <= 3;
+  const gridClass = cols === 3
+    ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+    : cols === 6
+      ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
+      : 'grid-cols-3 sm:grid-cols-5 lg:grid-cols-9';
 
   if (loading) {
     return (
@@ -728,16 +783,24 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
+    <div
+      ref={panelRef}
+      className={`flex flex-col bg-background text-foreground ${
+        isDisplay ? 'h-dvh min-h-0 gap-4 overflow-hidden p-4 md:p-6' : 'gap-4'
+      } ${overlayFullscreen && !nativeFullscreen ? 'fixed inset-0 z-50' : ''}`}
+    >
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
+        {isDisplay && (
+          <p className="text-xl font-bold tracking-tight md:text-2xl">Available stock</p>
+        )}
+        <div className={`relative flex-1 ${isDisplay ? 'max-w-md' : 'max-w-xs'}`}>
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/50" />
           <Input
             type="text"
             placeholder="Search products..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 text-sm"
+            className={`pl-9 ${isDisplay ? 'h-10 text-base' : 'text-sm'}`}
           />
         </div>
         <div className="flex items-center gap-1 rounded-lg border bg-muted/50 p-1">
@@ -750,7 +813,7 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
                 variant={cols === n ? 'outline' : 'ghost'}
                 size="sm"
                 onClick={() => setCols(n)}
-                className="h-7 px-2.5 text-xs"
+                className={isDisplay ? 'h-10 px-3 text-sm' : 'h-7 px-2.5 text-xs'}
                 title={`${n} columns`}
               >
                 <Icon data-icon="inline-start" />
@@ -759,9 +822,20 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
             );
           })}
         </div>
-        <span className="text-xs text-muted-foreground ml-auto">
+        <span className={`text-muted-foreground ml-auto ${isDisplay ? 'text-base' : 'text-xs'}`}>
           {filtered.length} product{filtered.length !== 1 ? 's' : ''}
         </span>
+        {isDisplay ? (
+          <Button type="button" variant="outline" onClick={exitFullscreen} className="h-12 px-4 text-base">
+            <Minimize2 data-icon="inline-start" />
+            Exit
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" size="sm" onClick={enterFullscreen}>
+            <Maximize2 data-icon="inline-start" />
+            Full screen
+          </Button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -776,23 +850,50 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
           </EmptyHeader>
         </Empty>
       ) : (
-        <div className={`grid gap-3 ${gridClass}`}>
+        <div
+          className={`grid gap-3 ${isDisplay ? 'min-h-0 flex-1' : gridClass}`}
+          style={isDisplay ? {
+            gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${displayRows}, minmax(0, 1fr))`,
+          } : undefined}
+        >
           {filtered.map((product) => {
             const isOOS = product.stockQuantity === 0;
             const isLow = !isOOS && product.stockQuantity <= LOW_STOCK_THRESHOLD;
             const isFlashing = flashSet.current.has(product._id);
+            const nameClass = !isDisplay
+              ? 'text-sm font-semibold leading-tight line-clamp-2'
+              : displayCozy
+                ? 'text-2xl font-bold leading-tight line-clamp-2'
+                : displayTight
+                  ? 'text-sm font-semibold leading-tight line-clamp-2'
+                  : 'text-lg font-bold leading-tight line-clamp-2';
+            const priceClass = !isDisplay
+              ? 'text-sm font-bold text-foreground'
+              : displayCozy
+                ? 'text-3xl font-bold text-foreground'
+                : displayTight
+                  ? 'text-base font-bold text-foreground'
+                  : 'text-xl font-bold text-foreground';
+            const stockClass = displayCozy
+              ? 'text-4xl'
+              : displayTight
+                ? 'text-xl'
+                : 'text-2xl';
 
             return (
               <Card
                 key={product._id}
                 className={`relative gap-0 overflow-hidden py-0 transition-all duration-300 ${
+                  isDisplay ? 'h-full min-h-0' : ''
+                } ${
                   isOOS ? 'opacity-50 border-border/40' : 'border-border/60'
                 } ${isFlashing ? 'ring-2 ring-operational/60 shadow-lg shadow-operational/10' : ''}`}
               >
-                <div className="relative aspect-square overflow-hidden bg-muted">
+                <div className={`relative overflow-hidden bg-muted ${isDisplay ? 'min-h-0 flex-1' : 'aspect-square'}`}>
                   <RealtimeStocksImage
                     src={product.images?.[0]}
-                    className="size-full"
+                    className={isDisplay ? 'absolute inset-0 size-full' : 'size-full'}
                   />
                   {isOOS && (
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
@@ -812,12 +913,22 @@ function RealtimeStocks({ storeId }: { storeId: string }) {
                     <div className="absolute inset-0 bg-operational/10 animate-pulse pointer-events-none" />
                   )}
                 </div>
-                <CardContent className="flex flex-1 flex-col gap-1 p-3">
-                  <p className="text-sm font-semibold leading-tight line-clamp-2">{product.name}</p>
-                  <p className="text-sm font-bold text-foreground">{fmt(product.sellingPrice)}</p>
-                  <div className="mt-auto pt-1.5 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Stock</span>
-                    <StockBadge value={product.stockQuantity} />
+                <CardContent className={`flex shrink-0 flex-col gap-1 ${isDisplay ? (displayTight ? 'p-2' : 'p-3') : 'p-3'}`}>
+                  <p className={nameClass}>
+                    {product.name}
+                  </p>
+                  <p className={priceClass}>
+                    {fmt(product.sellingPrice)}
+                  </p>
+                  <div className={`mt-auto flex items-center justify-between ${isDisplay && !displayTight ? 'pt-1' : 'pt-0.5'}`}>
+                    <span className={isDisplay && !displayTight ? 'text-sm text-muted-foreground' : 'text-xs text-muted-foreground'}>Stock</span>
+                    {isDisplay ? (
+                      <span className={`${stockClass} font-bold tabular-nums ${isOOS ? 'text-destructive' : isLow ? 'text-warning' : 'text-foreground'}`}>
+                        {product.stockQuantity}
+                      </span>
+                    ) : (
+                      <StockBadge value={product.stockQuantity} />
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1106,6 +1217,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
   const [relistClosesAt, setRelistClosesAt] = useState('');
   const [relistExpected, setRelistExpected] = useState('');
   const [relistSubmitting, setRelistSubmitting] = useState(false);
+  const relistStock = useReconciliationPreview(relistTarget?._id ?? null);
   const [moveOpen, setMoveOpen] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [moveIds, setMoveIds] = useState<string[]>([]);
@@ -1206,6 +1318,12 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
     setLoading(false);
   };
 
+  useEffect(() => {
+    if (relistDestination === 'inventory' && relistStock.preview) {
+      setRelistQty(String(relistStock.preview.additionalNeeded));
+    }
+  }, [relistDestination, relistStock.preview]);
+
   const fetchListingHistory = async (sid?: string) => {
     const eid = sid && sid !== 'all' ? sid : effectiveStoreId;
     if (!eid) return;
@@ -1226,10 +1344,17 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
       toast.error('Set the date and time when pre-orders close');
       return;
     }
-    const qty = parseInt(relistQty, 10);
-    if (!asPreOrder && (!qty || qty <= 0)) {
-      toast.error('Enter a valid quantity');
+    const received = receivedUnits(relistQty);
+    if (!asPreOrder && (received == null || !relistStock.preview)) {
+      toast.error('Enter the units received, or 0');
       return;
+    }
+    if (!asPreOrder && relistStock.preview && received != null) {
+      const live = liveReconciliation(relistStock.preview.physical, relistStock.preview.outstanding, received);
+      if (live.shortage > 0) {
+        toast.error(`Short by ${live.shortage}`);
+        return;
+      }
     }
     setRelistSubmitting(true);
     try {
@@ -1249,7 +1374,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               const body: Record<string, unknown> = {
                 productId: relistTarget._id,
                 storeId: effectiveStoreId,
-                quantity: qty,
+                received,
               };
               const cost = parseFloat(relistCost);
               if (Number.isFinite(cost) && cost >= 0) body.costPrice = cost;
@@ -2168,7 +2293,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         <Alert>
           <CalendarClock />
           <AlertDescription>
-            Select products with the checkboxes, then use <strong className="text-foreground">Move to pre-order</strong>. They share one expected availability and one time when orders close. Stock on hand is not carried over.
+            Select products with the checkboxes, then use <strong className="text-foreground">Move to pre-order</strong>. They share one expected availability and one time when orders close. Physical stock stays with the product and is not sold while it is a pre-order.
           </AlertDescription>
         </Alert>
       )}
@@ -2211,9 +2336,9 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
         </Alert>
       )}
 
-      <Card className="gap-0 overflow-hidden rounded-lg py-0">
-        <CardContent className="flex flex-col px-0">
-        <div className="data-table-scroll-wrapper flex-1 min-h-0">
+      <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-lg py-0">
+        <CardContent className="flex min-h-0 flex-1 flex-col px-0">
+        <div className="data-table-scroll-wrapper inventory-table-scroll min-h-0 flex-1">
           <table className="data-table">
             <thead>
               <tr>
@@ -2870,9 +2995,21 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           <DialogHeader>
             <DialogTitle>Move to pre-order</DialogTitle>
             <DialogDescription>
-              {moveIds.length} product{moveIds.length === 1 ? '' : 's'} will leave today&apos;s inventory. Their current stock is not carried over. They share one expected availability and one time when orders close.
+              {moveIds.length} product{moveIds.length === 1 ? '' : 's'} will leave today&apos;s shelf. Physical stock stays with each product and is not sold while it is a pre-order. Listing does not deduct that stock. They share one expected availability and one time when orders close.
             </DialogDescription>
           </DialogHeader>
+          <ul className="flex flex-col gap-1 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+            {moveIds.map((id) => {
+              const row = displayRows.find((item) => item.product._id === id);
+              const physical = (row?.product.stockQuantity ?? 0) + (row?.product.reservedQuantity ?? 0);
+              return (
+                <li key={id} className="flex items-baseline justify-between gap-4">
+                  <span>{row?.product.name ?? 'Product'}</span>
+                  <span className="tabular-nums text-muted-foreground">Physical stock {physical}</span>
+                </li>
+              );
+            })}
+          </ul>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <Label>Orders close</Label>
@@ -2900,7 +3037,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           <DialogHeader>
             <DialogTitle>Relist Product</DialogTitle>
             <DialogDescription>
-              Choose where <strong>{relistTarget?.name}</strong> is listed again. Inventory asks for a quantity. Pre-order uses one expected availability and one time when orders close, and stock is not carried over.
+              Choose where <strong>{relistTarget?.name}</strong> is listed again. Inventory adds the units you just received and reserves outstanding pre-orders first. A pre-order keeps the physical stock and only needs a new window.
             </DialogDescription>
           </DialogHeader>
           {relistTarget && (
@@ -2925,6 +3062,12 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
             </div>
             {relistDestination === 'preorder' ? (
               <>
+                <InventoryReconciliationSummary
+                  preview={relistStock.preview}
+                  loading={relistStock.loading}
+                  error={relistStock.error}
+                  mode="hold"
+                />
                 <div className="flex flex-col gap-2">
                   <Label>Orders close</Label>
                   <LocalDateTimeField id="relist-closes" value={relistClosesAt} onChange={setRelistClosesAt} />
@@ -2937,14 +3080,21 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
               </>
             ) : (
             <>
+            <InventoryReconciliationSummary
+              preview={relistStock.preview}
+              loading={relistStock.loading}
+              error={relistStock.error}
+              received={receivedUnits(relistQty)}
+              mode="inventory"
+            />
             <div className="flex flex-col gap-2">
-              <Label>Quantity <span className="text-destructive">*</span></Label>
+              <Label>Physical stock received</Label>
               <Input
                 type="number"
-                min={1}
+                min={0}
                 value={relistQty}
                 onChange={(e) => setRelistQty(e.target.value)}
-                placeholder="Enter quantity"
+                placeholder="0 if nothing new arrived"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -2996,7 +3146,23 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setRelistTarget(null)}>Cancel</Button>
-            <Button onClick={handleRelist} disabled={relistSubmitting || (relistDestination === 'inventory' ? !relistQty.trim() : !relistClosesAt)}>
+            <Button
+              onClick={handleRelist}
+              disabled={
+                relistSubmitting
+                || (relistDestination === 'inventory'
+                  ? relistStock.loading
+                    || Boolean(relistStock.error)
+                    || !relistStock.preview
+                    || receivedUnits(relistQty) == null
+                    || liveReconciliation(
+                      relistStock.preview?.physical ?? 0,
+                      relistStock.preview?.outstanding ?? 0,
+                      receivedUnits(relistQty) ?? 0
+                    ).shortage > 0
+                  : !relistClosesAt)
+              }
+            >
               {relistSubmitting ? (
                 <>
                   <Spinner data-icon="inline-start" />
