@@ -4,6 +4,7 @@ export type ClaimStatus = 'unclaimed' | 'claimed';
 export type PaymentStatus = 'unpaid' | 'paid' | 'partial';
 export type OrderStatus = 'active' | 'cancelled';
 export type OrderType = 'regular' | 'walk-in' | 'preorder';
+export type PaymentMethod = 'cash' | 'bank_qr';
 export type PreOrderDisplayStatus = 'pending' | 'ready' | 'fulfilled' | 'cancelled';
 
 export type DisplayOrderStatus = OrderStatus | 'completed';
@@ -60,6 +61,13 @@ export interface ITransaction extends Document {
   paymentStatus: PaymentStatus;
   /** Amount paid so far; used when paymentStatus === 'partial'. */
   amountPaid: number;
+  /** How the counter collected payment. Null until a method is chosen. */
+  paymentMethod?: PaymentMethod | null;
+  paymentOptionId?: mongoose.Types.ObjectId | null;
+  /** Name of the QR option at the time it was selected. */
+  paymentOptionLabel?: string | null;
+  /** Last 4 digits of the bank/QR reference. Set only after the customer confirms payment. */
+  paymentReferenceLast4?: string | null;
   orderStatus: OrderStatus;
   orderType: OrderType;
   /** When the order became fully paid; null while unpaid or partial. */
@@ -86,6 +94,19 @@ const transactionSchema = new Schema<ITransaction>(
     claimStatus: { type: String, enum: ['unclaimed', 'claimed'], default: 'unclaimed' },
     paymentStatus: { type: String, enum: ['unpaid', 'paid', 'partial'], default: 'unpaid' },
     amountPaid: { type: Number, default: 0, min: 0 },
+    paymentMethod: { type: String, enum: ['cash', 'bank_qr', null], default: null },
+    paymentOptionId: { type: Schema.Types.ObjectId, ref: 'PaymentOption', default: null },
+    paymentOptionLabel: { type: String, default: null },
+    paymentReferenceLast4: {
+      type: String,
+      default: null,
+      validate: {
+        validator(value: string | null) {
+          return value == null || /^\d{4}$/.test(value);
+        },
+        message: 'Reference must be 4 digits',
+      },
+    },
     orderStatus: { type: String, enum: ['active', 'cancelled'], default: 'active' },
     orderType: { type: String, enum: ['regular', 'walk-in', 'preorder'], default: 'regular' },
     paidAt: { type: Date, default: null },

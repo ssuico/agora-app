@@ -9,6 +9,7 @@ import {
   requestCancellation,
   resolveCancellationRequest,
   updateTransactionCustomer,
+  updateTransactionItems,
   updateTransactionNotes,
   updateTransactionStatus,
 } from '../controllers/transaction.controller.js';
@@ -27,6 +28,11 @@ transactionRoutes.post(
   '/',
   authorize(UserRole.ADMIN, UserRole.STORE_MANAGER, UserRole.CUSTOMER),
   createTransaction
+);
+transactionRoutes.patch(
+  '/:id/items',
+  authorize(UserRole.ADMIN, UserRole.STORE_MANAGER),
+  updateTransactionItems
 );
 transactionRoutes.patch(
   '/:id/status',

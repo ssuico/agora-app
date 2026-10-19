@@ -5,9 +5,11 @@ import { PreOrderListing } from '../models/PreOrderListing.js';
 import { Product, REGULAR_PRODUCT_FILTER } from '../models/Product.js';
 import { Store } from '../models/Store.js';
 import { demandForProducts } from './preorder.controller.js';
-import { Transaction, type ClaimStatus, type OrderType, type PaymentStatus } from '../models/Transaction.js';
+import { PaymentOption } from '../models/PaymentOption.js';
+import { Transaction, type ClaimStatus, type ITransaction, type OrderType, type PaymentMethod, type PaymentStatus } from '../models/Transaction.js';
 import { TransactionItem } from '../models/TransactionItem.js';
 import { User } from '../models/User.js';
+import { adjustReservedLines } from '../services/inventoryReconciliation.js';
 import { getIO } from '../socket.js';
 import { localDayRangeFromDateString } from '../config/timezone.js';
 import { UserRole } from '../types/index.js';
@@ -29,6 +31,95 @@ interface CreateTransactionBody {
   customerNotes?: string;
   /** Only `preorder` is honored. Regular and walk-in are assigned by who is checking out. */
   orderType?: string;
+  paymentMethod?: PaymentMethod;
+  paymentOptionId?: string;
+  paymentReferenceLast4?: string;
+}
+
+interface ResolvedPayment {
+  paymentMethod: PaymentMethod | null;
+  paymentOptionId: mongoose.Types.ObjectId | null;
+  paymentOptionLabel: string | null;
+  paymentReferenceLast4: string | null;
+}
+
+const EMPTY_PAYMENT: ResolvedPayment = {
+  paymentMethod: null,
+  paymentOptionId: null,
+  paymentOptionLabel: null,
+  paymentReferenceLast4: null,
+};
+
+function effectiveUnitPrice(product: { sellingPrice: number; discountPrice?: number | null }): number {
+  return typeof product.discountPrice === 'number' && product.discountPrice >= 0
+    ? Math.min(product.discountPrice, product.sellingPrice)
+    : product.sellingPrice;
+}
+
+/**
+ * Cash marks the order paid and clears any QR fields.
+ * Bank/QR requires an active option for the store. Paid QR also requires 4 reference digits.
+ * Postponed QR stays unpaid and stores the option without a reference.
+ */
+async function resolveStaffPayment(input: {
+  storeId: mongoose.Types.ObjectId | string;
+  paymentStatus: PaymentStatus;
+  paymentMethod?: unknown;
+  paymentOptionId?: unknown;
+  paymentReferenceLast4?: unknown;
+  session?: mongoose.ClientSession;
+}): Promise<ResolvedPayment> {
+  const method = input.paymentMethod === 'cash' || input.paymentMethod === 'bank_qr'
+    ? input.paymentMethod
+    : null;
+
+  if (input.paymentStatus === 'partial' || (input.paymentStatus === 'unpaid' && method !== 'bank_qr')) {
+    return EMPTY_PAYMENT;
+  }
+
+  if (input.paymentStatus === 'paid' && method !== 'bank_qr') {
+    return { ...EMPTY_PAYMENT, paymentMethod: 'cash' };
+  }
+
+  const optionId = typeof input.paymentOptionId === 'string' ? input.paymentOptionId : '';
+  if (!mongoose.Types.ObjectId.isValid(optionId)) {
+    throw new Error('Select a QR payment option');
+  }
+
+  let optionQuery = PaymentOption.findOne({
+    _id: optionId,
+    storeId: input.storeId,
+    isActive: true,
+  });
+  if (input.session) optionQuery = optionQuery.session(input.session);
+  const option = await optionQuery;
+  if (!option) {
+    throw new Error('That QR payment option is not available');
+  }
+
+  const label = option.label?.trim() || option.recipientName;
+  if (input.paymentStatus !== 'paid') {
+    return {
+      paymentMethod: 'bank_qr',
+      paymentOptionId: option._id as mongoose.Types.ObjectId,
+      paymentOptionLabel: label,
+      paymentReferenceLast4: null,
+    };
+  }
+
+  const digits = typeof input.paymentReferenceLast4 === 'string'
+    ? input.paymentReferenceLast4.trim()
+    : '';
+  if (!/^\d{4}$/.test(digits)) {
+    throw new Error('Enter the last 4 digits of the payment reference');
+  }
+
+  return {
+    paymentMethod: 'bank_qr',
+    paymentOptionId: option._id as mongoose.Types.ObjectId,
+    paymentOptionLabel: label,
+    paymentReferenceLast4: digits,
+  };
 }
 
 async function broadcastPreOrderDemand(
@@ -191,6 +282,17 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
       }
     }
 
+    const paymentCapture = isStaff
+      ? await resolveStaffPayment({
+          storeId,
+          paymentStatus,
+          paymentMethod: body.paymentMethod,
+          paymentOptionId: body.paymentOptionId,
+          paymentReferenceLast4: body.paymentReferenceLast4,
+          session,
+        })
+      : EMPTY_PAYMENT;
+
     const notes =
       typeof body.notes === 'string' && body.notes.trim()
         ? body.notes.trim()
@@ -213,6 +315,10 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         claimStatus,
         paymentStatus,
         amountPaid,
+        paymentMethod: paymentCapture.paymentMethod,
+        paymentOptionId: paymentCapture.paymentOptionId,
+        paymentOptionLabel: paymentCapture.paymentOptionLabel,
+        paymentReferenceLast4: paymentCapture.paymentReferenceLast4,
         orderType,
         claimedAt: claimStatus === 'claimed' ? now : null,
         paidAt: paymentStatus === 'paid' ? now : null,
@@ -362,13 +468,211 @@ export const getTransaction = async (req: Request, res: Response): Promise<void>
   }
 };
 
+export const updateTransactionItems = async (req: Request, res: Response): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const transaction = await Transaction.findById(req.params.id).session(session);
+    if (!transaction) {
+      await session.abortTransaction();
+      res.status(404).json({ message: 'Transaction not found' });
+      return;
+    }
+    if (transaction.orderStatus === 'cancelled') {
+      throw new Error('Cancelled orders cannot be edited');
+    }
+
+    const body = req.body as { items?: CartItem[] };
+    const requested = new Map<string, number>();
+    for (const item of body.items ?? []) {
+      if (!item?.productId || !mongoose.Types.ObjectId.isValid(item.productId)) {
+        throw new Error('Each item needs a product');
+      }
+      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+        throw new Error('Each item quantity must be a whole number of at least 1');
+      }
+      requested.set(item.productId, (requested.get(item.productId) ?? 0) + item.quantity);
+    }
+    if (requested.size === 0) {
+      throw new Error('Keep at least one product. Cancel the order to remove everything.');
+    }
+
+    const existingItems = await TransactionItem.find({ transactionId: transaction._id }).session(session);
+    const existingMap = new Map<string, { quantity: number; subtotal: number; costSubtotal: number }>();
+    for (const line of existingItems) {
+      const id = String(line.productId);
+      const prev = existingMap.get(id);
+      if (prev) {
+        prev.quantity += line.quantity;
+        prev.subtotal += line.subtotal;
+        prev.costSubtotal += line.costSubtotal;
+      } else {
+        existingMap.set(id, {
+          quantity: line.quantity,
+          subtotal: line.subtotal,
+          costSubtotal: line.costSubtotal,
+        });
+      }
+    }
+
+    const isPreOrder = transaction.orderType === 'preorder';
+    const productIds = new Set<string>([...existingMap.keys(), ...requested.keys()]);
+    const resolved: Array<{
+      transactionId: mongoose.Types.ObjectId;
+      productId: mongoose.Types.ObjectId;
+      quantity: number;
+      subtotal: number;
+      costSubtotal: number;
+    }> = [];
+    const changes: Array<{ productId: string; name: string; from: number; to: number }> = [];
+
+    for (const productId of productIds) {
+      const previous = existingMap.get(productId);
+      const oldQty = previous?.quantity ?? 0;
+      const newQty = requested.get(productId) ?? 0;
+      if (newQty === 0 && oldQty === 0) continue;
+
+      const product = await Product.findById(productId).session(session);
+      if (!product) {
+        if (newQty === 0) continue;
+        throw new Error('A product on this order no longer exists');
+      }
+      if (String(product.storeId) !== String(transaction.storeId)) {
+        throw new Error(`"${product.name}" does not belong to this store`);
+      }
+      if (isPreOrder && product.productType !== 'preorder') {
+        throw new Error(`"${product.name}" is not a pre-order product`);
+      }
+      if (!isPreOrder && product.productType === 'preorder') {
+        throw new Error(`"${product.name}" is a pre-order item. Place it from the Pre-Orders tab.`);
+      }
+
+      const delta = newQty - oldQty;
+      if (!isPreOrder && delta > 0) {
+        const updated = await Product.findOneAndUpdate(
+          { _id: product._id, stockQuantity: { $gte: delta } },
+          { $inc: { stockQuantity: -delta } },
+          { session, new: true }
+        );
+        if (!updated) {
+          throw new Error(`Insufficient stock for "${product.name}" (available: ${product.stockQuantity})`);
+        }
+      } else if (!isPreOrder && delta < 0) {
+        await Product.updateOne(
+          { _id: product._id },
+          { $inc: { stockQuantity: -delta } },
+          { session }
+        );
+      }
+
+      if (newQty > 0) {
+        const unitPrice = previous && previous.quantity > 0
+          ? previous.subtotal / previous.quantity
+          : effectiveUnitPrice(product);
+        const unitCost = previous && previous.quantity > 0
+          ? previous.costSubtotal / previous.quantity
+          : product.costPrice;
+        resolved.push({
+          transactionId: transaction._id as mongoose.Types.ObjectId,
+          productId: product._id as mongoose.Types.ObjectId,
+          quantity: newQty,
+          subtotal: unitPrice * newQty,
+          costSubtotal: unitCost * newQty,
+        });
+      }
+
+      if (delta !== 0) {
+        changes.push({ productId, name: product.name, from: oldQty, to: newQty });
+      }
+    }
+
+    if (resolved.length === 0) {
+      throw new Error('Keep at least one product. Cancel the order to remove everything.');
+    }
+
+    const totalAmount = resolved.reduce((sum, line) => sum + line.subtotal, 0);
+    const totalCost = resolved.reduce((sum, line) => sum + line.costSubtotal, 0);
+
+    await TransactionItem.deleteMany({ transactionId: transaction._id }).session(session);
+    await TransactionItem.insertMany(resolved, { session });
+
+    transaction.totalAmount = totalAmount;
+    transaction.totalCost = totalCost;
+    transaction.grossProfit = totalAmount - totalCost;
+    if (transaction.paymentStatus === 'paid') {
+      transaction.amountPaid = totalAmount;
+    } else if (transaction.paymentStatus === 'partial') {
+      if (transaction.amountPaid >= totalAmount) {
+        transaction.paymentStatus = 'paid';
+        transaction.amountPaid = totalAmount;
+        if (!transaction.paidAt) transaction.paidAt = new Date();
+      } else {
+        transaction.amountPaid = Math.min(transaction.amountPaid, Math.max(0, totalAmount - 0.01));
+      }
+    }
+    await transaction.save({ session });
+    await session.commitTransaction();
+
+    const populated = await Transaction.findById(transaction._id).populate('customerId', 'name email');
+    const items = await TransactionItem.find({ transactionId: transaction._id }).populate(
+      'productId',
+      'name sellingPrice costPrice'
+    );
+
+    try {
+      const io = getIO();
+      if (!isPreOrder) {
+        const updatedProducts = await Product.find({
+          storeId: transaction.storeId,
+          ...REGULAR_PRODUCT_FILTER,
+        }).lean();
+        io.to(`store:${transaction.storeId}`).emit('stock:updated', updatedProducts);
+      } else {
+        await broadcastPreOrderDemand(
+          String(transaction.storeId),
+          resolved.map((line) => line.productId)
+        );
+      }
+      if (populated) {
+        io.to(`store:${transaction.storeId}`).emit('transaction:updated', populated.toJSON());
+      }
+      const activityDoc = await ActivityLog.create({
+        storeId: transaction.storeId,
+        type: 'transaction_edited',
+        actorName: req.user?.name || 'Staff',
+        actorAvatar: req.user?.avatar || null,
+        message: `${req.user?.name || 'Staff'} edited an order`,
+        metadata: { transactionId: String(transaction._id), changes },
+      });
+      io.to(`store:${transaction.storeId}`).emit('activity:new', activityDoc);
+    } catch { /* socket broadcast is non-critical */ }
+
+    res.json({ transaction: populated, items });
+  } catch (err: unknown) {
+    await session.abortTransaction();
+    const message = err instanceof Error ? err.message : 'Could not update the order';
+    const status = message === 'Transaction not found' ? 404 : 400;
+    if (!res.headersSent) res.status(status).json({ message });
+  } finally {
+    session.endSession();
+  }
+};
+
 export const updateTransactionStatus = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { claimStatus, paymentStatus, amountPaid: bodyAmountPaid } = req.body;
+    const { claimStatus, paymentStatus, amountPaid: bodyAmountPaid, paymentMethod, paymentOptionId, paymentReferenceLast4 } = req.body as {
+      claimStatus?: string;
+      paymentStatus?: string;
+      amountPaid?: number;
+      paymentMethod?: string;
+      paymentOptionId?: string;
+      paymentReferenceLast4?: string;
+    };
     const update: Record<string, unknown> = {};
 
     const existing = await Transaction.findById(req.params.id)
-      .select('totalAmount claimStatus paymentStatus claimedAt paidAt')
+      .select('totalAmount claimStatus paymentStatus claimedAt paidAt storeId orderType')
       .lean();
     if (!existing) {
       res.status(404).json({ message: 'Transaction not found' });
@@ -383,16 +687,47 @@ export const updateTransactionStatus = async (req: Request, res: Response): Prom
         update.claimedAt = null;
       }
     }
+    const settingPaid = paymentStatus === 'paid';
+    const postponingQr = paymentStatus === 'unpaid' && paymentMethod === 'bank_qr';
+    if (settingPaid || postponingQr) {
+      if (existing.paymentStatus === 'paid') {
+        res.status(409).json({ message: 'This order is already paid' });
+        return;
+      }
+    }
     if (paymentStatus && ['unpaid', 'paid', 'partial'].includes(paymentStatus)) {
-      update.paymentStatus = paymentStatus;
-      if (paymentStatus === 'paid') {
-        update.amountPaid = existing.totalAmount;
-        if (existing.paymentStatus !== 'paid' || !existing.paidAt) update.paidAt = new Date();
-      } else {
-        update.paidAt = null;
-        if (paymentStatus === 'unpaid') {
+      if (paymentStatus === 'paid' || postponingQr) {
+        const captured = await resolveStaffPayment({
+          storeId: existing.storeId as mongoose.Types.ObjectId,
+          paymentStatus: paymentStatus as PaymentStatus,
+          paymentMethod,
+          paymentOptionId,
+          paymentReferenceLast4,
+        });
+        update.paymentStatus = paymentStatus;
+        update.paymentMethod = captured.paymentMethod;
+        update.paymentOptionId = captured.paymentOptionId;
+        update.paymentOptionLabel = captured.paymentOptionLabel;
+        update.paymentReferenceLast4 = captured.paymentReferenceLast4;
+        if (paymentStatus === 'paid') {
+          update.amountPaid = existing.totalAmount;
+          update.paidAt = existing.paidAt ?? new Date();
+        } else {
           update.amountPaid = 0;
-        } else if (typeof bodyAmountPaid === 'number') {
+          update.paidAt = null;
+        }
+      } else if (paymentStatus === 'unpaid') {
+        update.paymentStatus = 'unpaid';
+        update.paidAt = null;
+        update.amountPaid = 0;
+        update.paymentMethod = null;
+        update.paymentOptionId = null;
+        update.paymentOptionLabel = null;
+        update.paymentReferenceLast4 = null;
+      } else {
+        update.paymentStatus = 'partial';
+        update.paidAt = null;
+        if (typeof bodyAmountPaid === 'number') {
           const totalAmount = existing.totalAmount as number;
           update.amountPaid = Number.isFinite(bodyAmountPaid)
             ? Math.max(0, Math.min(bodyAmountPaid, totalAmount - 0.01))
@@ -406,10 +741,59 @@ export const updateTransactionStatus = async (req: Request, res: Response): Prom
       return;
     }
 
-    const transaction = await Transaction.findByIdAndUpdate(req.params.id, update, { new: true })
-      .populate('customerId', 'name email');
+    const query = settingPaid || postponingQr
+      ? { _id: req.params.id, paymentStatus: { $ne: 'paid' } }
+      : { _id: req.params.id };
+    const nextClaim = (typeof update.claimStatus === 'string' ? update.claimStatus : existing.claimStatus) as string;
+    const nextPay = (typeof update.paymentStatus === 'string' ? update.paymentStatus : existing.paymentStatus) as string;
+    const wasFulfilled = existing.paymentStatus === 'paid' && existing.claimStatus === 'claimed';
+    const nowFulfilled = nextPay === 'paid' && nextClaim === 'claimed';
+    const reservationShift = existing.orderType === 'preorder' && wasFulfilled !== nowFulfilled;
+
+    let transaction: ITransaction | null = null;
+    if (reservationShift) {
+      const session = await mongoose.startSession();
+      try {
+        session.startTransaction();
+        const updated = await Transaction.findOneAndUpdate(query, update, { new: true, session });
+        if (!updated) {
+          await session.abortTransaction();
+        } else {
+          const lines = await TransactionItem.find({ transactionId: updated._id }).session(session);
+          await adjustReservedLines(
+            lines.map((line) => ({
+              productId: line.productId as mongoose.Types.ObjectId,
+              quantity: line.quantity,
+            })),
+            nowFulfilled ? 'fulfill' : 'restore',
+            session,
+            { userId: req.user?.userId }
+          );
+          await session.commitTransaction();
+          transaction = updated;
+        }
+      } catch (err) {
+        await session.abortTransaction();
+        throw err;
+      } finally {
+        session.endSession();
+      }
+      if (transaction) {
+        transaction = await Transaction.findById(transaction._id).populate('customerId', 'name email');
+      }
+    } else {
+      transaction = await Transaction.findOneAndUpdate(query, update, { new: true })
+        .populate('customerId', 'name email');
+    }
 
     if (!transaction) {
+      if (settingPaid || postponingQr) {
+        const current = await Transaction.findById(req.params.id).select('paymentStatus').lean();
+        if (current?.paymentStatus === 'paid') {
+          res.status(409).json({ message: 'This order is already paid' });
+          return;
+        }
+      }
       res.status(404).json({ message: 'Transaction not found' });
       return;
     }
@@ -423,6 +807,13 @@ export const updateTransactionStatus = async (req: Request, res: Response): Prom
           String(transaction.storeId),
           lines.map((line) => line.productId as mongoose.Types.ObjectId)
         );
+      }
+      if (reservationShift) {
+        const updatedProducts = await Product.find({
+          storeId: transaction.storeId,
+          ...REGULAR_PRODUCT_FILTER,
+        }).lean();
+        io.to(`store:${transaction.storeId}`).emit('stock:updated', updatedProducts);
       }
     } catch { /* socket broadcast is non-critical */ }
 
@@ -513,7 +904,10 @@ type CancelOutcome =
  * pending customer cancellation request as approved. Shared by the manager's cancel button and by
  * approving a customer's request.
  */
-async function performCancellation(transactionId: string): Promise<CancelOutcome> {
+async function performCancellation(
+  transactionId: string,
+  actor?: { userId?: string | null }
+): Promise<CancelOutcome> {
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -531,6 +925,18 @@ async function performCancellation(transactionId: string): Promise<CancelOutcome
 
     const items = await TransactionItem.find({ transactionId: transaction._id }).session(session);
     const restoresStock = transaction.orderType !== 'preorder';
+    const alreadyFulfilled = transaction.paymentStatus === 'paid' && transaction.claimStatus === 'claimed';
+    const releasedReservation = !restoresStock && !alreadyFulfilled
+      ? await adjustReservedLines(
+        items.map((item) => ({
+          productId: item.productId as mongoose.Types.ObjectId,
+          quantity: item.quantity,
+        })),
+        'release',
+        session,
+        actor
+      )
+      : false;
 
     if (restoresStock) {
       for (const item of items) {
@@ -558,10 +964,11 @@ async function performCancellation(transactionId: string): Promise<CancelOutcome
     try {
       const io = getIO();
       const storeId = String(transaction.storeId);
-      if (restoresStock) {
+      if (restoresStock || releasedReservation) {
         const updatedProducts = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
         io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
-      } else {
+      }
+      if (!restoresStock) {
         await broadcastPreOrderDemand(
           storeId,
           items.map((item) => item.productId as mongoose.Types.ObjectId)
@@ -581,7 +988,7 @@ async function performCancellation(transactionId: string): Promise<CancelOutcome
 
 export const cancelTransaction = async (req: Request, res: Response): Promise<void> => {
   try {
-    const outcome = await performCancellation(req.params.id as string);
+    const outcome = await performCancellation(req.params.id as string, { userId: req.user?.userId });
     if (!outcome.ok) {
       res.status(outcome.status).json({ message: outcome.message });
       return;
@@ -680,7 +1087,7 @@ export const resolveCancellationRequest = async (req: Request, res: Response): P
     }
 
     if (decision === 'approve') {
-      const outcome = await performCancellation(String(transaction._id));
+      const outcome = await performCancellation(String(transaction._id), { userId: req.user?.userId });
       if (!outcome.ok) {
         res.status(outcome.status).json({ message: outcome.message });
         return;
@@ -723,6 +1130,20 @@ export const deleteTransaction = async (req: Request, res: Response): Promise<vo
     const items = await TransactionItem.find({ transactionId: transaction._id }).session(session);
     const restoresStock =
       transaction.orderType !== 'preorder' && transaction.orderStatus !== 'cancelled';
+    const alreadyFulfilled = transaction.paymentStatus === 'paid' && transaction.claimStatus === 'claimed';
+    const releasedReservation = transaction.orderType === 'preorder'
+      && transaction.orderStatus !== 'cancelled'
+      && !alreadyFulfilled
+      ? await adjustReservedLines(
+        items.map((item) => ({
+          productId: item.productId as mongoose.Types.ObjectId,
+          quantity: item.quantity,
+        })),
+        'release',
+        session,
+        { userId: req.user?.userId }
+      )
+      : false;
 
     if (restoresStock) {
       for (const item of items) {
@@ -742,14 +1163,15 @@ export const deleteTransaction = async (req: Request, res: Response): Promise<vo
     const storeId = String(transaction.storeId);
     try {
       const io = getIO();
+      if (releasedReservation || restoresStock) {
+        const updatedProducts = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
+        io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
+      }
       if (transaction.orderType === 'preorder') {
         await broadcastPreOrderDemand(
           storeId,
           items.map((item) => item.productId as mongoose.Types.ObjectId)
         );
-      } else if (restoresStock) {
-        const updatedProducts = await Product.find({ storeId, ...REGULAR_PRODUCT_FILTER }).lean();
-        io.to(`store:${storeId}`).emit('stock:updated', updatedProducts);
       }
     } catch { /* socket broadcast is non-critical */ }
 

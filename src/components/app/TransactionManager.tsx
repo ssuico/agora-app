@@ -36,8 +36,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertCircle, AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Clock, Coins, Download, FileSpreadsheet, History, ImageIcon, Info, NotepadText, Package, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertCircle, AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Clock, Coins, Download, FileSpreadsheet, History, ImageIcon, Info, NotepadText, Package, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Search, SquarePen, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -45,6 +45,7 @@ import { TablePagination, ITEMS_PER_PAGE } from '@/components/ui/table-paginatio
 
 type ClaimStatus = 'unclaimed' | 'claimed';
 type PaymentStatus = 'unpaid' | 'paid' | 'partial';
+type PaymentMethod = 'cash' | 'bank_qr';
 type OrderStatus = 'active' | 'cancelled';
 type OrderType = 'regular' | 'walk-in' | 'preorder';
 
@@ -68,6 +69,9 @@ interface Transaction {
   claimStatus: ClaimStatus;
   paymentStatus: PaymentStatus;
   amountPaid?: number;
+  paymentMethod?: PaymentMethod | null;
+  paymentOptionLabel?: string | null;
+  paymentReferenceLast4?: string | null;
   orderStatus: OrderStatus;
   orderType?: OrderType;
   paidAt?: string | null;
@@ -101,6 +105,21 @@ interface TransactionManagerProps {
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n);
 
+function unitPrice(product: { sellingPrice: number; discountPrice?: number | null }): number {
+  if (typeof product.discountPrice === 'number' && product.discountPrice >= 0) {
+    return Math.min(product.discountPrice, product.sellingPrice);
+  }
+  return product.sellingPrice;
+}
+
+function paymentStatusLabel(tx?: Pick<Transaction, 'paymentStatus' | 'paymentMethod'> | null): string {
+  if (!tx) return 'Not recorded yet';
+  if (tx.paymentStatus === 'unpaid' && tx.paymentMethod === 'bank_qr') return 'Pending Payment';
+  if (tx.paymentStatus === 'paid') return 'Paid';
+  if (tx.paymentStatus === 'partial') return 'Partial';
+  return 'Unpaid';
+}
+
 /** Use EST for all transaction/report dates so they match server APP_TIMEZONE. */
 const EST_TIMEZONE = 'America/New_York';
 const fmtDate = (date: Date) =>
@@ -133,7 +152,24 @@ function ClaimBadge({ status }: { status: ClaimStatus }) {
   );
 }
 
-function PaymentBadge({ status, totalAmount, amountPaid }: { status: PaymentStatus; totalAmount?: number; amountPaid?: number }) {
+function PaymentBadge({
+  status,
+  totalAmount,
+  amountPaid,
+  paymentMethod,
+}: {
+  status: PaymentStatus;
+  totalAmount?: number;
+  amountPaid?: number;
+  paymentMethod?: PaymentMethod | null;
+}) {
+  if (status === 'unpaid' && paymentMethod === 'bank_qr') {
+    return (
+      <Badge variant="warning">
+        <Clock />Pending Payment
+      </Badge>
+    );
+  }
   if (status === 'paid') {
     return (
       <Badge variant="success">
@@ -548,7 +584,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [existingReport, setExistingReport] = useState<ReportRecord | null>(null);
 
   const [newTxOpen, setNewTxOpen] = useState(false);
-  const [newTxProducts, setNewTxProducts] = useState<Array<{ _id: string; name: string; sellingPrice: number; costPrice: number; stockQuantity: number; images?: string[] }>>([]);
+  const [newTxProducts, setNewTxProducts] = useState<Array<{ _id: string; name: string; sellingPrice: number; discountPrice?: number | null; costPrice: number; stockQuantity: number; images?: string[] }>>([]);
   const [newTxCustomers, setNewTxCustomers] = useState<Array<{ _id: string; name: string; email: string; role?: string }>>([]);
   const [newTxQuantities, setNewTxQuantities] = useState<Record<string, number>>({});
   const [newTxCustomerId, setNewTxCustomerId] = useState<string>('');
@@ -574,6 +610,59 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [editCustomerSubmitting, setEditCustomerSubmitting] = useState(false);
   const [editCustomerCustomers, setEditCustomerCustomers] = useState<Array<{ _id: string; name: string; email: string; role?: string }>>([]);
   const [editCustomerLoadingList, setEditCustomerLoadingList] = useState(false);
+
+  type PaymentStep = 'choose' | 'qr' | 'digits';
+  interface PaymentOptionChoice {
+    _id: string;
+    type: 'e-wallet' | 'bank';
+    recipientName: string;
+    qrImageUrl: string;
+    label?: string;
+    accountDetails?: string;
+  }
+  interface SummaryLine {
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    subtotal: number;
+  }
+  interface PaymentDraft {
+    kind: 'existing' | 'create';
+    tx?: Transaction;
+    step: PaymentStep;
+  }
+  const [paymentDraft, setPaymentDraft] = useState<PaymentDraft | null>(null);
+  const [paymentSummary, setPaymentSummary] = useState<SummaryLine[]>([]);
+  const [paymentDue, setPaymentDue] = useState(0);
+  const [paymentSummaryLoading, setPaymentSummaryLoading] = useState(false);
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOptionChoice[]>([]);
+  const [paymentOptionsLoading, setPaymentOptionsLoading] = useState(false);
+  const [paymentOptionsError, setPaymentOptionsError] = useState('');
+  const [selectedPaymentOptionId, setSelectedPaymentOptionId] = useState('');
+  const [referenceDigits, setReferenceDigits] = useState('');
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  const paymentLock = useRef(false);
+  const createLock = useRef(false);
+  const editLock = useRef(false);
+
+  interface EditCatalogProduct {
+    _id: string;
+    name: string;
+    sellingPrice: number;
+    discountPrice?: number | null;
+    stockQuantity: number;
+    images?: string[];
+    productType?: string;
+  }
+  const [editItemsTx, setEditItemsTx] = useState<Transaction | null>(null);
+  const [editProducts, setEditProducts] = useState<EditCatalogProduct[]>([]);
+  const [editQty, setEditQty] = useState<Record<string, number>>({});
+  const [editOriginalQty, setEditOriginalQty] = useState<Record<string, number>>({});
+  const [editUnitPrices, setEditUnitPrices] = useState<Record<string, number>>({});
+  const [editItemsLoading, setEditItemsLoading] = useState(false);
+  const [editItemsSaving, setEditItemsSaving] = useState(false);
+  const [editItemsError, setEditItemsError] = useState('');
+  const [editItemsSearch, setEditItemsSearch] = useState('');
 
   useEffect(() => {
     if (!newTxOpen) return;
@@ -655,7 +744,62 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     });
   };
 
-  const handleCreateTransaction = async () => {
+  const createSummaryLines = (): SummaryLine[] =>
+    newTxProducts.flatMap((product) => {
+      const quantity = newTxQuantities[product._id] ?? 0;
+      if (quantity <= 0) return [];
+      const price = unitPrice(product);
+      return [{ name: product.name, quantity, unitPrice: price, subtotal: price * quantity }];
+    });
+
+  const linesFromItems = (items: TransactionItemDetail[]): SummaryLine[] =>
+    items.map((item) => ({
+      name: item.productId?.name ?? 'Product',
+      quantity: item.quantity,
+      unitPrice: item.quantity > 0 ? item.subtotal / item.quantity : 0,
+      subtotal: item.subtotal,
+    }));
+
+  const openPaymentFlow = async (draft: PaymentDraft) => {
+    setReferenceDigits('');
+    setPaymentOptionsError('');
+    setPaymentDraft(draft);
+    if (draft.kind === 'create') {
+      const lines = createSummaryLines();
+      setPaymentSummary(lines);
+      setPaymentDue(lines.reduce((sum, line) => sum + line.subtotal, 0));
+      return;
+    }
+    const tx = draft.tx;
+    if (!tx) return;
+    setPaymentDue(tx.totalAmount);
+    const cached = itemsCache[tx._id];
+    if (cached) {
+      setPaymentSummary(linesFromItems(cached));
+      return;
+    }
+    setPaymentSummary([]);
+    setPaymentSummaryLoading(true);
+    try {
+      const res = await fetch(`/api/transactions/${tx._id}`);
+      if (!res.ok) throw new Error('Could not load the order');
+      const data = (await res.json()) as { items?: TransactionItemDetail[] };
+      const items = data.items ?? [];
+      setItemsCache((prev) => ({ ...prev, [tx._id]: items }));
+      setPaymentSummary(linesFromItems(items));
+    } catch {
+      toast.error('Could not load the order summary');
+    } finally {
+      setPaymentSummaryLoading(false);
+    }
+  };
+
+  const handleCreateTransaction = async (payment?: {
+    paymentStatus: PaymentStatus;
+    paymentMethod?: PaymentMethod;
+    paymentOptionId?: string;
+    paymentReferenceLast4?: string;
+  }) => {
     const items = Object.entries(newTxQuantities)
       .filter(([, qty]) => qty > 0)
       .map(([productId, quantity]) => ({ productId, quantity }));
@@ -670,6 +814,13 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       toast.error('Add a customer (select from list or enter walk-in name) before creating the transaction.');
       return;
     }
+    const paymentStatus = payment?.paymentStatus ?? newTxPaymentStatus;
+    if (!payment && paymentStatus === 'paid') {
+      await openPaymentFlow({ kind: 'create', step: 'choose' });
+      return;
+    }
+    if (createLock.current) return;
+    createLock.current = true;
     setNewTxSubmitting(true);
     try {
       const body: {
@@ -679,15 +830,21 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         walkInCustomerName?: string;
         claimStatus: ClaimStatus;
         paymentStatus: PaymentStatus;
+        paymentMethod?: PaymentMethod;
+        paymentOptionId?: string;
+        paymentReferenceLast4?: string;
         amountPaid?: number;
         notes?: string;
       } = {
         storeId,
         items,
         claimStatus: newTxClaimStatus,
-        paymentStatus: newTxPaymentStatus,
+        paymentStatus,
       };
-      if (newTxPaymentStatus === 'partial') {
+      if (payment?.paymentMethod) body.paymentMethod = payment.paymentMethod;
+      if (payment?.paymentOptionId) body.paymentOptionId = payment.paymentOptionId;
+      if (payment?.paymentReferenceLast4) body.paymentReferenceLast4 = payment.paymentReferenceLast4;
+      if (paymentStatus === 'partial') {
         const amount = parseFloat(newTxAmountPaid);
         if (Number.isFinite(amount) && amount > 0) body.amountPaid = amount;
       }
@@ -703,9 +860,12 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        toast.success('Transaction created');
+        toast.success(paymentStatus === 'unpaid' && payment?.paymentMethod === 'bank_qr'
+          ? 'Transaction saved. Payment is pending.'
+          : 'Transaction created');
         setNewTxShowValidationWarning(false);
         setNewTxOpen(false);
+        setPaymentDraft(null);
         setNewTxQuantities({});
         setNewTxCustomerId('');
         setNewTxWalkInName('');
@@ -722,7 +882,136 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
     } catch {
       toast.error('Failed to create transaction');
     } finally {
+      createLock.current = false;
       setNewTxSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!paymentDraft || paymentDraft.step === 'choose') return;
+    let cancelled = false;
+    setPaymentOptionsLoading(true);
+    setPaymentOptionsError('');
+    (async () => {
+      try {
+        const res = await fetch(`/api/payment-options/store/${storeId}/active`);
+        if (!res.ok) throw new Error('Could not load QR payment options');
+        const list = (await res.json()) as PaymentOptionChoice[];
+        if (cancelled) return;
+        setPaymentOptions(list);
+        setSelectedPaymentOptionId((current) => {
+          if (current && list.some((option) => option._id === current)) return current;
+          if (paymentDraft.tx?.paymentMethod === 'bank_qr' && paymentDraft.tx.paymentOptionLabel) {
+            const named = list.find((option) => (option.label || option.recipientName) === paymentDraft.tx?.paymentOptionLabel);
+            if (named) return named._id;
+          }
+          return list[0]?._id ?? '';
+        });
+        if (list.length === 0) setPaymentOptionsError('No QR payment options are set up for this store.');
+      } catch (error) {
+        if (!cancelled) {
+          setPaymentOptionsError(error instanceof Error ? error.message : 'Could not load QR payment options');
+        }
+      } finally {
+        if (!cancelled) setPaymentOptionsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [paymentDraft, storeId]);
+
+  const closePaymentDraft = () => {
+    if (paymentSaving || newTxSubmitting) return;
+    setPaymentDraft(null);
+    setReferenceDigits('');
+  };
+
+  const saveExistingPayment = async (txId: string, body: Record<string, unknown>) => {
+    const res = await fetch(`/api/transactions/${txId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json()) as Transaction & { message?: string };
+    if (!res.ok) {
+      toast.error(data.message ?? 'Failed to update payment');
+      return;
+    }
+    setTransactions((prev) => prev.map((tx) => (tx._id === txId ? { ...tx, ...data } : tx)));
+    toast.success(body.paymentStatus === 'paid' ? 'Payment recorded' : 'Payment postponed');
+    setPaymentDraft(null);
+    setReferenceDigits('');
+  };
+
+  const submitCashPayment = async () => {
+    if (!paymentDraft || paymentLock.current) return;
+    paymentLock.current = true;
+    setPaymentSaving(true);
+    try {
+      if (paymentDraft.kind === 'create') {
+        await handleCreateTransaction({ paymentStatus: 'paid', paymentMethod: 'cash' });
+      } else if (paymentDraft.tx) {
+        await saveExistingPayment(paymentDraft.tx._id, { paymentStatus: 'paid', paymentMethod: 'cash' });
+      }
+    } finally {
+      paymentLock.current = false;
+      setPaymentSaving(false);
+    }
+  };
+
+  const submitQrPaid = async () => {
+    if (!paymentDraft || paymentLock.current) return;
+    if (!selectedPaymentOptionId) {
+      toast.error('Select a QR payment option');
+      return;
+    }
+    if (!/^\d{4}$/.test(referenceDigits.trim())) {
+      toast.error('Enter the last 4 digits of the payment reference');
+      return;
+    }
+    paymentLock.current = true;
+    setPaymentSaving(true);
+    try {
+      const payload = {
+        paymentStatus: 'paid' as const,
+        paymentMethod: 'bank_qr' as const,
+        paymentOptionId: selectedPaymentOptionId,
+        paymentReferenceLast4: referenceDigits.trim(),
+      };
+      if (paymentDraft.kind === 'create') {
+        await handleCreateTransaction(payload);
+      } else if (paymentDraft.tx) {
+        await saveExistingPayment(paymentDraft.tx._id, payload);
+      }
+    } finally {
+      paymentLock.current = false;
+      setPaymentSaving(false);
+    }
+  };
+
+  const selectedPaymentOption = paymentOptions.find((option) => option._id === selectedPaymentOptionId) ?? null;
+
+  const submitPayLater = async () => {
+    if (!paymentDraft || paymentLock.current) return;
+    if (!selectedPaymentOptionId) {
+      toast.error('Select a QR payment option');
+      return;
+    }
+    paymentLock.current = true;
+    setPaymentSaving(true);
+    try {
+      const payload = {
+        paymentStatus: 'unpaid' as const,
+        paymentMethod: 'bank_qr' as const,
+        paymentOptionId: selectedPaymentOptionId,
+      };
+      if (paymentDraft.kind === 'create') {
+        await handleCreateTransaction(payload);
+      } else if (paymentDraft.tx) {
+        await saveExistingPayment(paymentDraft.tx._id, payload);
+      }
+    } finally {
+      paymentLock.current = false;
+      setPaymentSaving(false);
     }
   };
 
@@ -947,6 +1236,118 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       toast.error('Failed to update customer');
     } finally {
       setEditCustomerSubmitting(false);
+    }
+  };
+
+  const openEditItems = async (tx: Transaction) => {
+    setEditItemsTx(tx);
+    setEditItemsLoading(true);
+    setEditItemsError('');
+    setEditItemsSearch('');
+    setEditProducts([]);
+    setEditQty({});
+    try {
+      const isPreorder = tx.orderType === 'preorder';
+      const today = todayInEST();
+      const [txRes, productsRes, dailyRes] = await Promise.all([
+        fetch(`/api/transactions/${tx._id}`),
+        fetch(`/api/products?storeId=${storeId}`),
+        isPreorder ? Promise.resolve(null) : fetch(`/api/inventory/daily?${new URLSearchParams({ storeId, date: today })}`),
+      ]);
+      if (!txRes.ok) throw new Error('Failed to load this order');
+      if (!productsRes.ok) throw new Error('Failed to load products');
+      const txData = (await txRes.json()) as { items?: TransactionItemDetail[] };
+      const lines = txData.items ?? [];
+      if (lines.some((line) => !line.productId)) {
+        setEditItemsError('This order includes a product that was removed. Cancel the order instead of editing items.');
+      }
+      setItemsCache((prev) => ({ ...prev, [tx._id]: lines }));
+
+      const original: Record<string, number> = {};
+      const prices: Record<string, number> = {};
+      for (const line of lines) {
+        const id = line.productId?._id;
+        if (!id) continue;
+        original[id] = (original[id] ?? 0) + line.quantity;
+        if (line.quantity > 0) prices[id] = line.subtotal / line.quantity;
+      }
+      setEditOriginalQty(original);
+      setEditQty({ ...original });
+      setEditUnitPrices(prices);
+
+      let products: EditCatalogProduct[] = await productsRes.json();
+      if (!isPreorder && dailyRes && dailyRes.ok) {
+        const rows = (await dailyRes.json()) as Array<{ productId: string }>;
+        const dailyIds = new Set(rows.map((row) => row.productId));
+        for (const id of Object.keys(original)) dailyIds.add(id);
+        products = products.filter((product) => dailyIds.has(product._id));
+      } else if (isPreorder) {
+        const ids = new Set(Object.keys(original));
+        products = products.filter((product) => product.productType === 'preorder' || ids.has(product._id));
+      }
+      for (const line of lines) {
+        const product = line.productId;
+        if (!product || products.some((entry) => entry._id === product._id)) continue;
+        products.push({
+          _id: product._id,
+          name: product.name,
+          sellingPrice: line.quantity > 0 ? line.subtotal / line.quantity : product.sellingPrice,
+          stockQuantity: 0,
+          productType: isPreorder ? 'preorder' : 'regular',
+        });
+      }
+      setEditProducts(products);
+    } catch (error) {
+      setEditItemsError(error instanceof Error ? error.message : 'Failed to load this order');
+    } finally {
+      setEditItemsLoading(false);
+    }
+  };
+
+  const setEditItemQty = (productId: string, delta: number) => {
+    setEditQty((prev) => {
+      const product = editProducts.find((entry) => entry._id === productId);
+      const held = editOriginalQty[productId] ?? 0;
+      const max = editItemsTx?.orderType === 'preorder'
+        ? 999
+        : (product?.stockQuantity ?? 0) + held;
+      const next = Math.max(0, Math.min(max, (prev[productId] ?? 0) + delta));
+      return { ...prev, [productId]: next };
+    });
+  };
+
+  const saveEditItems = async () => {
+    if (!editItemsTx || editLock.current || editItemsError) return;
+    editLock.current = true;
+    const items = Object.entries(editQty)
+      .filter(([, quantity]) => quantity > 0)
+      .map(([productId, quantity]) => ({ productId, quantity }));
+    if (items.length === 0) {
+      editLock.current = false;
+      toast.error('Keep at least one product. Cancel the order to remove everything.');
+      return;
+    }
+    setEditItemsSaving(true);
+    try {
+      const res = await fetch(`/api/transactions/${editItemsTx._id}/items`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      });
+      const data = (await res.json()) as { message?: string; transaction?: Transaction; items?: TransactionItemDetail[] };
+      if (!res.ok || !data.transaction) {
+        toast.error(data.message ?? 'Could not update the order');
+        return;
+      }
+      setTransactions((prev) => prev.map((tx) => (tx._id === data.transaction!._id ? { ...tx, ...data.transaction } : tx)));
+      if (data.items) setItemsCache((prev) => ({ ...prev, [data.transaction!._id]: data.items! }));
+      setEditItemsTx(null);
+      toast.success('Order updated');
+    } catch {
+      toast.error('Could not update the order');
+    } finally {
+      editLock.current = false;
+      setEditItemsSaving(false);
     }
   };
 
@@ -1381,10 +1782,18 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                         itemCount={itemCount}
                         isLoadingItems={isLoadingItems}
                         onToggleExpand={() => toggleExpand(tx._id)}
-                        onRequestStatusChange={(tx, field, value) => setConfirmStatusAction({ tx, field, value })}
+                        onRequestStatusChange={(tx, field, value) => {
+                          if (field === 'paymentStatus' && value === 'paid') {
+                            void openPaymentFlow({ kind: 'existing', tx, step: 'choose' });
+                            return;
+                          }
+                          setConfirmStatusAction({ tx, field, value });
+                        }}
                         onRequestPartialPayment={openPartialPaymentDialog}
                         onViewNotes={() => setNotesModalTx(tx)}
                         onEditCustomer={() => openEditCustomer(tx)}
+                        onEditItems={() => { void openEditItems(tx); }}
+                        onCollectPending={() => { void openPaymentFlow({ kind: 'existing', tx, step: 'qr' }); }}
                         onCancelClick={() => setCancelTarget(tx)}
                         onReviewCancelRequest={() => { setReviewTarget(tx); setReviewNote(''); }}
                         onDeleteClick={() => setDeleteTarget(tx)}
@@ -1500,7 +1909,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                               <CardContent className="p-0 flex gap-2">
                                 <div className="flex flex-1 min-w-0 flex-col gap-1">
                                   <p className="text-xs font-semibold leading-tight line-clamp-2">{p.name}</p>
-                                  <p className="text-xs font-medium text-foreground">{fmt(p.sellingPrice)}</p>
+                                  <p className="text-xs font-medium text-foreground">{fmt(unitPrice(p))}</p>
                                   <StockLabel quantity={p.stockQuantity} />
                                   <div className="flex items-center gap-1">
                                     <Button
@@ -1543,7 +1952,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               </div>
               {(() => {
                 const total = newTxProducts.reduce(
-                  (sum, p) => sum + (newTxQuantities[p._id] ?? 0) * p.sellingPrice,
+                  (sum, p) => sum + (newTxQuantities[p._id] ?? 0) * unitPrice(p),
                   0
                 );
                 if (total <= 0) return null;
@@ -1657,7 +2066,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewTxOpen(false)} disabled={newTxSubmitting}>Cancel</Button>
-            <Button onClick={handleCreateTransaction} disabled={newTxSubmitting}>
+            <Button onClick={() => handleCreateTransaction()} disabled={newTxSubmitting || paymentSaving}>
               {newTxSubmitting ? <Spinner data-icon="inline-start" /> : null}
               {newTxSubmitting ? 'Creating...' : 'Create Transaction'}
             </Button>
@@ -1926,6 +2335,275 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!paymentDraft} onOpenChange={(open) => { if (!open) closePaymentDraft(); }}>
+        <DialogContent className="flex max-h-[90vh] max-w-lg flex-col gap-4 overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {paymentDraft?.step === 'digits' ? 'Payment reference' : paymentDraft?.step === 'qr' ? 'QR payment' : 'Confirm payment'}
+            </DialogTitle>
+            <DialogDescription>
+              {paymentDraft?.step === 'qr'
+                ? 'Show this QR code to the customer. The order stays unpaid until they confirm the payment is finished.'
+                : paymentDraft?.step === 'digits'
+                  ? 'Enter the last 4 digits of the payment reference so the payment can be tracked.'
+                  : 'Review the order, then choose cash or a bank/QR payment.'}
+            </DialogDescription>
+          </DialogHeader>
+          {paymentSummaryLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Spinner /> Loading order...
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 rounded-md border px-4 py-3 text-sm">
+              {paymentDraft?.kind === 'existing' && paymentDraft.tx && (
+                <p><span className="text-muted-foreground">Order ID:</span> <span className="font-mono">{paymentDraft.tx._id.slice(-8)}</span></p>
+              )}
+              <div className="flex flex-col gap-1.5">
+                {paymentSummary.map((line, index) => (
+                  <div key={`${line.name}-${index}`} className="grid grid-cols-[1fr_auto_auto] gap-3">
+                    <span className="font-medium">{line.name}</span>
+                    <span className="text-muted-foreground">{line.quantity} × {fmt(line.unitPrice)}</span>
+                    <span className="text-right font-medium">{fmt(line.subtotal)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-1 flex items-center justify-between border-t pt-2">
+                <span className="text-muted-foreground">Total due</span>
+                <span className="text-base font-bold">{fmt(paymentDue)}</span>
+              </div>
+              <p>
+                <span className="text-muted-foreground">Payment method: </span>
+                {paymentDraft?.step === 'choose'
+                  ? (paymentDraft.tx?.paymentMethod === 'bank_qr' ? 'Bank/QR' : paymentDraft.tx?.paymentMethod === 'cash' ? 'Cash' : 'Not selected')
+                  : 'Bank/QR'}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Payment status: </span>
+                {paymentStatusLabel(paymentDraft?.tx)}
+              </p>
+              {(paymentDraft?.step === 'qr' || paymentDraft?.step === 'digits') && selectedPaymentOption && (
+                <p>
+                  <span className="text-muted-foreground">QR option: </span>
+                  {selectedPaymentOption.label || selectedPaymentOption.recipientName}
+                </p>
+              )}
+              {paymentDraft?.step === 'digits' && referenceDigits.trim() && (
+                <p>
+                  <span className="text-muted-foreground">Reference: </span>
+                  {referenceDigits.trim()}
+                </p>
+              )}
+              {paymentDraft?.tx?.paymentReferenceLast4 && paymentDraft.step === 'choose' && (
+                <p>
+                  <span className="text-muted-foreground">Reference: </span>
+                  {paymentDraft.tx.paymentReferenceLast4}
+                </p>
+              )}
+            </div>
+          )}
+
+          {paymentDraft?.step === 'choose' && (
+            <div className="grid grid-cols-2 gap-2">
+              <Button onClick={submitCashPayment} disabled={paymentSaving || newTxSubmitting || paymentSummaryLoading}>
+                {paymentSaving ? <Spinner data-icon="inline-start" /> : null}
+                Cash
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setPaymentDraft((draft) => (draft ? { ...draft, step: 'qr' } : draft))}
+                disabled={paymentSaving || paymentSummaryLoading}
+              >
+                Bank/QR
+              </Button>
+            </div>
+          )}
+
+          {paymentDraft?.step === 'qr' && (
+            <div className="flex flex-col gap-4">
+              {paymentOptionsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Spinner /> Loading QR options...
+                </div>
+              ) : paymentOptionsError ? (
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertDescription>{paymentOptionsError}</AlertDescription>
+                </Alert>
+              ) : (
+                <>
+                  {paymentOptions.length > 1 && (
+                    <div className="flex flex-col gap-2">
+                      <Label>Choose a QR code</Label>
+                      <Select value={selectedPaymentOptionId} onValueChange={setSelectedPaymentOptionId}>
+                        <SelectTrigger><SelectValue placeholder="Select a payment option" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {paymentOptions.map((option) => (
+                              <SelectItem key={option._id} value={option._id}>
+                                {option.label || option.recipientName}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {selectedPaymentOption && (
+                    <div className="flex flex-col gap-3">
+                      <PaymentQrPreview
+                        url={selectedPaymentOption.qrImageUrl}
+                        label={selectedPaymentOption.label || selectedPaymentOption.recipientName}
+                      />
+                      <div className="rounded-md border px-4 py-3 text-sm">
+                        <p className="text-xs text-muted-foreground">Recipient</p>
+                        <p className="font-semibold">{selectedPaymentOption.recipientName}</p>
+                        {selectedPaymentOption.accountDetails && (
+                          <>
+                            <p className="mt-2 text-xs text-muted-foreground">Account details</p>
+                            <p>{selectedPaymentOption.accountDetails}</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              <p className="text-sm font-medium">Has the customer completed this QR payment?</p>
+            </div>
+          )}
+
+          {paymentDraft?.step === 'digits' && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="payment-reference">Last 4 digits of the reference number</Label>
+              <Input
+                id="payment-reference"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={referenceDigits}
+                onChange={(event) => setReferenceDigits(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                placeholder="1234"
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            {paymentDraft?.step === 'choose' ? (
+              <Button variant="outline" onClick={closePaymentDraft} disabled={paymentSaving || newTxSubmitting}>Cancel</Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => setPaymentDraft((draft) => (
+                  draft ? { ...draft, step: draft.step === 'digits' ? 'qr' : 'choose' } : draft
+                ))}
+                disabled={paymentSaving || newTxSubmitting}
+              >
+                Back
+              </Button>
+            )}
+            {paymentDraft?.step === 'qr' && (
+              <>
+                <Button variant="outline" onClick={submitPayLater} disabled={paymentSaving || newTxSubmitting || !selectedPaymentOptionId}>
+                  Pay later
+                </Button>
+                <Button
+                  onClick={() => setPaymentDraft((draft) => (draft ? { ...draft, step: 'digits' } : draft))}
+                  disabled={paymentSaving || !selectedPaymentOptionId}
+                >
+                  Yes, it is paid
+                </Button>
+              </>
+            )}
+            {paymentDraft?.step === 'digits' && (
+              <Button onClick={submitQrPaid} disabled={paymentSaving || newTxSubmitting || referenceDigits.trim().length !== 4}>
+                {paymentSaving ? <Spinner data-icon="inline-start" /> : null}
+                {paymentSaving ? 'Saving...' : 'Save payment'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editItemsTx} onOpenChange={(open) => { if (!open && !editItemsSaving) setEditItemsTx(null); }}>
+        <DialogContent className="flex h-[88vh]! max-h-[88vh]! w-[80vw]! max-w-[80vw]! flex-col gap-4 overflow-hidden p-6">
+          <DialogHeader>
+            <DialogTitle>Edit items</DialogTitle>
+            <DialogDescription>
+              Change products and quantities. Stock updates by the difference when you save.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+            <div className="relative w-52 shrink-0">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search products..."
+                value={editItemsSearch}
+                onChange={(event) => setEditItemsSearch(event.target.value)}
+                className="h-8 pl-8 text-sm"
+              />
+            </div>
+            <div className="min-h-[200px] flex-1 overflow-y-auto rounded-md border bg-muted/30 p-2">
+              {editItemsLoading ? (
+                <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+                  <Spinner /> Loading products...
+                </div>
+              ) : editItemsError ? (
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertDescription>{editItemsError}</AlertDescription>
+                </Alert>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+                  {editProducts
+                    .filter((product) => !editItemsSearch.trim() || product.name.toLowerCase().includes(editItemsSearch.trim().toLowerCase()))
+                    .map((product) => {
+                      const qty = editQty[product._id] ?? 0;
+                      const held = editOriginalQty[product._id] ?? 0;
+                      const max = editItemsTx?.orderType === 'preorder' ? 999 : product.stockQuantity + held;
+                      const price = editUnitPrices[product._id] ?? unitPrice(product);
+                      return (
+                        <Card key={product._id} className={`flex flex-col gap-1.5 p-2 ${qty > 0 ? 'border-primary/60 bg-primary-subtle/30' : ''}`}>
+                          <CardContent className="flex gap-2 p-0">
+                            <div className="flex min-w-0 flex-1 flex-col gap-1">
+                              <p className="line-clamp-2 text-xs font-semibold leading-tight">{product.name}</p>
+                              <p className="text-xs font-medium">{fmt(price)}</p>
+                              {editItemsTx?.orderType !== 'preorder' && <StockLabel quantity={product.stockQuantity} />}
+                              <div className="flex items-center gap-1">
+                                <Button type="button" variant="outline" size="icon" className="size-7 shrink-0" onClick={() => setEditItemQty(product._id, -1)} disabled={qty <= 0 || editItemsSaving} aria-label={`Remove one ${product.name}`}>−</Button>
+                                <span className="min-w-6 text-center text-xs font-semibold">{qty}</span>
+                                <Button type="button" variant="outline" size="icon" className="size-7 shrink-0" onClick={() => setEditItemQty(product._id, 1)} disabled={qty >= max || editItemsSaving} aria-label={`Add one ${product.name}`}>+</Button>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center justify-between rounded-md border bg-muted px-3 py-2">
+              <span className="text-sm text-muted-foreground">
+                {Object.values(editQty).reduce((sum, qty) => sum + qty, 0)} items
+              </span>
+              <span className="text-base font-bold">
+                Total: {fmt(editProducts.reduce((sum, product) => {
+                  const qty = editQty[product._id] ?? 0;
+                  const price = editUnitPrices[product._id] ?? unitPrice(product);
+                  return sum + price * qty;
+                }, 0))}
+              </span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditItemsTx(null)} disabled={editItemsSaving}>Cancel</Button>
+            <Button onClick={saveEditItems} disabled={editItemsSaving || editItemsLoading || !!editItemsError}>
+              {editItemsSaving ? <Spinner data-icon="inline-start" /> : null}
+              {editItemsSaving ? 'Saving...' : 'Save changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Status action confirmation (Claim / Unclaim / Pay / Unpay) */}
       <Dialog open={!!confirmStatusAction} onOpenChange={(open) => { if (!open) setConfirmStatusAction(null); }}>
         <DialogContent className="max-w-sm">
@@ -1935,7 +2613,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               {confirmStatusAction && (() => {
                 const { field, value } = confirmStatusAction;
                 if (field === 'claimStatus') return value === 'claimed' ? 'Are you sure you want to mark this order as claimed?' : 'Are you sure you want to revert this order to unclaimed?';
-                if (field === 'paymentStatus') return value === 'paid' ? 'Are you sure you want to mark this order as paid?' : value === 'unpaid' ? 'Are you sure you want to revert this order to unpaid?' : '';
+                if (field === 'paymentStatus') return value === 'paid' ? 'Are you sure you want to mark this order as paid?' : value === 'unpaid' ? 'Are you sure you want to revert this order to unpaid? The saved payment method and reference will be cleared.' : '';
                 return 'Are you sure you want to perform this action?';
               })()}
             </DialogDescription>
@@ -2002,6 +2680,25 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 // Transaction row with expandable item breakdown
 // ---------------------------------------------------------------------------
 
+function PaymentQrPreview({ url, label }: { url: string; label: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="flex h-56 items-center justify-center rounded-xl border border-dashed bg-muted text-sm text-muted-foreground">
+        QR image unavailable
+      </div>
+    );
+  }
+  return (
+    <img
+      src={url}
+      alt={label}
+      className="mx-auto h-56 w-56 rounded-xl border bg-white object-contain"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function TransactionRow({
   tx,
   isUpdating,
@@ -2015,6 +2712,8 @@ function TransactionRow({
   onRequestPartialPayment,
   onViewNotes,
   onEditCustomer,
+  onEditItems,
+  onCollectPending,
   onCancelClick,
   onReviewCancelRequest,
   onDeleteClick,
@@ -2031,6 +2730,8 @@ function TransactionRow({
   onRequestPartialPayment?: (tx: Transaction) => void;
   onViewNotes?: (tx: Transaction) => void;
   onEditCustomer?: () => void;
+  onEditItems?: () => void;
+  onCollectPending?: () => void;
   onCancelClick: () => void;
   onReviewCancelRequest: () => void;
   onDeleteClick: () => void;
@@ -2102,14 +2803,31 @@ function TransactionRow({
           {isCancelled ? (
             <span className="text-xs text-muted-foreground">—</span>
           ) : (
-            <div className="flex items-center gap-1">
-              <PaymentBadge status={tx.paymentStatus} totalAmount={tx.totalAmount} amountPaid={tx.amountPaid} />
-              <StatusDateInfo
-                label="Date paid"
-                date={tx.paidAt}
-                active={tx.paymentStatus === 'paid'}
-                emptyText={tx.paymentStatus === 'partial' ? 'Not fully paid yet' : 'Not yet paid'}
-              />
+            <div className="flex flex-col items-start gap-1">
+              <div className="flex items-center gap-1">
+                {tx.paymentStatus === 'unpaid' && tx.paymentMethod === 'bank_qr' && onCollectPending ? (
+                  <button type="button" onClick={onCollectPending} title="Finish QR payment" className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <PaymentBadge status={tx.paymentStatus} totalAmount={tx.totalAmount} amountPaid={tx.amountPaid} paymentMethod={tx.paymentMethod} />
+                  </button>
+                ) : (
+                  <PaymentBadge status={tx.paymentStatus} totalAmount={tx.totalAmount} amountPaid={tx.amountPaid} paymentMethod={tx.paymentMethod} />
+                )}
+                <StatusDateInfo
+                  label="Date paid"
+                  date={tx.paidAt}
+                  active={tx.paymentStatus === 'paid'}
+                  emptyText={tx.paymentStatus === 'partial' ? 'Not fully paid yet' : 'Not yet paid'}
+                />
+              </div>
+              {tx.paymentMethod === 'cash' && tx.paymentStatus === 'paid' && (
+                <span className="text-[10px] text-muted-foreground">Cash</span>
+              )}
+              {tx.paymentMethod === 'bank_qr' && tx.paymentStatus === 'paid' && (
+                <span className="text-[10px] text-muted-foreground">
+                  {tx.paymentOptionLabel || 'Bank/QR'}
+                  {tx.paymentReferenceLast4 ? ` · ${tx.paymentReferenceLast4}` : ''}
+                </span>
+              )}
             </div>
           )}
         </td>
@@ -2151,6 +2869,11 @@ function TransactionRow({
               {onEditCustomer && (
                 <Button variant="ghost" size="icon" className="size-7" disabled={isUpdating} onClick={onEditCustomer} title="Edit customer">
                   <Pencil />
+                </Button>
+              )}
+              {onEditItems && (
+                <Button variant="ghost" size="icon" className="size-7" disabled={isUpdating} onClick={onEditItems} title="Edit items">
+                  <SquarePen />
                 </Button>
               )}
               {tx.claimStatus === 'unclaimed' ? (
