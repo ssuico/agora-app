@@ -120,6 +120,13 @@ function paymentStatusLabel(tx?: Pick<Transaction, 'paymentStatus' | 'paymentMet
   return 'Unpaid';
 }
 
+/** A stored QR reference is reviewed. QR without digits continues that payment. Anything else still chooses cash or QR. */
+function existingPaymentStep(tx: Pick<Transaction, 'paymentMethod' | 'paymentReferenceLast4'>): 'choose' | 'qr' | 'review' {
+  if (tx.paymentMethod === 'bank_qr' && tx.paymentReferenceLast4) return 'review';
+  if (tx.paymentMethod === 'bank_qr') return 'qr';
+  return 'choose';
+}
+
 /** Use EST for all transaction/report dates so they match server APP_TIMEZONE. */
 const EST_TIMEZONE = 'America/New_York';
 const fmtDate = (date: Date) =>
@@ -611,7 +618,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   const [editCustomerCustomers, setEditCustomerCustomers] = useState<Array<{ _id: string; name: string; email: string; role?: string }>>([]);
   const [editCustomerLoadingList, setEditCustomerLoadingList] = useState(false);
 
-  type PaymentStep = 'choose' | 'qr' | 'digits';
+  type PaymentStep = 'choose' | 'qr' | 'digits' | 'review';
   interface PaymentOptionChoice {
     _id: string;
     type: 'e-wallet' | 'bank';
@@ -888,7 +895,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   };
 
   useEffect(() => {
-    if (!paymentDraft || paymentDraft.step === 'choose') return;
+    if (!paymentDraft || paymentDraft.step === 'choose' || paymentDraft.step === 'review') return;
     let cancelled = false;
     setPaymentOptionsLoading(true);
     setPaymentOptionsError('');
@@ -989,6 +996,22 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
   };
 
   const selectedPaymentOption = paymentOptions.find((option) => option._id === selectedPaymentOptionId) ?? null;
+
+  const confirmStoredQr = async () => {
+    if (!paymentDraft?.tx || paymentLock.current) return;
+    paymentLock.current = true;
+    setPaymentSaving(true);
+    try {
+      await saveExistingPayment(paymentDraft.tx._id, {
+        paymentStatus: 'paid',
+        paymentMethod: 'bank_qr',
+        confirmStoredReference: true,
+      });
+    } finally {
+      paymentLock.current = false;
+      setPaymentSaving(false);
+    }
+  };
 
   const submitPayLater = async () => {
     if (!paymentDraft || paymentLock.current) return;
@@ -1784,7 +1807,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                         onToggleExpand={() => toggleExpand(tx._id)}
                         onRequestStatusChange={(tx, field, value) => {
                           if (field === 'paymentStatus' && value === 'paid') {
-                            void openPaymentFlow({ kind: 'existing', tx, step: 'choose' });
+                            void openPaymentFlow({ kind: 'existing', tx, step: existingPaymentStep(tx) });
                             return;
                           }
                           setConfirmStatusAction({ tx, field, value });
@@ -1793,7 +1816,13 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                         onViewNotes={() => setNotesModalTx(tx)}
                         onEditCustomer={() => openEditCustomer(tx)}
                         onEditItems={() => { void openEditItems(tx); }}
-                        onCollectPending={() => { void openPaymentFlow({ kind: 'existing', tx, step: 'qr' }); }}
+                        onCollectPending={() => {
+                          void openPaymentFlow({
+                            kind: 'existing',
+                            tx,
+                            step: existingPaymentStep(tx),
+                          });
+                        }}
                         onCancelClick={() => setCancelTarget(tx)}
                         onReviewCancelRequest={() => { setReviewTarget(tx); setReviewNote(''); }}
                         onDeleteClick={() => setDeleteTarget(tx)}
@@ -2339,14 +2368,22 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         <DialogContent className="flex max-h-[90vh] max-w-lg flex-col gap-4 overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {paymentDraft?.step === 'digits' ? 'Payment reference' : paymentDraft?.step === 'qr' ? 'QR payment' : 'Confirm payment'}
+              {paymentDraft?.step === 'review'
+                ? 'Review QR payment'
+                : paymentDraft?.step === 'digits'
+                  ? 'Payment reference'
+                  : paymentDraft?.step === 'qr'
+                    ? 'QR payment'
+                    : 'Confirm payment'}
             </DialogTitle>
             <DialogDescription>
-              {paymentDraft?.step === 'qr'
-                ? 'Show this QR code to the customer. The order stays unpaid until they confirm the payment is finished.'
-                : paymentDraft?.step === 'digits'
-                  ? 'Enter the last 4 digits of the payment reference so the payment can be tracked.'
-                  : 'Review the order, then choose cash or a bank/QR payment.'}
+              {paymentDraft?.step === 'review'
+                ? 'The customer already sent these payment details. Confirm they match the payment you received.'
+                : paymentDraft?.step === 'qr'
+                  ? 'Show this QR code to the customer. The order stays unpaid until they confirm the payment is finished.'
+                  : paymentDraft?.step === 'digits'
+                    ? 'Enter the last 4 digits of the payment reference so the payment can be tracked.'
+                    : 'Review the order, then choose cash or a bank/QR payment.'}
             </DialogDescription>
           </DialogHeader>
           {paymentSummaryLoading ? (
@@ -2393,10 +2430,16 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
                   {referenceDigits.trim()}
                 </p>
               )}
-              {paymentDraft?.tx?.paymentReferenceLast4 && paymentDraft.step === 'choose' && (
+              {paymentDraft?.tx?.paymentReferenceLast4 && (paymentDraft.step === 'choose' || paymentDraft.step === 'review') && (
                 <p>
                   <span className="text-muted-foreground">Reference: </span>
-                  {paymentDraft.tx.paymentReferenceLast4}
+                  <span className="font-mono font-semibold">{paymentDraft.tx.paymentReferenceLast4}</span>
+                </p>
+              )}
+              {paymentDraft?.step === 'review' && paymentDraft.tx?.paymentOptionLabel && (
+                <p>
+                  <span className="text-muted-foreground">QR option: </span>
+                  {paymentDraft.tx.paymentOptionLabel}
                 </p>
               )}
             </div>
@@ -2488,7 +2531,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
           )}
 
           <DialogFooter>
-            {paymentDraft?.step === 'choose' ? (
+            {paymentDraft?.step === 'choose' || paymentDraft?.step === 'review' ? (
               <Button variant="outline" onClick={closePaymentDraft} disabled={paymentSaving || newTxSubmitting}>Cancel</Button>
             ) : (
               <Button
@@ -2518,6 +2561,12 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
               <Button onClick={submitQrPaid} disabled={paymentSaving || newTxSubmitting || referenceDigits.trim().length !== 4}>
                 {paymentSaving ? <Spinner data-icon="inline-start" /> : null}
                 {paymentSaving ? 'Saving...' : 'Save payment'}
+              </Button>
+            )}
+            {paymentDraft?.step === 'review' && (
+              <Button onClick={confirmStoredQr} disabled={paymentSaving}>
+                {paymentSaving ? <Spinner data-icon="inline-start" /> : null}
+                {paymentSaving ? 'Saving...' : 'Digits match — mark paid'}
               </Button>
             )}
           </DialogFooter>
@@ -2806,7 +2855,7 @@ function TransactionRow({
             <div className="flex flex-col items-start gap-1">
               <div className="flex items-center gap-1">
                 {tx.paymentStatus === 'unpaid' && tx.paymentMethod === 'bank_qr' && onCollectPending ? (
-                  <button type="button" onClick={onCollectPending} title="Finish QR payment" className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <button type="button" onClick={onCollectPending} title={tx.paymentReferenceLast4 ? 'Review QR payment' : 'Finish QR payment'} className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <PaymentBadge status={tx.paymentStatus} totalAmount={tx.totalAmount} amountPaid={tx.amountPaid} paymentMethod={tx.paymentMethod} />
                   </button>
                 ) : (
@@ -2819,6 +2868,12 @@ function TransactionRow({
                   emptyText={tx.paymentStatus === 'partial' ? 'Not fully paid yet' : 'Not yet paid'}
                 />
               </div>
+              {tx.paymentMethod === 'bank_qr' && tx.paymentStatus === 'unpaid' && (
+                <span className="text-[10px] text-muted-foreground">
+                  {tx.paymentOptionLabel || 'Bank/QR'}
+                  {tx.paymentReferenceLast4 ? ` · ${tx.paymentReferenceLast4} for review` : ''}
+                </span>
+              )}
               {tx.paymentMethod === 'cash' && tx.paymentStatus === 'paid' && (
                 <span className="text-[10px] text-muted-foreground">Cash</span>
               )}
