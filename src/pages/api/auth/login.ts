@@ -16,6 +16,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const data = (await res.json()) as {
       token?: string;
       role?: string;
+      roles?: string[];
       name?: string;
       storeIds?: string[];
       message?: string;
@@ -37,7 +38,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     });
 
     return new Response(
-      JSON.stringify({ role: data.role, name: data.name, storeIds: data.storeIds }),
+      JSON.stringify({ role: data.role, roles: data.roles, name: data.name, storeIds: data.storeIds }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   } catch {

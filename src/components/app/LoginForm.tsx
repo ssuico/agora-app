@@ -10,10 +10,19 @@ import toast from 'react-hot-toast';
 
 interface LoginResponse {
   role?: string;
+  roles?: string[];
   name?: string;
   storeIds?: string[];
   message?: string;
 }
+
+const ROLE_ORDER = ['admin', 'store_manager', 'customer'] as const;
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  store_manager: 'Store Manager',
+  customer: 'Customer',
+};
 
 function getRedirectUrl(data: LoginResponse): string {
   switch (data.role) {
@@ -39,6 +48,8 @@ export function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [emailResetEnabled, setEmailResetEnabled] = useState(false);
+  const [pendingSession, setPendingSession] = useState<LoginResponse | null>(null);
+  const [switchingRole, setSwitchingRole] = useState<string | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -79,6 +90,11 @@ export function LoginForm() {
       }
 
       toast.success('Signed In');
+      const roles = Array.isArray(data.roles) ? data.roles : [];
+      if (roles.length > 1) {
+        setPendingSession({ ...data, roles });
+        return;
+      }
       window.location.href = getRedirectUrl(data);
     } catch {
       const msg = 'Network error. Please check your connection.';
@@ -107,6 +123,66 @@ export function LoginForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {pendingSession ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-center text-sm font-medium text-foreground">Choose a view</p>
+            {ROLE_ORDER.filter((role) => pendingSession.roles?.includes(role)).map((role) => (
+              <Button
+                key={role}
+                type="button"
+                variant="outline"
+                className="h-11 w-full justify-between"
+                disabled={!!switchingRole}
+                onClick={async () => {
+                  setSwitchingRole(role);
+                  setError('');
+                  try {
+                    const res = await fetch('/api/auth/switch-role', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ role }),
+                    });
+                    const switched = (await res.json()) as LoginResponse;
+                    if (!res.ok) {
+                      const msg = switched.message ?? 'Could not open that view';
+                      setError(msg);
+                      toast.error(msg);
+                      setSwitchingRole(null);
+                      return;
+                    }
+                    window.location.href = getRedirectUrl({
+                      role: switched.role ?? role,
+                      storeIds: switched.storeIds,
+                    });
+                  } catch {
+                    const msg = 'Network error. Please check your connection.';
+                    setError(msg);
+                    toast.error(msg);
+                    setSwitchingRole(null);
+                  }
+                }}
+              >
+                {switchingRole === role ? (
+                  <>
+                    <Spinner data-icon="inline-start" />
+                    Opening…
+                  </>
+                ) : (
+                  <>
+                    {ROLE_LABELS[role] ?? role}
+                    <ArrowRight data-icon="inline-end" aria-hidden="true" />
+                  </>
+                )}
+              </Button>
+            ))}
+            {error && (
+              <Alert ref={errorRef} tabIndex={-1} variant="destructive" aria-live="polite" className="outline-none">
+                <AlertCircle />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+          </div>
+        ) : (
         <form onSubmit={handleSubmit}>
           <FieldGroup className="gap-5">
             <Field className="gap-2">
@@ -196,6 +272,7 @@ export function LoginForm() {
             </p>
           </FieldGroup>
         </form>
+        )}
       </CardContent>
     </Card>
   );
