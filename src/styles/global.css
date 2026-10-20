@@ -249,12 +249,12 @@
   border: 1px solid var(--border);
   background: var(--card);
 }
-/* Inventory sits under the title, tabs, filters, status alerts, and pager.
-   40rem is the room those pieces take, so the table ends above the viewport edge.
-   The padding keeps the last row clear of the bottom of the scroll area. */
+/* Fill the inventory card. The shared wrapper cap would stop the rows early and
+   leave empty space above the pager. */
 .data-table-scroll-wrapper.inventory-table-scroll {
-  max-height: max(16rem, calc(100dvh - 40rem));
-  padding-bottom: 1.25rem;
+  max-height: none;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .data-table-scroll-wrapper .data-table thead th {
   position: sticky;
