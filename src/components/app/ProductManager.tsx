@@ -3147,6 +3147,7 @@ export function ProductManager({ storeId: fixedStoreId }: ProductManagerProps) {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setRelistTarget(null)}>Cancel</Button>
             <Button
+              type="button"
               onClick={handleRelist}
               disabled={
                 relistSubmitting

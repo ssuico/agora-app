@@ -1057,8 +1057,9 @@ export function PreOrderManager({ storeId }: { storeId: string }) {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRelistTarget(null)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => setRelistTarget(null)}>Cancel</Button>
             <Button
+              type="button"
               onClick={confirmRelist}
               disabled={
                 relistSaving
