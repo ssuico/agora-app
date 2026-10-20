@@ -484,7 +484,9 @@ export const relistProduct = async (req: Request, res: Response): Promise<void> 
 
     const today = todayInAppTz();
     const existing = await InventoryRecord.findOne({ productId, date: today }).lean();
-    if (existing) {
+    // A closed pre-order can still have today's shelf row from before it left inventory.
+    // That row is not an active listing. A regular product with today's row is.
+    if (existing && product.productType !== 'preorder') {
       res.status(409).json({ message: 'This product already has an active listing for today' });
       return;
     }
@@ -528,6 +530,9 @@ export const relistProduct = async (req: Request, res: Response): Promise<void> 
       }
       await current.save({ session });
       await retargetListings(current._id, storeId, 'inventory', 'relist', session);
+      if (fromMode === 'preorder') {
+        await InventoryRecord.deleteMany({ productId: current._id, date: today }, { session });
+      }
       const created = await InventoryRecord.create([{
         productId: current._id,
         storeId: new mongoose.Types.ObjectId(storeId),
