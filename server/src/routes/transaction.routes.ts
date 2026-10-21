@@ -5,6 +5,7 @@ import {
   deleteTransaction,
   getMyPurchases,
   getTransaction,
+  getTransactionActivity,
   getTransactions,
   requestCancellation,
   resolveCancellationRequest,
@@ -23,6 +24,7 @@ transactionRoutes.use(authenticate);
 
 transactionRoutes.get('/my-purchases', authorize(UserRole.CUSTOMER), getMyPurchases);
 transactionRoutes.get('/', authorize(UserRole.ADMIN, UserRole.STORE_MANAGER), getTransactions);
+transactionRoutes.get('/activity', authorize(UserRole.ADMIN, UserRole.STORE_MANAGER), getTransactionActivity);
 transactionRoutes.get('/:id', getTransaction);
 transactionRoutes.post(
   '/',

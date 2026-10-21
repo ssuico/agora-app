@@ -10,6 +10,13 @@ import { Transaction, type ClaimStatus, type ITransaction, type OrderType, type 
 import { TransactionItem } from '../models/TransactionItem.js';
 import { User } from '../models/User.js';
 import { adjustReservedLines } from '../services/inventoryReconciliation.js';
+import {
+  describeItemEdits,
+  describeStatusChange,
+  recordTransactionActivity,
+  transactionCustomerLabel,
+} from '../services/transactionActivity.js';
+import { TransactionActivity } from '../models/TransactionActivity.js';
 import { getIO } from '../socket.js';
 import { localDayRangeFromDateString } from '../config/timezone.js';
 import { UserRole } from '../types/index.js';
@@ -368,6 +375,7 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
         grossProfit,
         customerId: customerId ?? null,
         walkInCustomerName: walkInCustomerName ?? null,
+        createdBy: orderType === 'walk-in' ? req.user!.userId : null,
         claimStatus,
         paymentStatus,
         amountPaid,
@@ -400,6 +408,7 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
       const populatedTx = await Transaction.findById(transaction._id)
         .populate('customerId', 'name email')
+        .populate('createdBy', 'name')
         .lean();
       io.to(`store:${storeId}`).emit('transaction:created', populatedTx);
 
@@ -421,6 +430,27 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
             : paymentCapture.paymentMethod === 'cash' && paymentStatus === 'paid'
               ? ' and paid in cash'
               : '';
+      if (isStaff) {
+        const kind = orderType === 'walk-in' ? 'walk-in' : isPreOrder ? 'pre-order' : 'order';
+        const extras: string[] = [];
+        if (claimStatus === 'claimed') extras.push('claimed');
+        if (paymentStatus === 'paid') {
+          extras.push(paymentCapture.paymentMethod === 'bank_qr' ? 'paid by QR' : 'paid in cash');
+        } else if (paymentStatus === 'partial') {
+          extras.push(`partial payment ${amountPaid.toFixed(2)}`);
+        } else if (paymentCapture.paymentMethod === 'bank_qr') {
+          extras.push('QR payment for review');
+        }
+        await recordTransactionActivity({
+          storeId,
+          transactionId: transaction._id,
+          customerLabel: actorName,
+          action: 'created',
+          summary: extras.length > 0 ? `Created a ${kind}, ${extras.join(', ')}` : `Created a ${kind}`,
+          actor: { userId: req.user?.userId, name: req.user?.name },
+        });
+      }
+
       const activityDoc = await ActivityLog.create({
         storeId,
         type: isPreOrder ? 'preorder_placed' : 'reservation_created',
@@ -496,6 +526,7 @@ export const getTransactions = async (req: Request, res: Response): Promise<void
 
     let transactions = await Transaction.find(filter)
       .populate('customerId', 'name email')
+      .populate('createdBy', 'name')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -518,7 +549,7 @@ export const getTransactions = async (req: Request, res: Response): Promise<void
 
 export const getTransaction = async (req: Request, res: Response): Promise<void> => {
   try {
-    const transaction = await Transaction.findById(req.params.id);
+    const transaction = await Transaction.findById(req.params.id).populate('customerId', 'name email');
     if (!transaction) {
       res.status(404).json({ message: 'Transaction not found' });
       return;
@@ -702,6 +733,16 @@ export const updateTransactionItems = async (req: Request, res: Response): Promi
       if (populated) {
         io.to(`store:${transaction.storeId}`).emit('transaction:updated', populated.toJSON());
       }
+      if (changes.length > 0) {
+        await recordTransactionActivity({
+          storeId: transaction.storeId,
+          transactionId: transaction._id,
+          customerLabel: transactionCustomerLabel(populated ?? transaction),
+          action: 'items_edited',
+          summary: describeItemEdits(changes),
+          actor: { userId: req.user?.userId, name: req.user?.name },
+        });
+      }
       const activityDoc = await ActivityLog.create({
         storeId: transaction.storeId,
         type: 'transaction_edited',
@@ -738,7 +779,7 @@ export const updateTransactionStatus = async (req: Request, res: Response): Prom
     const update: Record<string, unknown> = {};
 
     const existing = await Transaction.findById(req.params.id)
-      .select('totalAmount claimStatus paymentStatus paymentMethod paymentReferenceLast4 claimedAt paidAt storeId orderType')
+      .select('totalAmount claimStatus paymentStatus amountPaid paymentMethod paymentReferenceLast4 claimedAt paidAt storeId orderType walkInCustomerName customerId')
       .lean();
     if (!existing) {
       res.status(404).json({ message: 'Transaction not found' });
@@ -872,6 +913,18 @@ export const updateTransactionStatus = async (req: Request, res: Response): Prom
       return;
     }
 
+    const statusSummary = describeStatusChange(existing, update);
+    if (statusSummary) {
+      await recordTransactionActivity({
+        storeId: transaction.storeId,
+        transactionId: transaction._id,
+        customerLabel: transactionCustomerLabel(transaction),
+        action: 'status_changed',
+        summary: statusSummary,
+        actor: { userId: req.user?.userId, name: req.user?.name },
+      });
+    }
+
     try {
       const io = getIO();
       io.to(`store:${transaction.storeId}`).emit('transaction:updated', transaction.toJSON());
@@ -904,6 +957,10 @@ export const updateTransactionCustomer = async (req: Request, res: Response): Pr
       walkInCustomerName?: string | null;
     };
 
+    const before = await Transaction.findById(req.params.id)
+      .select('storeId walkInCustomerName customerId')
+      .populate('customerId', 'name')
+      .lean();
     const update: Record<string, unknown> = {};
 
     if (bodyCustomerId && typeof bodyCustomerId === 'string' && mongoose.Types.ObjectId.isValid(bodyCustomerId)) {
@@ -930,6 +987,19 @@ export const updateTransactionCustomer = async (req: Request, res: Response): Pr
       return;
     }
 
+    const previousLabel = before ? transactionCustomerLabel(before) : 'Walk-in';
+    const nextLabel = transactionCustomerLabel(transaction);
+    if (before && previousLabel !== nextLabel) {
+      await recordTransactionActivity({
+        storeId: transaction.storeId,
+        transactionId: transaction._id,
+        customerLabel: nextLabel,
+        action: 'customer_changed',
+        summary: `Changed the customer from ${previousLabel} to ${nextLabel}`,
+        actor: { userId: req.user?.userId, name: req.user?.name },
+      });
+    }
+
     try {
       const io = getIO();
       io.to(`store:${transaction.storeId}`).emit('transaction:updated', transaction.toJSON());
@@ -945,6 +1015,10 @@ export const updateTransactionNotes = async (req: Request, res: Response): Promi
   try {
     const { notes: bodyNotes } = req.body as { notes?: string };
     const notes = typeof bodyNotes === 'string' && bodyNotes.trim() ? bodyNotes.trim() : null;
+    const beforeNotes = await Transaction.findById(req.params.id)
+      .select('notes storeId walkInCustomerName customerId')
+      .populate('customerId', 'name')
+      .lean();
 
     const transaction = await Transaction.findByIdAndUpdate(
       req.params.id,
@@ -956,6 +1030,17 @@ export const updateTransactionNotes = async (req: Request, res: Response): Promi
     if (!transaction) {
       res.status(404).json({ message: 'Transaction not found' });
       return;
+    }
+
+    if (beforeNotes && (beforeNotes.notes ?? null) !== notes) {
+      await recordTransactionActivity({
+        storeId: transaction.storeId,
+        transactionId: transaction._id,
+        customerLabel: transactionCustomerLabel(beforeNotes),
+        action: 'notes_changed',
+        summary: 'Updated the order notes',
+        actor: { userId: req.user?.userId, name: req.user?.name },
+      });
     }
 
     try {
@@ -980,7 +1065,7 @@ type CancelOutcome =
  */
 async function performCancellation(
   transactionId: string,
-  actor?: { userId?: string | null }
+  actor?: { userId?: string | null; name?: string | null }
 ): Promise<CancelOutcome> {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -998,6 +1083,7 @@ async function performCancellation(
     }
 
     const items = await TransactionItem.find({ transactionId: transaction._id }).session(session);
+    const approvedRequest = transaction.cancellationRequest?.status === 'pending';
     const restoresStock = transaction.orderType !== 'preorder';
     const alreadyFulfilled = transaction.paymentStatus === 'paid' && transaction.claimStatus === 'claimed';
     const releasedReservation = !restoresStock && !alreadyFulfilled
@@ -1051,6 +1137,15 @@ async function performCancellation(
       io.to(`store:${storeId}`).emit('transaction:updated', populated);
     } catch { /* socket broadcast is non-critical */ }
 
+    await recordTransactionActivity({
+      storeId: transaction.storeId,
+      transactionId: transaction._id,
+      customerLabel: transactionCustomerLabel(populated ?? transaction),
+      action: 'cancelled',
+      summary: approvedRequest ? 'Approved the cancellation request' : 'Cancelled the order',
+      actor,
+    });
+
     return { ok: true, transaction: populated };
   } catch (err) {
     await session.abortTransaction();
@@ -1062,7 +1157,7 @@ async function performCancellation(
 
 export const cancelTransaction = async (req: Request, res: Response): Promise<void> => {
   try {
-    const outcome = await performCancellation(req.params.id as string, { userId: req.user?.userId });
+    const outcome = await performCancellation(req.params.id as string, { userId: req.user?.userId, name: req.user?.name });
     if (!outcome.ok) {
       res.status(outcome.status).json({ message: outcome.message });
       return;
@@ -1161,7 +1256,7 @@ export const resolveCancellationRequest = async (req: Request, res: Response): P
     }
 
     if (decision === 'approve') {
-      const outcome = await performCancellation(String(transaction._id), { userId: req.user?.userId });
+      const outcome = await performCancellation(String(transaction._id), { userId: req.user?.userId, name: req.user?.name });
       if (!outcome.ok) {
         res.status(outcome.status).json({ message: outcome.message });
         return;
@@ -1179,6 +1274,15 @@ export const resolveCancellationRequest = async (req: Request, res: Response): P
     const populated = await Transaction.findById(transaction._id)
       .populate('customerId', 'name email')
       .lean();
+    await recordTransactionActivity({
+      storeId: transaction.storeId,
+      transactionId: transaction._id,
+      customerLabel: transactionCustomerLabel(populated ?? transaction),
+      action: 'cancel_declined',
+      summary: responseNote ? `Declined the cancellation request: ${responseNote}` : 'Declined the cancellation request',
+      actor: { userId: req.user?.userId, name: req.user?.name },
+    });
+
     try {
       getIO().to(`store:${transaction.storeId}`).emit('transaction:updated', populated);
     } catch { /* socket broadcast is non-critical */ }
@@ -1234,6 +1338,21 @@ export const deleteTransaction = async (req: Request, res: Response): Promise<vo
 
     await session.commitTransaction();
 
+    const customerLabel = transaction.walkInCustomerName?.trim() || 'Walk-in';
+    let resolvedCustomer = customerLabel;
+    if (transaction.customerId) {
+      const customer = await User.findById(transaction.customerId).select('name').lean();
+      if (customer?.name) resolvedCustomer = customer.name;
+    }
+    await recordTransactionActivity({
+      storeId: transaction.storeId,
+      transactionId: transaction._id,
+      customerLabel: resolvedCustomer,
+      action: 'deleted',
+      summary: 'Deleted the order',
+      actor: { userId: req.user?.userId, name: req.user?.name },
+    });
+
     const storeId = String(transaction.storeId);
     try {
       const io = getIO();
@@ -1255,6 +1374,27 @@ export const deleteTransaction = async (req: Request, res: Response): Promise<vo
     res.status(500).json({ message: 'Server error', error: err });
   } finally {
     session.endSession();
+  }
+};
+
+export const getTransactionActivity = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const storeId = req.query.storeId;
+    if (typeof storeId !== 'string' || !storeId) {
+      res.status(400).json({ message: 'storeId is required' });
+      return;
+    }
+    if (req.user?.role === UserRole.STORE_MANAGER && !req.user.storeIds?.includes(storeId)) {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+    const logs = await TransactionActivity.find({ storeId })
+      .sort({ createdAt: -1 })
+      .limit(300)
+      .lean();
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err });
   }
 };
 

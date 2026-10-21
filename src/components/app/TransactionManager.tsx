@@ -36,7 +36,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertCircle, AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Clock, Coins, Download, FileSpreadsheet, History, ImageIcon, Info, NotepadText, Package, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Search, SquarePen, Trash2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, Clock, Coins, Download, FileSpreadsheet, History, ImageIcon, Info, NotepadText, Package, PackageCheck, PackageX, Pencil, Plus, RotateCcw, ScrollText, Search, SquarePen, Trash2, UserRound } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/lib/socket';
@@ -63,6 +63,7 @@ interface Transaction {
   cancellationRequest?: CancellationRequest | null;
   customerId?: { _id: string; name: string; email: string } | null;
   walkInCustomerName?: string | null;
+  createdBy?: { _id: string; name: string } | string | null;
   totalAmount: number;
   totalCost: number;
   grossProfit: number;
@@ -233,6 +234,44 @@ function StatusDateInfo({
         </TooltipTrigger>
         <TooltipContent side="top" className="whitespace-nowrap">
           <span className="text-muted-foreground">{label}: </span>
+          <span className="font-medium">{text}</span>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function addedByName(createdBy: Transaction['createdBy']): string {
+  if (!createdBy || typeof createdBy !== 'object') return '';
+  return createdBy.name?.trim() ?? '';
+}
+
+/** Keep a populated staff name when a later response sends only the user id. */
+function mergeTransaction(previous: Transaction, incoming: Partial<Transaction>): Transaction {
+  const next = { ...previous, ...incoming };
+  if (!addedByName(incoming.createdBy) && addedByName(previous.createdBy)) {
+    next.createdBy = previous.createdBy;
+  }
+  return next;
+}
+
+/** Who entered a walk-in. Older orders have no staff member stored. */
+function AddedByInfo({ name }: { name: string }) {
+  const text = name || 'Not recorded';
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Added by ${text}`}
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <UserRound className="size-3.5" aria-hidden="true" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="whitespace-nowrap">
+          <span className="text-muted-foreground">Added by </span>
           <span className="font-medium">{text}</span>
         </TooltipContent>
       </Tooltip>
@@ -522,6 +561,274 @@ function ReportHistory({ storeId }: { storeId: string }) {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+const ACTIVITY_LABEL: Record<string, string> = {
+  created: 'Created',
+  items_edited: 'Items',
+  status_changed: 'Status',
+  customer_changed: 'Customer',
+  notes_changed: 'Notes',
+  cancelled: 'Cancelled',
+  cancel_declined: 'Declined',
+  deleted: 'Deleted',
+};
+
+interface TransactionActivityRow {
+  _id: string;
+  transactionId: string;
+  customerLabel: string;
+  action: string;
+  summary: string;
+  actorName: string;
+  createdAt: string;
+}
+
+function TransactionActivityPanel({ storeId }: { storeId: string }) {
+  const [rows, setRows] = useState<TransactionActivityRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [viewId, setViewId] = useState<string | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
+  const [viewMissing, setViewMissing] = useState(false);
+  const [viewTx, setViewTx] = useState<Transaction | null>(null);
+  const [viewItems, setViewItems] = useState<TransactionItemDetail[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/transactions/activity?storeId=${storeId}`)
+      .then(async (res) => (res.ok ? res.json() as Promise<TransactionActivityRow[]> : []))
+      .then((data) => {
+        if (!cancelled) setRows(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [storeId]);
+
+  const openOrder = async (transactionId: string) => {
+    setViewId(transactionId);
+    setViewLoading(true);
+    setViewMissing(false);
+    setViewTx(null);
+    setViewItems([]);
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}`);
+      if (res.status === 404) {
+        setViewMissing(true);
+        return;
+      }
+      if (!res.ok) {
+        toast.error('Could not open this order');
+        setViewId(null);
+        return;
+      }
+      const data = await res.json() as { transaction?: Transaction; items?: TransactionItemDetail[] };
+      setViewTx(data.transaction ?? null);
+      setViewItems(data.items ?? []);
+    } catch {
+      toast.error('Could not open this order');
+      setViewId(null);
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  const closeOrder = () => {
+    setViewId(null);
+    setViewTx(null);
+    setViewItems([]);
+    setViewMissing(false);
+  };
+
+  const needle = query.trim().toLowerCase();
+  const visible = needle
+    ? rows.filter((row) => {
+      const order = row.transactionId.slice(-8).toLowerCase();
+      return order.includes(needle)
+        || row.customerLabel.toLowerCase().includes(needle)
+        || row.actorName.toLowerCase().includes(needle)
+        || row.summary.toLowerCase().includes(needle)
+        || (ACTIVITY_LABEL[row.action] ?? row.action).toLowerCase().includes(needle);
+    })
+    : rows;
+
+  const viewCustomer = viewTx?.customerId && typeof viewTx.customerId === 'object'
+    ? viewTx.customerId.name
+    : (viewTx?.walkInCustomerName || 'Walk-in');
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Staff actions on orders, newest first. Earlier orders were not backfilled.
+        </p>
+        <div className="relative w-64">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Order, customer, or staff..."
+            className="h-8 pl-8 text-sm"
+          />
+        </div>
+      </div>
+      <Card className="gap-0 overflow-hidden py-0">
+        <CardContent className="p-0">
+          <Table className="w-full">
+            <TableHeader>
+              <TableRow>
+                <TableHead>When</TableHead>
+                <TableHead>Order</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Detail</TableHead>
+                <TableHead>By</TableHead>
+                <TableHead className="text-right">Order</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: 6 }).map((_, index) => (
+                  <TableRow key={index}>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-4 w-36" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-4 w-16" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-4 w-24" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-4 w-48" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="h-4 w-24" /></TableCell>
+                    <TableCell className="px-4 py-3"><Skeleton className="ml-auto h-7 w-24" /></TableCell>
+                  </TableRow>
+                ))
+              ) : visible.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    {rows.length === 0
+                      ? 'No activity yet. Claim, payment, edits, and other order actions are recorded from now on.'
+                      : 'No activity matches that search.'}
+                  </TableCell>
+                </TableRow>
+              ) : visible.map((row) => (
+                <TableRow key={row._id}>
+                  <TableCell className="px-4 py-3 whitespace-nowrap text-muted-foreground">{fmtDate(new Date(row.createdAt))}</TableCell>
+                  <TableCell className="px-4 py-3 font-mono text-xs">{row.transactionId.slice(-8)}</TableCell>
+                  <TableCell className="px-4 py-3">{row.customerLabel}</TableCell>
+                  <TableCell className="px-4 py-3">
+                    <Badge variant={row.action === 'deleted' || row.action === 'cancelled' ? 'error' : 'secondary'}>
+                      {ACTIVITY_LABEL[row.action] ?? row.action}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="px-4 py-3">{row.summary}</TableCell>
+                  <TableCell className="px-4 py-3">{row.actorName}</TableCell>
+                  <TableCell className="px-4 py-3 text-right">
+                    <Button type="button" size="sm" variant="outline" onClick={() => openOrder(row.transactionId)}>
+                      View order
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Dialog open={viewId != null} onOpenChange={(open) => { if (!open) closeOrder(); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Order {viewId ? viewId.slice(-8) : ''}</DialogTitle>
+            <DialogDescription>
+              {viewMissing ? 'This order is no longer in the transaction list.' : 'Current order details for this activity row.'}
+            </DialogDescription>
+          </DialogHeader>
+          {viewLoading ? (
+            <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+              <Spinner /> Loading order...
+            </div>
+          ) : viewMissing ? (
+            <p className="text-sm text-muted-foreground">
+              The order was deleted. This activity row is the record of what happened to it.
+            </p>
+          ) : viewTx ? (
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Customer</p>
+                  <p className="font-medium">{viewCustomer}</p>
+                  {viewTx.customerId && typeof viewTx.customerId === 'object' && (
+                    <p className="text-xs text-muted-foreground">{viewTx.customerId.email}</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Placed</p>
+                  <p className="font-medium">{fmtDate(new Date(viewTx.createdAt))}</p>
+                </div>
+                <div className="flex flex-col items-start gap-1">
+                  <p className="text-muted-foreground">Status</p>
+                  <OrderBadge status={getDisplayOrderStatus(viewTx)} />
+                  <OrderTypeBadge orderType={viewTx.orderType} />
+                </div>
+                <div className="flex flex-col items-start gap-1">
+                  <p className="text-muted-foreground">Claim and payment</p>
+                  <ClaimBadge status={viewTx.claimStatus} />
+                  <PaymentBadge
+                    status={viewTx.paymentStatus}
+                    totalAmount={viewTx.totalAmount}
+                    amountPaid={viewTx.amountPaid}
+                    paymentMethod={viewTx.paymentMethod}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Total</span>
+                <span className="font-semibold">{fmt(viewTx.totalAmount)}</span>
+              </div>
+              {(viewTx.notes?.trim() || viewTx.customerNotes?.trim()) && (
+                <div className="text-sm">
+                  <p className="text-muted-foreground">Notes</p>
+                  {viewTx.notes?.trim() && <p>{viewTx.notes}</p>}
+                  {viewTx.customerNotes?.trim() && <p className="text-muted-foreground">{viewTx.customerNotes}</p>}
+                </div>
+              )}
+              <div className="overflow-hidden rounded-md border">
+                <table className="data-table text-xs">
+                  <thead>
+                    <tr>
+                      <th className="px-3 py-2 text-left">Product</th>
+                      <th className="px-3 py-2 text-center">Qty</th>
+                      <th className="px-3 py-2 text-right">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewItems.map((item) => (
+                      <tr key={item._id} className="border-t">
+                        <td className="px-3 py-2 font-medium">
+                          {item.productId ? item.productId.name : 'Deleted product'}
+                        </td>
+                        <td className="px-3 py-2 text-center">{item.quantity}</td>
+                        <td className="px-3 py-2 text-right">{fmt(item.subtotal)}</td>
+                      </tr>
+                    ))}
+                    {viewItems.length === 0 && (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-4 text-center text-muted-foreground">No items on this order.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 
@@ -943,7 +1250,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       toast.error(data.message ?? 'Failed to update payment');
       return;
     }
-    setTransactions((prev) => prev.map((tx) => (tx._id === txId ? { ...tx, ...data } : tx)));
+    setTransactions((prev) => prev.map((tx) => (tx._id === txId ? mergeTransaction(tx, data) : tx)));
     toast.success(body.paymentStatus === 'paid' ? 'Payment recorded' : 'Payment postponed');
     setPaymentDraft(null);
     setReferenceDigits('');
@@ -1099,7 +1406,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
     const handleUpdated = (tx: Transaction) => {
       setTransactions((prev) =>
-        prev.map((t) => (t._id === tx._id ? { ...t, ...tx } : t))
+        prev.map((t) => (t._id === tx._id ? mergeTransaction(t, tx) : t))
       );
     };
 
@@ -1138,7 +1445,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       if (res.ok) {
         const updated: Transaction = await res.json();
         setTransactions((prev) =>
-          prev.map((tx) => (tx._id === txId ? { ...tx, ...updated } : tx))
+          prev.map((tx) => (tx._id === txId ? mergeTransaction(tx, updated) : tx))
         );
         toast.success('Status updated');
       } else {
@@ -1247,7 +1554,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       if (res.ok) {
         const updated: Transaction = await res.json();
         setTransactions((prev) =>
-          prev.map((tx) => (tx._id === updated._id ? { ...tx, ...updated } : tx))
+          prev.map((tx) => (tx._id === updated._id ? mergeTransaction(tx, updated) : tx))
         );
         setEditCustomerTx(null);
         toast.success('Customer updated');
@@ -1362,7 +1669,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
         toast.error(data.message ?? 'Could not update the order');
         return;
       }
-      setTransactions((prev) => prev.map((tx) => (tx._id === data.transaction!._id ? { ...tx, ...data.transaction } : tx)));
+      setTransactions((prev) => prev.map((tx) => (tx._id === data.transaction!._id ? mergeTransaction(tx, data.transaction) : tx)));
       if (data.items) setItemsCache((prev) => ({ ...prev, [data.transaction!._id]: data.items! }));
       setEditItemsTx(null);
       toast.success('Order updated');
@@ -1386,7 +1693,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       if (res.ok) {
         const updated: Transaction = await res.json();
         setTransactions((prev) =>
-          prev.map((tx) => (tx._id === updated._id ? { ...tx, ...updated } : tx))
+          prev.map((tx) => (tx._id === updated._id ? mergeTransaction(tx, updated) : tx))
         );
         setNotesModalTx((prev) => (prev ? { ...prev, notes: updated.notes ?? null } : null));
         toast.success('Notes saved');
@@ -1412,7 +1719,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       if (res.ok) {
         const updated: Transaction = await res.json();
         setTransactions((prev) =>
-          prev.map((tx) => (tx._id === updated._id ? { ...tx, ...updated } : tx))
+          prev.map((tx) => (tx._id === updated._id ? mergeTransaction(tx, updated) : tx))
         );
         toast.success('Order cancelled');
       } else {
@@ -1444,7 +1751,7 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
       if (res.ok) {
         const updated: Transaction = await res.json();
         setTransactions((prev) =>
-          prev.map((tx) => (tx._id === updated._id ? { ...tx, ...updated } : tx))
+          prev.map((tx) => (tx._id === updated._id ? mergeTransaction(tx, updated) : tx))
         );
         toast.success(decision === 'approve' ? 'Request approved. Order cancelled.' : 'Request declined.');
         setReviewTarget(null);
@@ -1578,6 +1885,10 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
           <TabsTrigger value="report-history">
             <History />
             Report History
+          </TabsTrigger>
+          <TabsTrigger value="activity">
+            <ScrollText />
+            Activity
           </TabsTrigger>
         </TabsList>
 
@@ -1849,6 +2160,10 @@ export function TransactionManager({ storeId }: TransactionManagerProps) {
 
         <TabsContent value="report-history" className="flex flex-col gap-4">
           <ReportHistory key={reportHistoryKey} storeId={storeId} />
+        </TabsContent>
+
+        <TabsContent value="activity" className="flex flex-col gap-4">
+          <TransactionActivityPanel storeId={storeId} />
         </TabsContent>
       </Tabs>
 
@@ -2791,7 +3106,10 @@ function TransactionRow({
       <tr className={isCancelled ? 'row-muted' : undefined}>
         <td className="px-4 py-3">
           <div className="flex flex-col items-start gap-1">
-            <OrderBadge status={getDisplayOrderStatus(tx)} />
+            <div className="flex items-center gap-1">
+              <OrderBadge status={getDisplayOrderStatus(tx)} />
+              {tx.orderType === 'walk-in' && <AddedByInfo name={addedByName(tx.createdBy)} />}
+            </div>
             <OrderTypeBadge orderType={tx.orderType} />
             {hasPendingCancelRequest && <Badge variant="warning">Cancel requested</Badge>}
           </div>
