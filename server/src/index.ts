@@ -44,6 +44,7 @@ connectDB()
     initSocket(httpServer);
     startStoreDayCloseScheduler();
 
+    // Redeploy marker 2026-10-23. No behavior change.
     httpServer.listen(PORT, HOST, () => {
       console.log(
         `Server running on http://${HOST}:${PORT} [${isProd ? 'production' : 'development'}]`
